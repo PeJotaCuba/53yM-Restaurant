@@ -47,6 +47,7 @@ export default function App() {
   const authorizeUserMutation = useSafeMutation(api.users.authorizeUser);
   const deactivateUserMutation = useSafeMutation(api.users.deactivateUser);
   const createReservationMutation = useSafeMutation(api.reservations.createReservation);
+  const createReservationAndOrderMutation = useSafeMutation(api.reservations.createReservationAndOrder);
   const updateReservationStatusMutation = useSafeMutation(api.reservations.updateReservationStatus);
 
   // Active Sessions state
@@ -258,10 +259,60 @@ export default function App() {
 
   const [pendingReservation, setPendingReservation] = useState<any>(null);
 
+  const handleSendReservationAndOrder = async (reservation: any, cartItems: any[], totalPrice: number) => {
+    try {
+      const result = await createReservationAndOrderMutation({
+        customerName: sanitizeString(reservation.name || reservation.customerName || 'Cliente'),
+        date: reservation.date || new Date().toISOString().split('T')[0],
+        timeSlot: reservation.time || reservation.timeSlot || '12:00',
+        area: reservation.occasion || 'Cena casual',
+        guests: Number(reservation.guests || reservation.people) || 2,
+        phone: reservation.phone || '',
+        email: reservation.email || '',
+        occasion: reservation.occasion || 'Cena casual',
+        dishReference: reservation.dishReference || '',
+        items: cartItems.map(c => ({
+          id: c.item.id,
+          name: sanitizeString(c.item.name),
+          quantity: c.quantity,
+          priceCUP: c.item.priceCUP,
+          priceUSD: c.item.priceUSD || (c.item.priceCUP / (data.exchangeRate?.usdCUP || 320)),
+          notes: '',
+        })),
+        totalCUP: totalPrice,
+        totalUSD: totalPrice / (data.exchangeRate?.usdCUP || 320),
+      });
+
+      alert("¡Tu reservación y pedido han sido enviados con éxito! Queda pendiente de confirmación por el Administrador.");
+      setPendingReservation(null);
+      setCurrentView('home');
+      window.scrollTo(0, 0);
+      return result;
+    } catch (err) {
+      console.error("Error creating reservation and order:", err);
+      alert("Hubo un problema al enviar su pedido. Por favor intente nuevamente.");
+      throw err;
+    }
+  };
+
   const handleReservationComplete = async (reservationData: any, advanceOrder?: boolean) => {
     const cleanData = sanitizeObjectKeys(reservationData);
     
-    // Save to Convex Real-Time DB
+    if (advanceOrder) {
+      // Step 2: "Adelantar Pedidos" saves wizard data locally and redirects to menu selection
+      const tempReservation = {
+        ...cleanData,
+        id: 'temp-' + Math.random().toString(36).substr(2, 9),
+        status: 'pending' as const,
+        createdAt: Date.now()
+      };
+      setPendingReservation(tempReservation);
+      setCurrentView('menu');
+      window.scrollTo(0, 0);
+      return;
+    }
+
+    // Step 3: "Solo Enviar Reserva" (Pure Reservation) triggers direct Convex write with status "pending"
     let convexId: any = null;
     try {
       convexId = await createReservationMutation({
@@ -291,12 +342,9 @@ export default function App() {
     
     setSelectedDishForReservation(undefined);
     
-    if (advanceOrder) {
-      setPendingReservation(newReservation);
-      setCurrentView('menu');
-    } else {
-      setCurrentView('dashboard');
-    }
+    alert("¡Tu reservación ha sido enviada con éxito! Queda pendiente de confirmación por el Administrador.");
+    
+    setCurrentView('dashboard');
     window.scrollTo(0, 0);
   };
 
@@ -387,6 +435,7 @@ export default function App() {
           menuItems={data.menuItems || []}
           exchangeRate={data.exchangeRate}
           pendingReservation={pendingReservation}
+          onSubmitReservationAndOrder={handleSendReservationAndOrder}
           onClose={() => {
             setCurrentView('home');
             window.scrollTo(0, 0);

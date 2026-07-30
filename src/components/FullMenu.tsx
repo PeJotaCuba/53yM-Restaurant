@@ -5,7 +5,19 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Logo } from './Logo';
 import { useLanguage } from '../context/LanguageContext';
 
-export function FullMenu({ onClose, pendingReservation, menuItems, exchangeRate }: { onClose?: () => void, pendingReservation?: any, menuItems: MenuItem[], exchangeRate?: ExchangeRateConfig }) {
+export function FullMenu({ 
+  onClose, 
+  pendingReservation, 
+  menuItems, 
+  exchangeRate,
+  onSubmitReservationAndOrder
+}: { 
+  onClose?: () => void, 
+  pendingReservation?: any, 
+  menuItems: MenuItem[], 
+  exchangeRate?: ExchangeRateConfig,
+  onSubmitReservationAndOrder?: (reservation: any, cartItems: any[], totalPrice: number) => Promise<any>
+}) {
   const { t } = useLanguage();
   const [activeCategory, setActiveCategory] = useState('Todos');
   const [searchQuery, setSearchQuery] = useState('');
@@ -57,10 +69,21 @@ export function FullMenu({ onClose, pendingReservation, menuItems, exchangeRate 
   const totalItems = cart.reduce((acc, curr) => acc + curr.quantity, 0);
   const totalPrice = cart.reduce((acc, curr) => acc + (curr.item.priceCUP * curr.quantity), 0);
 
-  const handleSendOrder = () => {
+  const handleSendOrder = async () => {
     if (!pendingReservation && !tableNumber) {
       alert("Por favor, ingrese su número de mesa.");
       return;
+    }
+    
+    // Check if we are checking out an advanced reservation order
+    if (pendingReservation && onSubmitReservationAndOrder) {
+      try {
+        await onSubmitReservationAndOrder(pendingReservation, cart, totalPrice);
+        setCart([]); // Clear client cart state completely upon success
+      } catch (err) {
+        console.warn("Failed to submit reservation and order dynamically:", err);
+        return;
+      }
     }
     
     let orderText = "";

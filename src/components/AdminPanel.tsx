@@ -56,7 +56,7 @@ export function AdminPanel({ data, updateData, updateStatus }: AdminPanelProps) 
   const todayGuests = todayReservations.reduce((sum, r) => sum + r.guests, 0);
 
   const handleConfirmReservation = (res: Reservation) => {
-    updateStatus(res.id, 'paid');
+    updateStatus(res.id, 'confirmed');
     
     // Open WhatsApp to notify the user
     const text = `Hola ${res.name},\n\nNos complace informarte que tu reserva en *53&M* ha sido confirmada.\n\n📅 Fecha: ${res.date}\n⏰ Hora: ${res.time}\n\n¡Te esperamos!`;
@@ -851,10 +851,10 @@ export function AdminPanel({ data, updateData, updateStatus }: AdminPanelProps) 
                   <td className="p-4">
                     <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${
                       res.status === 'pending' ? 'bg-amber-100 text-amber-700' :
-                      res.status === 'paid' ? 'bg-green-100 text-green-700' :
+                      (res.status === 'paid' || res.status === 'confirmed') ? 'bg-green-100 text-green-700' :
                       'bg-red-100 text-red-700'
                     }`}>
-                      {res.status === 'paid' ? 'Confirmada' : res.status === 'pending' ? 'Pendiente' : 'Cancelada'}
+                      {(res.status === 'paid' || res.status === 'confirmed') ? 'Confirmada' : res.status === 'pending' ? 'Pendiente' : 'Cancelada'}
                     </span>
                   </td>
                   <td className="p-4 text-right space-x-2">
@@ -885,10 +885,10 @@ export function AdminPanel({ data, updateData, updateStatus }: AdminPanelProps) 
                 </div>
                 <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider ${
                   res.status === 'pending' ? 'bg-amber-100 text-amber-700' :
-                  res.status === 'paid' ? 'bg-green-100 text-green-700' :
+                  (res.status === 'paid' || res.status === 'confirmed') ? 'bg-green-100 text-green-700' :
                   'bg-red-100 text-red-700'
                 }`}>
-                  {res.status === 'paid' ? 'Confirmada' : res.status === 'pending' ? 'Pendiente' : 'Cancelada'}
+                  {(res.status === 'paid' || res.status === 'confirmed') ? 'Confirmada' : res.status === 'pending' ? 'Pendiente' : 'Cancelada'}
                 </span>
               </div>
               <div className="mb-4 text-sm text-stone-600">

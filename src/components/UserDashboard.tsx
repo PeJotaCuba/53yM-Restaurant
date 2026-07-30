@@ -64,6 +64,9 @@ export function UserDashboard({ reservations, data, updateData, onUpdateReservat
   const [dishRations, setDishRations] = useState<number>(1);
   const [cartItems, setCartItems] = useState<{ dishName: string; quantity: number; priceCUP: number }[]>([]);
 
+  // Real-time reservation confirmation notification states
+  const [confirmedReservationAlert, setConfirmedReservationAlert] = useState<any | null>(null);
+
   useEffect(() => {
     if (data?.menuItems && data.menuItems.length > 0 && !selectedDishName) {
       setSelectedDishName(data.menuItems[0].name);
@@ -82,6 +85,29 @@ export function UserDashboard({ reservations, data, updateData, onUpdateReservat
   }, []);
 
   const activeReservations = reservations.filter(r => r.status !== 'cancelled').sort((a, b) => b.createdAt - a.createdAt);
+
+  const prevReservationsRef = React.useRef<any[]>([]);
+
+  useEffect(() => {
+    const currentReservations = activeReservations || [];
+    const prevReservations = prevReservationsRef.current;
+
+    if (prevReservations.length > 0) {
+      currentReservations.forEach(current => {
+        const prev = prevReservations.find(p => p.id === current.id);
+        if (prev && prev.status === 'pending' && (current.status === 'confirmed' || current.status === 'paid')) {
+          setConfirmedReservationAlert(current);
+          if ('Notification' in window && Notification.permission === 'granted') {
+            new Notification("Reserva Confirmada 🎉", {
+              body: `Tu reserva para el ${formatDateFriendly(current.date)} ha sido confirmada.`
+            });
+          }
+        }
+      });
+    }
+
+    prevReservationsRef.current = currentReservations;
+  }, [activeReservations]);
 
   const usdCUP = data?.exchangeRate?.usdCUP || 320;
   const eurCUP = data?.exchangeRate?.eurCUP || 350;
@@ -224,6 +250,38 @@ export function UserDashboard({ reservations, data, updateData, onUpdateReservat
         </a>
       </div>
 
+      {/* Client Reservation Confirmed Alert */}
+      {confirmedReservationAlert && (
+        <div className="bg-green-900 text-white rounded-3xl p-6 mb-8 shadow-2xl border-2 border-green-400/85 flex flex-col sm:flex-row items-center justify-between gap-4 animate-fade-in relative">
+          <button 
+            onClick={() => setConfirmedReservationAlert(null)}
+            className="absolute top-4 right-4 text-white/70 hover:text-white font-bold p-1"
+            aria-label="Cerrar notificación"
+          >
+            ✕
+          </button>
+          <div className="flex items-center gap-4">
+            <div className="p-3 bg-green-800/80 rounded-2xl text-3xl shrink-0 animate-bounce border border-green-500/40">
+              🎉
+            </div>
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <span className="bg-green-400 text-green-950 font-black text-[10px] uppercase px-2.5 py-0.5 rounded-full tracking-wider">
+                  Reservación Confirmada
+                </span>
+                <span className="text-[11px] text-green-300 font-mono">En tiempo real</span>
+              </div>
+              <h4 className="font-serif font-bold text-lg text-white">
+                ¡Tu reservación ha sido confirmada!
+              </h4>
+              <p className="text-xs text-green-100 mt-1">
+                El administrador ha confirmado tu reserva a nombre de <strong>{confirmedReservationAlert.name || confirmedReservationAlert.customerName || 'Cliente'}</strong> para el día <strong>{formatDateFriendly(confirmedReservationAlert.date)}</strong> a las <strong>{formatTime12h(confirmedReservationAlert.time)}</strong> ({confirmedReservationAlert.guests} personas). ¡Te esperamos!
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Client Ready Notification Alert (Push-style message notification) */}
       {clientReadyOrders.length > 0 && (
         <div className="bg-emerald-900 text-white rounded-3xl p-6 mb-8 shadow-2xl border-2 border-emerald-400/80 flex flex-col sm:flex-row items-center justify-between gap-4 animate-fade-in">
@@ -308,7 +366,7 @@ export function UserDashboard({ reservations, data, updateData, onUpdateReservat
                 {/* Status Badge */}
                 <div className="absolute top-6 right-6 flex items-center gap-2">
                   {res.status === 'pending' && <span className="bg-amber-100 text-amber-700 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider flex items-center"><Clock size={12} className="mr-1"/> {t('Pendiente')}</span>}
-                  {res.status === 'paid' && <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider flex items-center"><CheckCircle2 size={12} className="mr-1"/> {t('Confirmada')}</span>}
+                  {(res.status === 'paid' || res.status === 'confirmed') && <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider flex items-center"><CheckCircle2 size={12} className="mr-1"/> {t('Confirmada')}</span>}
                 </div>
 
                 <div className="flex flex-col md:flex-row gap-8">
