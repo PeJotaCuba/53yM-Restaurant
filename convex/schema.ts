@@ -30,12 +30,7 @@ export default defineSchema({
     ),
     totalCUP: v.number(),
     totalUSD: v.number(),
-    status: v.union(
-      v.literal("pending_dependent"),
-      v.literal("in_kitchen"),
-      v.literal("ready_to_serve"),
-      v.literal("paid")
-    ),
+    status: v.string(),
     timestamp: v.number(),
     assignedDependentId: v.string(),
     reservationId: v.optional(v.string()),
