@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Reservation, AppData, Order, OrderItem } from '../types';
-import { Clock, CheckCircle2, XCircle, Edit2, Calendar, User, Phone, X, Save, AlertTriangle, MessageCircle, Utensils, Plus, Trash2, Send, ShoppingBag, ShieldAlert } from 'lucide-react';
+import { Clock, CheckCircle2, XCircle, Edit2, Calendar, User, Phone, X, Save, AlertTriangle, MessageCircle, Utensils, Plus, Trash2, Send, ShoppingBag, ShieldAlert, Download } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useDeviceId } from '../hooks/useDeviceId';
 import { useLanguage } from '../context/LanguageContext';
@@ -60,7 +60,10 @@ export function UserDashboard({ reservations, data, updateData, onUpdateReservat
   const [cancellingResId, setCancellingResId] = useState<string | null>(null);
 
   // Client direct table order state
-  const [clientTable, setClientTable] = useState('Mesa 1');
+  const [clientTable, setClientTable] = useState('');
+  const [showMesaSelection, setShowMesaSelection] = useState(true);
+  const [isReviewingOrder, setIsReviewingOrder] = useState(false);
+  const [showClosedComandas, setShowClosedComandas] = useState(false);
   const [clientName, setClientName] = useState('');
   const [selectedDishName, setSelectedDishName] = useState(data?.menuItems[0]?.name || '');
   const [dishRations, setDishRations] = useState<number>(1);
@@ -194,7 +197,21 @@ export function UserDashboard({ reservations, data, updateData, onUpdateReservat
   };
 
   const getCountdown = (date: string, time: string) => {
-    const target = new Date(`${date}T${time}`);
+    if (!date || !time) return null;
+    
+    const dateParts = date.split('-');
+    const timeParts = time.split(':');
+    if (dateParts.length !== 3 || timeParts.length < 2) return null;
+    
+    const target = new Date(
+      parseInt(dateParts[0]), 
+      parseInt(dateParts[1]) - 1, 
+      parseInt(dateParts[2]),
+      parseInt(timeParts[0]),
+      parseInt(timeParts[1]),
+      0
+    );
+    
     const diff = target.getTime() - now.getTime();
     
     if (diff <= 0) return null;
@@ -234,6 +251,72 @@ export function UserDashboard({ reservations, data, updateData, onUpdateReservat
   };
 
   const isShiftActive = data?.isShiftActive !== false;
+
+  // Generate PDF receipt for a closed comanda (Client Side)
+  const generateComandaPDF = (com: any) => {
+    try {
+      const { jsPDF } = require('jspdf');
+      const doc = new jsPDF();
+      const totalCUP = com.totalAmountCUP || 0;
+      const exRates = com.exchangeRateUsed || { usdCUP, eurCUP };
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(18);
+      doc.text('53&M RESTAURANT', 105, 20, { align: 'center' });
+
+      doc.setFontSize(12);
+      doc.setFont('helvetica', 'normal');
+      doc.text('COMPROBANTE DE CONSUMO', 105, 28, { align: 'center' });
+      doc.text('----------------------------------------------------', 105, 34, { align: 'center' });
+
+      doc.setFontSize(10);
+      doc.text(`Comanda ID: #${com.id}`, 20, 45);
+      doc.text(`Mesa: ${com.tableNumber}`, 20, 52);
+      doc.text(`Cliente: ${com.customerName || 'Cliente'}`, 20, 59);
+      doc.text(`Fecha y Hora: ${new Date(com.closedAt || Date.now()).toLocaleDateString('es-ES')} ${new Date(com.closedAt || Date.now()).toLocaleTimeString('es-ES')}`, 20, 66);
+
+      doc.setFont('helvetica', 'bold');
+      doc.text('DETALLE DE CONSUMO:', 20, 78);
+      doc.setFont('helvetica', 'normal');
+
+      let y = 86;
+      if (com.orders) {
+        com.orders.forEach((ord: any) => {
+          if (ord.orderItems) {
+            ord.orderItems.forEach((it: any) => {
+              doc.text(`${it.quantity}x ${it.name}`, 25, y);
+              doc.text(`$${(it.quantity * it.priceCUP).toLocaleString()} CUP`, 180, y, { align: 'right' });
+              y += 7;
+            });
+          }
+        });
+      }
+
+      doc.text('----------------------------------------------------', 105, y + 2, { align: 'center' });
+      y += 10;
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(11);
+      doc.text('TOTAL:', 20, y);
+      doc.text(`$${totalCUP.toLocaleString()} CUP`, 180, y, { align: 'right' });
+
+      y += 8;
+      doc.text('PAGO REALIZADO:', 20, y);
+      doc.text(`${com.paymentSummaryStr || `$${totalCUP} CUP`}`, 180, y, { align: 'right' });
+
+      y += 18;
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'italic');
+      doc.text('¡Gracias por su visita a 53&M Restaurant!', 105, y, { align: 'center' });
+
+      doc.save(`Recibo_53yM_Mesa_${com.tableNumber}_${com.id.slice(-5)}.pdf`);
+    } catch (err) {
+      console.error('Error al generar PDF:', err);
+      alert('Error al generar el PDF. Por favor intente de nuevo.');
+    }
+  };
+
+  const clientClosedComandas = (data?.comandas || []).filter(c => c.tableNumber === clientTable && c.status === 'closed').sort((a, b) => (b.closedAt || 0) - (a.closedAt || 0));
 
   const deviceRegistered = isDeviceRegistered(deviceId, data);
 
@@ -332,6 +415,50 @@ export function UserDashboard({ reservations, data, updateData, onUpdateReservat
         </div>
       )}
 
+      {/* CLOSED COMANDAS / RECEIPTS SECTION */}
+      {!showMesaSelection && clientClosedComandas.length > 0 && (
+        <div className="mb-6 bg-stone-50 border border-stone-200 rounded-2xl p-4 flex items-center justify-between shadow-sm">
+          <div className="flex items-center gap-3">
+            <div className="bg-amber-100 p-2 rounded-xl text-amber-700">
+              <ShoppingBag size={20} />
+            </div>
+            <div>
+              <h4 className="text-sm font-bold text-stone-800">Tienes comprobantes de pago listos</h4>
+              <p className="text-[10px] text-stone-500">Puedes descargar tu recibo de consumos anteriores.</p>
+            </div>
+          </div>
+          <button 
+            onClick={() => setShowClosedComandas(!showClosedComandas)}
+            className="text-xs font-bold text-dark-green hover:underline"
+          >
+            {showClosedComandas ? 'Ocultar' : 'Ver Recibos'}
+          </button>
+        </div>
+      )}
+
+      {showClosedComandas && !showMesaSelection && (
+        <motion.div 
+          initial={{ opacity: 0, height: 0 }}
+          animate={{ opacity: 1, height: 'auto' }}
+          className="mb-8 space-y-3"
+        >
+          {clientClosedComandas.map(c => (
+            <div key={c.id} className="bg-white p-4 rounded-2xl border border-stone-200 shadow-xs flex justify-between items-center">
+              <div>
+                <div className="text-xs font-bold text-stone-900">Comanda #{c.id.slice(-6)} — {clientTable}</div>
+                <div className="text-[10px] text-stone-500">{new Date(c.closedAt || 0).toLocaleDateString()} {new Date(c.closedAt || 0).toLocaleTimeString()}</div>
+              </div>
+              <button 
+                onClick={() => generateComandaPDF(c)}
+                className="bg-dark-green text-white px-4 py-2 rounded-xl text-[10px] font-bold flex items-center gap-2 hover:bg-stone-900 shadow-sm"
+              >
+                <Download size={14} /> Descargar Recibo PDF
+              </button>
+            </div>
+          ))}
+        </motion.div>
+      )}
+
       {/* Navigation Tabs for Client */}
       <div className="flex gap-3 mb-8 bg-stone-100 p-1.5 rounded-2xl border border-stone-200">
         <button
@@ -386,6 +513,7 @@ export function UserDashboard({ reservations, data, updateData, onUpdateReservat
                 {/* Status Badge */}
                 <div className="absolute top-6 right-6 flex items-center gap-2">
                   {res.status === 'pending' && <span className="bg-amber-100 text-amber-700 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider flex items-center"><Clock size={12} className="mr-1"/> {t('Pendiente')}</span>}
+                  {res.status === 'cancellation_pending' && <span className="bg-orange-100 text-orange-700 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider flex items-center"><AlertTriangle size={12} className="mr-1"/> {t('Cancelación Pendiente')}</span>}
                   {(res.status === 'paid' || res.status === 'confirmed') && <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider flex items-center"><CheckCircle2 size={12} className="mr-1"/> {t('Confirmada')}</span>}
                 </div>
 
@@ -431,20 +559,24 @@ export function UserDashboard({ reservations, data, updateData, onUpdateReservat
                         rel="noopener noreferrer"
                         className="bg-[#25D366] hover:bg-[#20ba5a] text-white font-bold px-3.5 py-2 rounded-xl text-xs flex items-center gap-1.5 transition-colors shadow-sm"
                       >
-                        <MessageCircle size={14} /> Contactar Administrador por WhatsApp
+                        <MessageCircle size={14} /> Contactar WhatsApp
                       </a>
-                      <button
-                        onClick={() => setEditingRes({ ...res })}
-                        className="bg-stone-100 hover:bg-stone-200 text-stone-800 font-bold px-3.5 py-2 rounded-xl text-xs flex items-center gap-1.5 transition-colors"
-                      >
-                        <Edit2 size={14} /> Cambiar Fecha / Detalles
-                      </button>
-                      <button
-                        onClick={() => setCancellingResId(res.id)}
-                        className="bg-red-50 hover:bg-red-100 text-red-600 font-bold px-3.5 py-2 rounded-xl text-xs flex items-center gap-1.5 transition-colors border border-red-200"
-                      >
-                        <XCircle size={14} /> Cancelar Reserva
-                      </button>
+                      {res.status !== 'cancellation_pending' && (
+                        <>
+                          <button
+                            onClick={() => setEditingRes({ ...res })}
+                            className="bg-stone-100 hover:bg-stone-200 text-stone-800 font-bold px-3.5 py-2 rounded-xl text-xs flex items-center gap-1.5 transition-colors"
+                          >
+                            <Edit2 size={14} /> {t('Cambiar Fecha / Detalles')}
+                          </button>
+                          <button
+                            onClick={() => setCancellingResId(res.id)}
+                            className="bg-red-50 hover:bg-red-100 text-red-600 font-bold px-3.5 py-2 rounded-xl text-xs flex items-center gap-1.5 transition-colors border border-red-200"
+                          >
+                            <XCircle size={14} /> {t('Cancelar Reserva')}
+                          </button>
+                        </>
+                      )}
                     </div>
                   </div>
 
@@ -508,23 +640,71 @@ export function UserDashboard({ reservations, data, updateData, onUpdateReservat
             </div>
           )}
 
+          {/* MESA SELECTION STEP */}
+          {showMesaSelection && (
+            <motion.div 
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="bg-white p-6 md:p-8 rounded-3xl border border-stone-200 shadow-sm space-y-6 text-center"
+            >
+              <div className="mb-4">
+                <Utensils className="w-12 h-12 text-dark-green mx-auto mb-3" />
+                <h3 className="text-2xl font-serif font-bold text-dark-green">Selecciona tu Mesa</h3>
+                <p className="text-sm text-stone-500">Indícanos dónde estás sentado para recibir tu pedido.</p>
+              </div>
+
+              <div className="grid grid-cols-3 sm:grid-cols-6 gap-3 max-w-xl mx-auto">
+                {[1, 2, 3, 4, 5, 6].map(num => (
+                  <button
+                    key={num}
+                    onClick={() => {
+                      setClientTable(`Mesa ${num}`);
+                      setShowMesaSelection(false);
+                    }}
+                    className="aspect-square rounded-2xl border-2 border-stone-100 bg-stone-50 flex items-center justify-center text-xl font-bold text-stone-600 hover:border-dark-green hover:bg-emerald-50 hover:text-dark-green transition-all shadow-xs"
+                  >
+                    {num}
+                  </button>
+                ))}
+              </div>
+
+              <div className="pt-4 grid grid-cols-2 gap-3 max-w-xs mx-auto">
+                {['Barra 1', 'Terraza A'].map(opt => (
+                  <button
+                    key={opt}
+                    onClick={() => {
+                      setClientTable(opt);
+                      setShowMesaSelection(false);
+                    }}
+                    className="py-3 px-4 rounded-xl border-2 border-stone-100 bg-stone-50 text-xs font-bold text-stone-600 hover:border-dark-green hover:bg-emerald-50 hover:text-dark-green transition-all shadow-xs"
+                  >
+                    {opt}
+                  </button>
+                ))}
+              </div>
+            </motion.div>
+          )}
+
           {/* ACTIVE CLIENT ORDERS FOR THIS TABLE */}
-          {(() => {
-            const tableOrders = (data?.orders || []).filter(o => o.tableNumber === clientTable);
+          {!showMesaSelection && !isReviewingOrder && (() => {
+            const tableOrders = (data?.orders || []).filter(o => o.tableNumber === clientTable && o.status !== 'delivered');
             if (tableOrders.length === 0) return null;
 
             return (
               <div className="bg-emerald-950 text-white p-6 rounded-3xl border border-emerald-800 shadow-lg space-y-4">
                 <div className="flex justify-between items-center border-b border-emerald-800 pb-3">
                   <div className="flex items-center gap-2">
-                    <Utensils className="text-gold" size={20} />
+                    <Clock className="text-gold" size={20} />
                     <h3 className="font-serif font-bold text-lg text-white">
-                      Tus Pedidos en {clientTable} ({tableOrders.length})
+                      Pedidos en Marcha ({tableOrders.length})
                     </h3>
                   </div>
-                  <span className="text-xs font-mono bg-emerald-900 text-emerald-200 px-3 py-1 rounded-full border border-emerald-700">
-                    Mesa: {clientTable}
-                  </span>
+                  <button 
+                    onClick={() => setShowMesaSelection(true)}
+                    className="text-[10px] bg-emerald-900 text-emerald-300 px-3 py-1 rounded-full border border-emerald-700 hover:bg-emerald-800"
+                  >
+                    Cambiar {clientTable}
+                  </button>
                 </div>
 
                 <div className="space-y-3">
@@ -534,37 +714,29 @@ export function UserDashboard({ reservations, data, updateData, onUpdateReservat
                       <div key={ord.id} className="bg-emerald-900/60 p-4 rounded-2xl border border-emerald-700/60 space-y-3">
                         <div className="flex justify-between items-start text-xs">
                           <div>
-                            <span className="font-bold text-gold">Pedido #{ord.id}</span>
-                            <span className="text-emerald-300 ml-2 font-mono">
+                            <span className="font-bold text-gold">Pedido #{ord.id.split('-')[1] || ord.id}</span>
+                            <span className="text-emerald-300 ml-2 font-mono text-[10px]">
                               {new Date(ord.timestamp).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}
                             </span>
                           </div>
                           <span className={`px-2.5 py-1 rounded-full font-bold text-[10px] uppercase ${
                             ord.status === 'kitchen_ready' ? 'bg-emerald-400 text-emerald-950 animate-pulse font-black' :
                             ord.status === 'kitchen_in_progress' ? 'bg-amber-400 text-amber-950' :
-                            ord.status === 'delivered' ? 'bg-emerald-800 text-emerald-200' :
                             'bg-stone-700 text-stone-200'
                           }`}>
                             {ord.status === 'kitchen_ready' ? '🔔 ¡LISTO PARA SERVIR!' :
-                             ord.status === 'kitchen_in_progress' ? '🍳 En Preparación' :
-                             ord.status === 'delivered' ? '✓ Servido en Mesa' : '⏳ Pendiente'}
+                             ord.status === 'kitchen_in_progress' ? '🍳 En Preparación' : '⏳ Pendiente'}
                           </span>
                         </div>
 
                         {/* Order Items */}
-                        <div className="space-y-1 bg-emerald-950/80 p-3 rounded-xl border border-emerald-800 text-xs">
+                        <div className="space-y-1 text-xs">
                           {ord.orderItems?.map((it, idx) => (
                             <div key={idx} className="flex justify-between items-center text-emerald-100">
                               <span><strong className="text-gold">{it.quantity}x</strong> {it.name}</span>
                               <span className="font-mono text-emerald-300">${(it.priceCUP * it.quantity).toLocaleString()} CUP</span>
                             </div>
                           ))}
-                          <div className="pt-2 border-t border-emerald-800 flex justify-between font-bold text-xs">
-                            <span className="text-emerald-300">Total:</span>
-                            <span className="text-white font-mono">
-                              ${totalCUP.toLocaleString()} CUP • ${(totalCUP / usdCUP).toFixed(2)} USD • €{(totalCUP / eurCUP).toFixed(2)} EUR
-                            </span>
-                          </div>
                         </div>
                       </div>
                     );
@@ -574,98 +746,62 @@ export function UserDashboard({ reservations, data, updateData, onUpdateReservat
             );
           })()}
 
-          <div className="bg-white p-6 md:p-8 rounded-3xl border border-stone-200 shadow-sm space-y-6">
-            <div className="flex items-center justify-between border-b border-stone-100 pb-4">
-              <div>
-                <h3 className="text-xl font-serif font-bold text-dark-green">Conformar Pedido por Platos</h3>
-                <p className="text-xs text-stone-500">Selecciona cada plato, especifica las raciones y agrégalo a tu comanda.</p>
-                <p className="text-[11px] text-amber-700 font-medium mt-1">
-                  ℹ️ Los precios en USD y EUR son referenciales y se calculan según la tasa de cambio vigente.
-                </p>
-              </div>
-              <span className="bg-emerald-100 text-emerald-800 text-xs font-bold px-3 py-1 rounded-full flex items-center gap-1">
-                <ShoppingBag size={14} /> {cartItems.length} platos en borrador
-              </span>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-bold text-stone-700 mb-1">Mesa en Restaurante</label>
-                <select
-                  value={clientTable}
-                  onChange={e => setClientTable(e.target.value)}
-                  className="w-full border border-stone-200 rounded-xl p-2.5 text-xs font-bold bg-stone-50 outline-none"
+          {/* DISH SELECTION UI */}
+          {!showMesaSelection && !isReviewingOrder && (
+            <div className="bg-white p-6 md:p-8 rounded-3xl border border-stone-200 shadow-sm space-y-6">
+              <div className="flex items-center justify-between border-b border-stone-100 pb-4">
+                <div>
+                  <h3 className="text-xl font-serif font-bold text-dark-green">Conformar Pedido</h3>
+                  <p className="text-xs text-stone-500">Agrega platos de la carta a tu pedido en {clientTable}.</p>
+                </div>
+                <button 
+                  onClick={() => setShowMesaSelection(true)}
+                  className="bg-stone-100 text-stone-600 text-[10px] font-bold px-3 py-1.5 rounded-xl border border-stone-200"
                 >
-                  <option value="Mesa 1">Mesa 1</option>
-                  <option value="Mesa 2">Mesa 2</option>
-                  <option value="Mesa 3">Mesa 3</option>
-                  <option value="Mesa 4">Mesa 4</option>
-                  <option value="Mesa 5">Mesa 5</option>
-                  <option value="Barra 1">Barra 1</option>
-                  <option value="Terraza A">Terraza A</option>
-                </select>
+                  Cambiar Mesa
+                </button>
               </div>
 
-              <div>
-                <label className="block text-xs font-bold text-stone-700 mb-1">Nombre (Opcional)</label>
-                <input
-                  type="text"
-                  placeholder="Tu nombre"
-                  value={clientName}
-                  onChange={e => setClientName(e.target.value)}
-                  className="w-full border border-stone-200 rounded-xl p-2.5 text-xs bg-stone-50 outline-none"
-                />
-              </div>
-            </div>
-
-            {/* Select Dish */}
-            <div className="space-y-4">
-              <label className="block text-xs font-bold text-stone-700">Seleccionar Platos del Menú</label>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-72 overflow-y-auto p-1">
+              {/* Select Dish Grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[400px] overflow-y-auto p-1 pr-2 custom-scrollbar">
                 {(data?.menuItems || []).map((menuItem) => {
                   const isSelected = selectedDishName === menuItem.name;
+                  const itemInCart = cartItems.find(i => i.dishName === menuItem.name);
+                  
                   return (
                     <div
                       key={menuItem.id}
                       onClick={() => {
-                        if (!isSelected) {
-                          setSelectedDishName(menuItem.name);
-                          setDishRations(1);
-                        }
+                        setSelectedDishName(menuItem.name);
+                        if (!itemInCart) setDishRations(1);
+                        else setDishRations(itemInCart.quantity);
                       }}
-                      className={`p-3 rounded-2xl border cursor-pointer transition-all flex flex-col justify-center ${
+                      className={`p-4 rounded-2xl border cursor-pointer transition-all flex flex-col justify-between h-full ${
                         isSelected
                           ? 'border-dark-green bg-emerald-50/60 ring-2 ring-dark-green/20'
-                          : 'border-stone-200 bg-stone-50/50 hover:bg-stone-100'
+                          : 'border-stone-100 bg-stone-50/40 hover:bg-stone-100'
                       }`}
                     >
-                      <div className="flex justify-between items-center w-full">
-                        <div>
-                          <div className="text-xs font-bold text-stone-800">{menuItem.name}</div>
-                          <div className="text-[11px] text-stone-500 font-mono">
-                            ${menuItem.priceCUP.toLocaleString()} CUP • ${(menuItem.priceCUP / usdCUP).toFixed(2)} USD • €{(menuItem.priceCUP / eurCUP).toFixed(2)} EUR
+                      <div className="flex justify-between items-start mb-2">
+                        <div className="flex-1">
+                          <div className="text-sm font-bold text-stone-900">{menuItem.name}</div>
+                          <div className="text-[11px] text-stone-500 font-mono mt-0.5">
+                            ${menuItem.priceCUP.toLocaleString()} CUP
                           </div>
                         </div>
-                        {!isSelected && (
-                          <div className="text-stone-300">
-                            <Plus size={16} />
-                          </div>
+                        {itemInCart && (
+                          <span className="bg-dark-green text-white text-[10px] font-black px-2 py-0.5 rounded-full">
+                            {itemInCart.quantity}
+                          </span>
                         )}
                       </div>
                       
                       {isSelected && (
                         <div className="mt-3 flex items-center gap-2 pt-3 border-t border-emerald-200/50" onClick={e => e.stopPropagation()}>
                           <div className="flex items-center gap-1 bg-white border border-stone-200 rounded-lg p-1">
-                            <button type="button" onClick={() => setDishRations(Math.max(1, dishRations - 1))} className="px-2 text-stone-500 hover:text-stone-800">-</button>
-                            <input
-                              type="number"
-                              min={1}
-                              max={20}
-                              value={dishRations}
-                              onChange={e => setDishRations(Math.max(1, parseInt(e.target.value) || 1))}
-                              className="w-8 text-xs font-bold text-center bg-transparent outline-none"
-                            />
-                            <button type="button" onClick={() => setDishRations(dishRations + 1)} className="px-2 text-stone-500 hover:text-stone-800">+</button>
+                            <button type="button" onClick={() => setDishRations(Math.max(1, dishRations - 1))} className="w-7 h-7 flex items-center justify-center text-stone-500 hover:text-stone-800 transition-colors">-</button>
+                            <span className="w-6 text-xs font-bold text-center">{dishRations}</span>
+                            <button type="button" onClick={() => setDishRations(dishRations + 1)} className="w-7 h-7 flex items-center justify-center text-stone-500 hover:text-stone-800 transition-colors">+</button>
                           </div>
                           
                           <button
@@ -674,7 +810,7 @@ export function UserDashboard({ reservations, data, updateData, onUpdateReservat
                             disabled={!isShiftActive}
                             className="flex-1 bg-dark-green text-white hover:bg-emerald-900 disabled:opacity-50 py-2 rounded-lg text-[11px] font-bold shadow-sm transition-all text-center"
                           >
-                            Agregar al Pedido
+                            {itemInCart ? 'Actualizar' : 'Agregar'}
                           </button>
                         </div>
                       )}
@@ -682,48 +818,99 @@ export function UserDashboard({ reservations, data, updateData, onUpdateReservat
                   );
                 })}
               </div>
-            </div>
 
-            {/* Cart Preview */}
-            <div className="bg-stone-50 p-5 rounded-2xl border border-stone-200 space-y-4">
-              <div className="flex justify-between items-center font-serif text-sm font-bold text-stone-800 border-b border-stone-200 pb-2">
-                <span>Resumen de tu Pedido ({cartItems.length} platos)</span>
-                <span className="text-dark-green font-mono text-base">${calculateCartTotal()} CUP</span>
-              </div>
-
-              {cartItems.length === 0 ? (
-                <div className="text-center py-6 text-stone-400 text-xs font-medium">
-                  No has agregado platos a tu pedido aún. Selecciona un plato arriba y presiona "+ Agregar al Pedido".
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {cartItems.map((item, idx) => (
-                    <div key={idx} className="bg-white p-3 rounded-xl border border-stone-200 flex justify-between items-center text-xs">
-                      <div>
-                        <span className="font-bold text-dark-green mr-2">{item.quantity}x</span>
-                        <span className="text-stone-800 font-semibold">{item.dishName}</span>
-                        <span className="text-stone-400 text-[10px] ml-2 font-mono">(${item.priceCUP * item.quantity} CUP)</span>
-                      </div>
-                      <button
-                        onClick={() => handleRemoveFromCart(idx)}
-                        className="text-stone-400 hover:text-red-600 p-1"
-                      >
-                        <Trash2 size={14} />
-                      </button>
+              {/* Bottom Sticky Review Bar */}
+              {cartItems.length > 0 && (
+                <div className="pt-4 border-t border-stone-100">
+                  <div className="flex justify-between items-center mb-4 px-2">
+                    <div className="text-xs text-stone-500">
+                      <span className="font-bold text-dark-green">{cartItems.length} platos</span> seleccionados
                     </div>
-                  ))}
-
+                    <div className="text-lg font-serif font-bold text-dark-green">
+                      Total: ${calculateCartTotal().toLocaleString()} CUP
+                    </div>
+                  </div>
                   <button
-                    onClick={handleSubmitCartOrder}
-                    disabled={!isShiftActive}
-                    className="w-full mt-4 bg-gold text-dark-green hover:bg-amber-300 disabled:opacity-50 py-3.5 rounded-2xl text-xs font-black flex items-center justify-center gap-2 shadow-md transition-all uppercase tracking-wider"
+                    onClick={() => setIsReviewingOrder(true)}
+                    className="w-full bg-gold text-dark-green hover:bg-amber-300 py-4 rounded-2xl text-sm font-black flex items-center justify-center gap-2 shadow-lg transition-all uppercase tracking-wider"
                   >
-                    <Send size={16} /> Enviar Pedido Completo al Dependiente
+                    <ShoppingBag size={18} /> Revisar Pedido y Enviar
                   </button>
                 </div>
               )}
             </div>
-          </div>
+          )}
+
+          {/* ORDER REVIEW STEP */}
+          {isReviewingOrder && (
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.98 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="bg-white p-6 md:p-8 rounded-3xl border-2 border-gold shadow-2xl space-y-6"
+            >
+              <div className="flex justify-between items-start">
+                <div>
+                  <h3 className="text-2xl font-serif font-bold text-dark-green">Revisa tu Pedido</h3>
+                  <p className="text-xs text-stone-500">Verifica los platos y cantidades antes de enviarlos a la cocina.</p>
+                </div>
+                <button onClick={() => setIsReviewingOrder(false)} className="text-stone-400 hover:text-stone-900 p-2">
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div className="bg-stone-50 rounded-2xl p-4 border border-stone-100 divide-y divide-stone-200">
+                <div className="flex justify-between text-[10px] font-bold uppercase tracking-widest text-stone-400 mb-3 px-2">
+                  <span>Plato</span>
+                  <span>Subtotal</span>
+                </div>
+                {cartItems.map((item, idx) => (
+                  <div key={idx} className="py-3 flex justify-between items-center px-2">
+                    <div>
+                      <div className="text-sm font-bold text-stone-900">
+                        <span className="text-dark-green mr-2">{item.quantity}x</span> {item.dishName}
+                      </div>
+                      <div className="text-[10px] text-stone-500 mt-0.5 font-mono">
+                        ${item.priceCUP.toLocaleString()} CUP por ración
+                      </div>
+                    </div>
+                    <div className="text-sm font-bold text-stone-800 font-mono">
+                      ${(item.priceCUP * item.quantity).toLocaleString()} CUP
+                    </div>
+                  </div>
+                ))}
+                <div className="pt-4 mt-2 flex justify-between items-center px-2">
+                  <span className="font-serif text-lg font-bold text-stone-900">Total a Pagar</span>
+                  <div className="text-right">
+                    <div className="text-2xl font-serif font-bold text-dark-green">
+                      ${calculateCartTotal().toLocaleString()} CUP
+                    </div>
+                    <div className="text-[10px] text-stone-500 font-mono">
+                      ~ ${(calculateCartTotal() / usdCUP).toFixed(2)} USD • €{(calculateCartTotal() / eurCUP).toFixed(2)} EUR
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <button
+                  onClick={() => {
+                    handleSubmitCartOrder();
+                    setIsReviewingOrder(false);
+                    setShowMesaSelection(true); // Reset for next order
+                  }}
+                  className="w-full bg-dark-green text-white hover:bg-stone-900 py-4 rounded-2xl text-sm font-black flex items-center justify-center gap-2 shadow-lg transition-all uppercase tracking-wider"
+                >
+                  <Send size={18} /> Confirmar y Enviar a Cocina
+                </button>
+                <button
+                  onClick={() => setIsReviewingOrder(false)}
+                  className="w-full bg-stone-100 text-stone-600 hover:bg-stone-200 py-3 rounded-2xl text-xs font-bold transition-all"
+                >
+                  Seguir Agregando Platos
+                </button>
+              </div>
+            </motion.div>
+          )}
         </div>
       )}
 

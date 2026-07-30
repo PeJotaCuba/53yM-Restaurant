@@ -340,9 +340,36 @@ export function AdminPanel({ data, updateData, updateStatus }: AdminPanelProps) 
           <h2 className="text-3xl font-serif text-dark-green mb-2">Panel Administrativo</h2>
           <p className="text-stone-500">Visión general del negocio y configuración</p>
         </div>
-        <button onClick={handleExportJson} className="flex items-center gap-2 bg-stone-900 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-stone-800 transition-colors shadow-sm">
-          <Download size={16} /> Exportar excelencia.json
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button onClick={handleExportJson} className="flex items-center gap-2 bg-stone-900 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-stone-800 transition-colors shadow-sm">
+            <Download size={16} /> Exportar excelencia.json
+          </button>
+          <label className="flex items-center gap-2 bg-stone-100 text-stone-700 px-4 py-2 rounded-xl text-sm font-bold hover:bg-stone-200 transition-colors shadow-sm cursor-pointer border border-stone-200">
+            <RefreshCw size={16} /> Restaurar excelencia.json
+            <input 
+              type="file" 
+              accept=".json" 
+              className="hidden" 
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                  try {
+                    const json = JSON.parse(event.target?.result as string);
+                    if (confirm('¿Está seguro de que desea restaurar la base de datos desde este archivo? Se sobrescribirán todos los datos actuales.')) {
+                      updateData(json);
+                      alert('¡Base de datos restaurada con éxito!');
+                    }
+                  } catch (err) {
+                    alert('Error al leer el archivo JSON.');
+                  }
+                };
+                reader.readAsText(file);
+              }}
+            />
+          </label>
+        </div>
       </div>
 
       {/* Control de Jornada Banner */}

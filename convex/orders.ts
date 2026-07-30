@@ -1,9 +1,90 @@
-import { mutation, query } from "./_generated/server";
+import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
 
 /**
- * Create a new order (customer or waiter) and log to Bitacora
+ * Generic sync or update for orders from frontend
  */
+export const syncOrUpdateOrder = mutation({
+  args: {
+    id: v.optional(v.string()),
+    tableNumber: v.string(),
+    items: v.array(
+      v.object({
+        id: v.string(),
+        name: v.string(),
+        quantity: v.number(),
+        priceCUP: v.number(),
+        priceUSD: v.number(),
+        notes: v.optional(v.string()),
+      })
+    ),
+    totalCUP: v.number(),
+    totalUSD: v.number(),
+    status: v.string(),
+    assignedDependentId: v.string(),
+    reservationId: v.optional(v.string()),
+    timestamp: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const data = {
+      tableNumber: args.tableNumber,
+      items: args.items,
+      totalCUP: args.totalCUP,
+      totalUSD: args.totalUSD,
+      status: args.status,
+      timestamp: args.timestamp || Date.now(),
+      assignedDependentId: args.assignedDependentId,
+      reservationId: args.reservationId,
+    };
+
+    if (args.id && !args.id.startsWith("temp-") && args.id.length > 5) {
+      try {
+        const orderId = args.id as any;
+        const existing = await ctx.db.get(orderId) as any;
+        if (existing) {
+          const oldStatus = existing.status;
+          await ctx.db.patch(orderId, data);
+          
+          if (oldStatus !== args.status) {
+            await ctx.db.insert("bitacora", {
+              action: `Pedido de Mesa #${args.tableNumber} cambió de estado a '${args.status.toUpperCase()}'`,
+              userRole: "sistema",
+              username: "Sistema",
+              timestamp: Date.now(),
+            });
+          }
+          return orderId;
+        }
+      } catch (e) {
+        console.warn("Error patching order by ID:", e);
+      }
+    }
+
+    // Insert new order
+    const newId = await ctx.db.insert("orders", data);
+    
+    await ctx.db.insert("bitacora", {
+      action: `Nuevo pedido creado en Mesa #${args.tableNumber} por un total de $${args.totalCUP} CUP`,
+      userRole: "sistema",
+      username: "Sistema",
+      timestamp: Date.now(),
+    });
+
+    return newId;
+  },
+});
+
+/**
+ * Live reactive query to get all orders
+ */
+export const getLiveOrders = query({
+  args: {},
+  handler: async (ctx) => {
+    return await ctx.db.query("orders").collect();
+  },
+});
+
+// Mutación para crear comandas desde el QR o el camarero (Legacy alias for syncOrUpdateOrder)
 export const createOrder = mutation({
   args: {
     tableNumber: v.string(),
@@ -19,33 +100,15 @@ export const createOrder = mutation({
     ),
     totalCUP: v.number(),
     totalUSD: v.number(),
+    status: v.string(),
     assignedDependentId: v.string(),
-    username: v.optional(v.string()),
-    userRole: v.optional(v.string()),
+    reservationId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const now = Date.now();
     const orderId = await ctx.db.insert("orders", {
-      tableNumber: args.tableNumber,
-      items: args.items,
-      totalCUP: args.totalCUP,
-      totalUSD: args.totalUSD,
-      status: "pending_dependent",
-      timestamp: now,
-      assignedDependentId: args.assignedDependentId,
+      ...args,
+      timestamp: Date.now(),
     });
-
-    const user = args.username || "Cliente/Mesa";
-    const role = args.userRole || "cliente";
-
-    // Auto-insert audit log into Bitacora table
-    await ctx.db.insert("bitacora", {
-      action: `Nuevo pedido creado en Mesa #${args.tableNumber} por $${args.totalCUP} CUP ($${args.totalUSD.toFixed(2)} USD)`,
-      userRole: role,
-      username: user,
-      timestamp: now,
-    });
-
     return orderId;
   },
 });
@@ -136,88 +199,5 @@ export const closeOrder = mutation({
     });
 
     return { success: true };
-  },
-});
-
-/**
- * Generic sync or update for orders from frontend
- */
-export const syncOrUpdateOrder = mutation({
-  args: {
-    id: v.optional(v.string()),
-    tableNumber: v.string(),
-    items: v.array(
-      v.object({
-        id: v.string(),
-        name: v.string(),
-        quantity: v.number(),
-        priceCUP: v.number(),
-        priceUSD: v.number(),
-        notes: v.optional(v.string()),
-      })
-    ),
-    totalCUP: v.number(),
-    totalUSD: v.number(),
-    status: v.string(),
-    timestamp: v.number(),
-    assignedDependentId: v.string(),
-    reservationId: v.optional(v.string()),
-  },
-  handler: async (ctx, args) => {
-    const data = {
-      tableNumber: args.tableNumber,
-      items: args.items,
-      totalCUP: args.totalCUP,
-      totalUSD: args.totalUSD,
-      status: args.status,
-      timestamp: args.timestamp,
-      assignedDependentId: args.assignedDependentId,
-      reservationId: args.reservationId,
-    };
-
-    if (args.id && !args.id.startsWith("temp-") && args.id.length > 5) {
-      try {
-        const orderId = args.id as any;
-        const existing = await ctx.db.get(orderId) as any;
-        if (existing) {
-          const oldStatus = existing.status;
-          await ctx.db.patch(orderId, data);
-          
-          if (oldStatus !== args.status) {
-            await ctx.db.insert("bitacora", {
-              action: `Pedido de Mesa #${args.tableNumber} cambió de estado a '${args.status.toUpperCase()}'`,
-              userRole: "sistema",
-              username: "Sistema",
-              timestamp: Date.now(),
-            });
-          }
-          return orderId;
-        }
-      } catch (e) {
-        console.warn("Error patching order by ID:", e);
-      }
-    }
-
-    // Insert new order
-    const newId = await ctx.db.insert("orders", data);
-    
-    await ctx.db.insert("bitacora", {
-      action: `Nuevo pedido creado en Mesa #${args.tableNumber} por un total de $${args.totalCUP} CUP`,
-      userRole: "sistema",
-      username: "Sistema",
-      timestamp: Date.now(),
-    });
-
-    return newId;
-  },
-});
-
-/**
- * Live reactive query to get all orders
- */
-export const getLiveOrders = query({
-  args: {},
-  handler: async (ctx) => {
-    return await ctx.db.query("orders").collect();
   },
 });

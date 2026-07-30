@@ -32,7 +32,7 @@ interface ManagerPanelProps {
   updateStatus: (id: string, status: Reservation['status']) => void;
 }
 
-export function ManagerPanel({ data, updateData, managerInfo }: ManagerPanelProps) {
+export function ManagerPanel({ data, updateData, managerInfo, updateStatus }: ManagerPanelProps) {
   const { t } = useLanguage();
   const [activeTab, setActiveTab] = useState<'reports' | 'comparative' | 'cierre_caja' | 'audit_log' | 'reservations'>('reports');
   const [selectedReport, setSelectedReport] = useState<OrderReport | null>(null);
@@ -451,6 +451,57 @@ export function ManagerPanel({ data, updateData, managerInfo }: ManagerPanelProp
     } catch (e) {
       console.error(e);
       alert('Hubo un error al generar el ZIP.');
+    }
+  };
+
+  const handleConfirmPresence = (res: Reservation) => {
+    if (!data.isShiftActive) {
+      alert('⚠️ No se puede confirmar presencia si la jornada no está activa.');
+      return;
+    }
+
+    const table = prompt(`Asigne una mesa para ${res.name} (1-6 o nombre de área):`, res.tableNumber || 'Mesa 1');
+    if (!table) return;
+
+    // 1. Update reservation status to confirmed/paid (if not already)
+    updateStatus(res.id, 'confirmed');
+
+    // 2. If there are pre-ordered dishes, create an order automatically
+    if (res.dishes && res.dishes.length > 0) {
+      const orderItems = res.dishes.map(d => ({
+        name: d.name,
+        quantity: d.quantity,
+        priceCUP: d.priceCUP || (data.menuItems.find(m => m.name === d.name)?.priceCUP || 0)
+      }));
+
+      const newOrder: any = {
+        id: `ORD-RES-${Date.now()}`,
+        tableNumber: table,
+        items: res.dishes.map(d => `${d.quantity}x ${d.name}`),
+        orderItems,
+        status: 'pending',
+        timestamp: Date.now(),
+        reservationId: res.id
+      };
+
+      const updatedOrders = [...(data.orders || []), newOrder];
+      updateData({ orders: updatedOrders });
+      
+      const log = {
+        id: `LOG-${Date.now()}`,
+        timestamp: Date.now(),
+        timeStr: new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }),
+        dateStr: new Date().toLocaleDateString('es-ES'),
+        role: 'Gerente' as const,
+        userOrDevice: managerInfo?.username || 'gerente',
+        action: 'Presencia Confirmada (Reserva)',
+        details: `El Gerente confirmó la presencia de ${res.name} en ${table}. Se generó pedido automático con platos pre-ordenados.`
+      };
+      updateData({ auditLogs: [log, ...(data.auditLogs || [])] });
+
+      alert(`¡Presencia confirmada en ${table}! El pedido pre-ordenado ha sido enviado a los dependientes.`);
+    } else {
+      alert(`Presencia confirmada de ${res.name} en ${table}. El cliente puede proceder a realizar su pedido.`);
     }
   };
 
@@ -1107,12 +1158,23 @@ export function ManagerPanel({ data, updateData, managerInfo }: ManagerPanelProp
                   <div className="font-bold text-stone-900 text-sm">{res.name} — {res.date} ({res.time})</div>
                   <div className="text-xs text-stone-500">{res.guests} pax • {res.occasion} • Tel: {res.phone}</div>
                 </div>
-                <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase ${
-                  res.status === 'paid' ? 'bg-green-100 text-green-700' :
-                  res.status === 'pending' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'
-                }`}>
-                  {res.status === 'paid' ? t('Confirmada') : res.status === 'pending' ? t('Pendiente') : t('Cancelada')}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase ${
+                    res.status === 'confirmed' || res.status === 'paid' ? 'bg-green-100 text-green-700' :
+                    res.status === 'pending' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'
+                  }`}>
+                    {res.status === 'confirmed' || res.status === 'paid' ? t('Confirmada') : res.status === 'pending' ? t('Pendiente') : t('Cancelada')}
+                  </span>
+                  
+                  {res.status !== 'cancelled' && (
+                    <button
+                      onClick={() => handleConfirmPresence(res)}
+                      className="bg-gold hover:bg-amber-500 text-stone-900 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 shadow-sm transition-all"
+                    >
+                      <CheckCircle2 size={13} /> {t('Confirmar Presencia')}
+                    </button>
+                  )}
+                </div>
               </div>
             ))}
           </div>

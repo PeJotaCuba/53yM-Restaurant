@@ -134,7 +134,13 @@ export const createReservationAndOrder = mutation({
 export const updateReservationStatus = mutation({
   args: {
     id: v.id("reservations"),
-    status: v.union(v.literal("pending"), v.literal("confirmed"), v.literal("paid"), v.literal("cancelled")),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("confirmed"),
+      v.literal("paid"),
+      v.literal("cancelled"),
+      v.literal("cancellation_pending")
+    ),
     username: v.string(),
     userRole: v.string(),
   },
@@ -149,6 +155,46 @@ export const updateReservationStatus = mutation({
       action: `Reserva de ${res.customerName} marcada como ${cleanArgs.status.toUpperCase()} por ${cleanArgs.username}`,
       userRole: cleanArgs.userRole,
       username: cleanArgs.username,
+      timestamp: Date.now(),
+    });
+
+    return { success: true };
+  },
+});
+
+export const updateReservation = mutation({
+  args: {
+    id: v.id("reservations"),
+    customerName: v.string(),
+    date: v.string(),
+    timeSlot: v.string(),
+    guests: v.number(),
+    phone: v.optional(v.string()),
+    email: v.optional(v.string()),
+    occasion: v.optional(v.string()),
+    dishReference: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const cleanArgs = sanitizeObject(args);
+    const existing = await ctx.db.get(cleanArgs.id);
+    if (!existing) throw new Error("Reservation not found");
+
+    await ctx.db.patch(cleanArgs.id, {
+      customerName: cleanArgs.customerName,
+      date: cleanArgs.date,
+      timeSlot: cleanArgs.timeSlot,
+      guests: cleanArgs.guests,
+      phone: cleanArgs.phone,
+      email: cleanArgs.email,
+      occasion: cleanArgs.occasion,
+      dishReference: cleanArgs.dishReference,
+      status: "pending", // resets to pending on edit
+    });
+
+    await ctx.db.insert("bitacora", {
+      action: `Reserva de ${existing.customerName} editada por cliente (mantenida en PENDIENTE para aprobación de administrador)`,
+      userRole: "cliente",
+      username: cleanArgs.customerName,
       timestamp: Date.now(),
     });
 

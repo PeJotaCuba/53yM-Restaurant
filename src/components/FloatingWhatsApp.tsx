@@ -9,7 +9,7 @@ interface FloatingReservationProps {
 
 export function FloatingWhatsApp({ currentView, onReserve }: FloatingReservationProps) {
   const { t } = useLanguage();
-  if (currentView === 'reservation' || currentView === 'menu') return null;
+  if (currentView === 'reservation' || currentView === 'menu' || currentView === 'dashboard') return null;
 
   return (
     <button

@@ -1,4 +1,4 @@
-import { mutation, query } from "./_generated/server";
+import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
 
 /**
@@ -234,5 +234,15 @@ export const getAdminAuthorizedIds = query({
       .first();
 
     return configRecord?.authorizedAdminIds || [];
+  },
+});
+
+export const getLiveUserByUsername = query({
+  args: { username: v.string() },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("users")
+      .filter((q) => q.eq(q.field("username"), args.username))
+      .first();
   },
 });

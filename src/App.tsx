@@ -94,6 +94,7 @@ export default function App() {
   const deactivateUserMutation = useSafeMutation(api.users.deactivateUser);
   const createReservationMutation = useSafeMutation(api.reservations.createReservation);
   const createReservationAndOrderMutation = useSafeMutation(api.reservations.createReservationAndOrder);
+  const updateReservationMutation = useSafeMutation(api.reservations.updateReservation);
   const updateReservationStatusMutation = useSafeMutation(api.reservations.updateReservationStatus);
   const addLogMutation = useSafeMutation(api.bitacora.addLog);
   const syncOrUpdateOrderMutation = useSafeMutation(api.orders.syncOrUpdateOrder);
@@ -291,12 +292,32 @@ export default function App() {
   };
 
   // Reservation Editing & Cancellation Handlers
-  const handleUpdateReservation = (id: string, newDetails: Partial<Reservation>) => {
+  const handleUpdateReservation = async (id: string, newDetails: Partial<Reservation>) => {
+    // 1. Update local state
     const cleanDetails = sanitizeObjectKeys(newDetails);
     const updatedReservations = data.reservations.map(r => 
-      r.id === id ? { ...r, ...cleanDetails } : r
+      r.id === id ? { ...r, ...cleanDetails, status: 'pending' } : r
     );
     updateData({ reservations: updatedReservations });
+
+    // 2. Update Convex
+    if (id && !id.includes('.') && id.length > 10) {
+      try {
+        await updateReservationMutation({
+          id: id as any,
+          customerName: newDetails.name || '',
+          date: newDetails.date || '',
+          timeSlot: newDetails.time || '',
+          guests: newDetails.guests || 1,
+          phone: newDetails.phone,
+          email: newDetails.email,
+          occasion: newDetails.occasion,
+          dishReference: newDetails.dishReference,
+        });
+      } catch (err) {
+        console.warn('Error updating Convex reservation:', err);
+      }
+    }
   };
 
   const updateReservationStatus = async (id: string, status: any) => {
@@ -320,7 +341,9 @@ export default function App() {
   };
 
   const handleCancelReservation = async (id: string) => {
-    await updateReservationStatus(id, 'cancelled');
+    // If client is cancelling, it goes to 'cancellation_pending'
+    const newStatus = (adminLoggedIn || activeManager) ? 'cancelled' : 'cancellation_pending';
+    await updateReservationStatus(id, newStatus);
   };
 
   useEffect(() => {
@@ -884,7 +907,7 @@ export default function App() {
         </footer>
       )}
 
-      {userRole === 'none' && currentView !== 'reservation' && currentView !== 'menu' && (
+      {userRole === 'none' && currentView !== 'reservation' && currentView !== 'menu' && currentView !== 'dashboard' && (
         <FloatingWhatsApp 
           currentView={currentView} 
           onReserve={() => {

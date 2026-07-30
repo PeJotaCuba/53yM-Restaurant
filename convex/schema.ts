@@ -51,13 +51,15 @@ export default defineSchema({
       v.literal("pending"),
       v.literal("confirmed"),
       v.literal("paid"),
-      v.literal("cancelled")
+      v.literal("cancelled"),
+      v.literal("cancellation_pending")
     ),
     createdAt: v.number(),
     phone: v.optional(v.string()),
     email: v.optional(v.string()),
     occasion: v.optional(v.string()),
     dishReference: v.optional(v.string()),
+    tableNumber: v.optional(v.string()),
     dishes: v.optional(
       v.array(
         v.object({

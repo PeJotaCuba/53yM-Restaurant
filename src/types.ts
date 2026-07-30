@@ -191,7 +191,7 @@ export interface AuditLogEntry {
   details: string;
 }
 
-export type ReservationStatus = 'pending' | 'confirmed' | 'paid' | 'cancelled';
+export type ReservationStatus = 'pending' | 'confirmed' | 'paid' | 'cancelled' | 'cancellation_pending';
 
 export interface ReservedDish {
   name: string;
@@ -210,6 +210,7 @@ export interface Reservation {
   phone: string;
   dishReference?: string;
   dishes?: ReservedDish[];
+  tableNumber?: string;
   status: ReservationStatus;
   createdAt: number;
 }
