@@ -26,7 +26,7 @@ import { LoginModal } from './components/LoginModal';
 import { PWAInstallBanner } from './components/PWAInstallBanner';
 import { useDataSync } from './hooks/useDataSync';
 import { useDeviceId } from './hooks/useDeviceId';
-import { DependentConfig, ManagerConfig, Reservation } from './types';
+import { DependentConfig, ManagerConfig, Reservation, AppData } from './types';
 import { ADMIN_DEVICE_IDS } from './utils/deviceUtils';
 import { useLanguage } from './context/LanguageContext';
 
@@ -37,18 +37,93 @@ export default function App() {
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
 
   const deviceId = useDeviceId();
-  const { data, loading, updateData, syncExcelencia } = useDataSync();
+  const { data, loading, updateData: rawUpdateData, syncExcelencia } = useDataSync();
 
   // Convex Reactive Queries & Mutations (Safe Mode)
   const liveUser = useSafeQuery<any>(api.users.getLiveUserByDeviceId, { deviceId });
   const liveOrders = useSafeQuery<any[]>(api.orders.getLiveOrders);
   const liveReservations = useSafeQuery<any[]>(api.reservations.getLiveReservations);
+  const liveLogs = useSafeQuery<any[]>(api.bitacora.getLiveLogs, { limit: 100 });
 
   const authorizeUserMutation = useSafeMutation(api.users.authorizeUser);
   const deactivateUserMutation = useSafeMutation(api.users.deactivateUser);
   const createReservationMutation = useSafeMutation(api.reservations.createReservation);
   const createReservationAndOrderMutation = useSafeMutation(api.reservations.createReservationAndOrder);
   const updateReservationStatusMutation = useSafeMutation(api.reservations.updateReservationStatus);
+  const addLogMutation = useSafeMutation(api.bitacora.addLog);
+  const syncOrUpdateOrderMutation = useSafeMutation(api.orders.syncOrUpdateOrder);
+
+  // Wrapper to intercept local UI state updates and synchronize them to Convex
+  const updateData = (newData: Partial<AppData>) => {
+    // 1. Sync local audit logs to Convex
+    if (newData.auditLogs && newData.auditLogs.length > 0) {
+      const existing = data.auditLogs || [];
+      const newLogs = newData.auditLogs.filter(nl => !existing.some(el => el.id === nl.id || (el.action === nl.action && Math.abs(el.timestamp - nl.timestamp) < 5000)));
+      newLogs.forEach((log: any) => {
+        addLogMutation({
+          action: log.action || log.details || '',
+          userRole: log.role || log.userRole || 'cliente',
+          username: log.userOrDevice || log.username || 'Cliente',
+        }).catch(err => console.warn('Convex addLog error:', err));
+      });
+    }
+
+    // 2. Sync local order updates to Convex
+    if (newData.orders && newData.orders.length > 0) {
+      const existing = data.orders || [];
+      newData.orders.forEach((newOrder: any) => {
+        const oldOrder = existing.find(o => o.id === newOrder.id) as any;
+        const isNew = !oldOrder;
+        const isUpdated = oldOrder && (
+          oldOrder.status !== newOrder.status ||
+          oldOrder.tableNumber !== newOrder.tableNumber ||
+          JSON.stringify(oldOrder.orderItems || oldOrder.items) !== JSON.stringify(newOrder.orderItems || newOrder.items)
+        );
+
+        if (isNew || isUpdated) {
+          const formattedItems = (newOrder.orderItems || []).map((item: any, idx: number) => ({
+            id: item.id || `item-${idx}`,
+            name: item.name || '',
+            quantity: Number(item.quantity) || 1,
+            priceCUP: Number(item.priceCUP || item.price || 0),
+            priceUSD: Number(item.priceUSD || 0),
+            notes: item.notes || '',
+          }));
+
+          if (formattedItems.length === 0 && newOrder.items && newOrder.items.length > 0) {
+            newOrder.items.forEach((itemText: string, idx: number) => {
+              formattedItems.push({
+                id: `item-${idx}`,
+                name: itemText,
+                quantity: 1,
+                priceCUP: 0,
+                priceUSD: 0,
+                notes: '',
+              });
+            });
+          }
+
+          const totalCUP = formattedItems.reduce((acc: number, item: any) => acc + (item.priceCUP * item.quantity), 0);
+          const totalUSD = totalCUP / (data.exchangeRate?.usdCUP || 320);
+
+          syncOrUpdateOrderMutation({
+            id: newOrder.id,
+            tableNumber: newOrder.tableNumber || 'Mesa 1',
+            items: formattedItems,
+            totalCUP: totalCUP || newOrder.totalAmountCUP || 0,
+            totalUSD: totalUSD || newOrder.totalAmountUSD || 0,
+            status: newOrder.status || 'pending_dependent',
+            timestamp: newOrder.timestamp || Date.now(),
+            assignedDependentId: newOrder.comandaId || 'no_assigned',
+            reservationId: newOrder.reservationId || undefined,
+          }).catch(err => console.warn('Convex syncOrder error:', err));
+        }
+      });
+    }
+
+    // Call raw state updates
+    rawUpdateData(newData);
+  };
 
   // Active Sessions state
   const [adminLoggedIn, setAdminLoggedIn] = useState(false);
@@ -252,10 +327,116 @@ export default function App() {
       });
 
       if (changed) {
-        updateData({ reservations: merged });
+        rawUpdateData({ reservations: merged });
       }
     }
   }, [liveReservations]);
+
+  // Real-Time Orders Sync from Convex to Local State
+  useEffect(() => {
+    if (liveOrders && liveOrders.length > 0) {
+      const mapped = liveOrders.map((lo: any) => {
+        // Build items list as text descriptions for backward compatibility
+        const itemsList = lo.items ? lo.items.map((i: any) => `${i.quantity}x ${i.name}`) : [];
+        return {
+          id: lo._id,
+          tableNumber: lo.tableNumber || 'Mesa',
+          items: itemsList,
+          orderItems: (lo.items || []).map((item: any) => ({
+            id: item.id,
+            name: item.name,
+            quantity: item.quantity,
+            priceCUP: item.priceCUP || 0,
+            priceUSD: item.priceUSD || 0,
+            notes: item.notes || '',
+          })),
+          totalCUP: lo.totalCUP || 0,
+          totalUSD: lo.totalUSD || 0,
+          status: lo.status || 'pending_dependent',
+          timestamp: lo.timestamp || Date.now(),
+          assignedDependentId: lo.assignedDependentId || 'no_assigned',
+          reservationId: lo.reservationId,
+        };
+      });
+
+      const currentLocals = data.orders || [];
+      let changed = false;
+      const merged = [...currentLocals];
+
+      mapped.forEach((lo: any) => {
+        const existingIdx = merged.findIndex(o => o.id === lo.id);
+        if (existingIdx >= 0) {
+          const existing = merged[existingIdx];
+          if (
+            existing.status !== lo.status ||
+            existing.tableNumber !== lo.tableNumber ||
+            existing.totalCUP !== lo.totalCUP ||
+            existing.assignedDependentId !== lo.assignedDependentId ||
+            JSON.stringify(existing.orderItems) !== JSON.stringify(lo.orderItems)
+          ) {
+            merged[existingIdx] = { ...existing, ...lo };
+            changed = true;
+          }
+        } else {
+          merged.unshift(lo);
+          changed = true;
+        }
+      });
+
+      if (changed) {
+        rawUpdateData({ orders: merged });
+      }
+    }
+  }, [liveOrders]);
+
+  // Real-Time Bitacora Sync from Convex to Local State
+  useEffect(() => {
+    if (liveLogs && liveLogs.length > 0) {
+      const mapped = liveLogs.map((ll: any) => ({
+        id: ll._id,
+        timestamp: ll.timestamp || Date.now(),
+        timeStr: new Date(ll.timestamp).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }),
+        dateStr: new Date(ll.timestamp).toLocaleDateString('es-ES'),
+        role: (ll.userRole === 'admin' ? 'Administrador' :
+               ll.userRole === 'manager' ? 'Gerente' :
+               ll.userRole === 'dependent' ? 'Dependiente' :
+               ll.userRole === 'kitchen' ? 'Cocina' :
+               ll.userRole === 'sistema' ? 'Sistema' : 'Cliente') as any,
+        userOrDevice: ll.username || 'Cliente',
+        action: ll.action || '',
+        details: ll.action || '',
+      }));
+
+      const currentLocals = data.auditLogs || [];
+      let changed = false;
+      const merged = [...currentLocals];
+
+      mapped.forEach((ll: any) => {
+        const existingIdx = merged.findIndex(log => log.id === ll.id);
+        if (existingIdx >= 0) {
+          const existing = merged[existingIdx];
+          if (
+            existing.action !== ll.action ||
+            existing.role !== ll.role ||
+            existing.userOrDevice !== ll.userOrDevice
+          ) {
+            merged[existingIdx] = { ...existing, ...ll };
+            changed = true;
+          }
+        } else {
+          merged.push(ll);
+          changed = true;
+        }
+      });
+
+      // Sort merged logs descending by timestamp
+      merged.sort((a, b) => b.timestamp - a.timestamp);
+
+      if (changed) {
+        rawUpdateData({ auditLogs: merged });
+      }
+    }
+  }, [liveLogs]);
 
   const [pendingReservation, setPendingReservation] = useState<any>(null);
 
@@ -283,9 +464,51 @@ export default function App() {
         totalUSD: totalPrice / (data.exchangeRate?.usdCUP || 320),
       });
 
+      const resId = result?.reservationId || 'temp-res-' + Math.random().toString(36).substr(2, 9);
+      const ordId = result?.orderId || 'temp-ord-' + Math.random().toString(36).substr(2, 9);
+
+      const newReservation = {
+        id: resId,
+        name: reservation.name || 'Cliente',
+        phone: reservation.phone || '',
+        email: reservation.email || '',
+        date: reservation.date || '',
+        time: reservation.time || '',
+        guests: Number(reservation.guests) || 2,
+        occasion: reservation.occasion || 'Cena casual',
+        dishReference: reservation.dishReference || '',
+        status: 'pending' as const,
+        createdAt: Date.now(),
+      };
+
+      const newOrder = {
+        id: ordId,
+        tableNumber: `Reserva - ${reservation.name || 'Cliente'}`,
+        items: cartItems.map(c => `${c.quantity}x ${c.item.name}`),
+        orderItems: cartItems.map(c => ({
+          id: c.item.id,
+          name: c.item.name,
+          quantity: c.quantity,
+          priceCUP: c.item.priceCUP,
+          priceUSD: c.item.priceUSD || (c.item.priceCUP / (data.exchangeRate?.usdCUP || 320)),
+          notes: '',
+        })),
+        totalCUP: totalPrice,
+        totalUSD: totalPrice / (data.exchangeRate?.usdCUP || 320),
+        status: 'pending_dependent',
+        timestamp: Date.now(),
+        assignedDependentId: 'no_assigned',
+        reservationId: resId,
+      };
+
+      updateData({
+        reservations: [newReservation, ...(data.reservations || [])],
+        orders: [newOrder, ...(data.orders || [])]
+      });
+
       alert("¡Tu reservación y pedido han sido enviados con éxito! Queda pendiente de confirmación por el Administrador.");
       setPendingReservation(null);
-      setCurrentView('home');
+      setCurrentView('dashboard');
       window.scrollTo(0, 0);
       return result;
     } catch (err) {
@@ -299,7 +522,6 @@ export default function App() {
     const cleanData = sanitizeObjectKeys(reservationData);
     
     if (advanceOrder) {
-      // Step 2: "Adelantar Pedidos" saves wizard data locally and redirects to menu selection
       const tempReservation = {
         ...cleanData,
         id: 'temp-' + Math.random().toString(36).substr(2, 9),
@@ -312,7 +534,6 @@ export default function App() {
       return;
     }
 
-    // Step 3: "Solo Enviar Reserva" (Pure Reservation) triggers direct Convex write with status "pending"
     let convexId: any = null;
     try {
       convexId = await createReservationMutation({
@@ -331,13 +552,20 @@ export default function App() {
     }
 
     const newReservation = {
-      ...cleanData,
-      id: convexId || Math.random().toString(36).substr(2, 9),
+      id: convexId || 'temp-' + Math.random().toString(36).substr(2, 9),
+      name: cleanData.name || 'Cliente',
+      phone: cleanData.phone || '',
+      email: cleanData.email || '',
+      date: cleanData.date || '',
+      time: cleanData.time || '',
+      guests: Number(cleanData.guests) || 2,
+      occasion: cleanData.occasion || 'Cena casual',
+      dishReference: cleanData.dishReference || '',
       status: 'pending' as const,
       createdAt: Date.now()
     };
     
-    const updatedReservations = [newReservation, ...data.reservations];
+    const updatedReservations = [newReservation, ...(data.reservations || [])];
     updateData({ reservations: updatedReservations });
     
     setSelectedDishForReservation(undefined);
