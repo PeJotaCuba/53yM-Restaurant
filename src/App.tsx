@@ -176,11 +176,28 @@ export default function App() {
     updateData({ reservations: updatedReservations });
   };
 
+  const updateReservationStatus = async (id: string, status: any) => {
+    // 1. Update in local State/LocalStorage
+    const updated = data.reservations.map(r => r.id === id ? { ...r, status } : r);
+    updateData({ reservations: updated });
+
+    // 2. If it is a Convex ID, update it in Convex as well
+    if (id && !id.includes('.') && id.length > 10) {
+      try {
+        await updateReservationStatusMutation({
+          id: id as any,
+          status: status,
+          username: adminLoggedIn ? 'gestion53ym' : (activeManager?.username || 'cliente'),
+          userRole: adminLoggedIn ? 'admin' : (activeManager ? 'manager' : 'cliente'),
+        });
+      } catch (err) {
+        console.warn('Error updating Convex reservation status:', err);
+      }
+    }
+  };
+
   const handleCancelReservation = async (id: string) => {
-    const updatedReservations = data.reservations.map(r => 
-      r.id === id ? { ...r, status: 'cancelled' as Reservation['status'] } : r
-    );
-    updateData({ reservations: updatedReservations });
+    await updateReservationStatus(id, 'cancelled');
   };
 
   useEffect(() => {
@@ -190,19 +207,73 @@ export default function App() {
     }
   }, []);
 
+  // Real-Time Reservations Sync from Convex to Local State
+  useEffect(() => {
+    if (liveReservations && liveReservations.length > 0) {
+      const mapped = liveReservations.map((lr: any) => ({
+        id: lr._id,
+        name: lr.customerName || 'Cliente',
+        date: lr.date,
+        time: lr.timeSlot || '12:00',
+        guests: lr.guests || 2,
+        occasion: lr.occasion || lr.area || 'Cena casual',
+        phone: lr.phone || '',
+        email: lr.email || '',
+        dishReference: lr.dishReference || '',
+        dishes: lr.dishes || [],
+        status: lr.status || 'pending',
+        createdAt: lr.createdAt || Date.now(),
+      }));
+
+      const currentLocals = data.reservations || [];
+      let changed = false;
+      const merged = [...currentLocals];
+
+      mapped.forEach((lr: any) => {
+        const existingIdx = merged.findIndex(r => r.id === lr.id);
+        if (existingIdx >= 0) {
+          const existing = merged[existingIdx];
+          if (
+            existing.status !== lr.status ||
+            existing.name !== lr.name ||
+            existing.date !== lr.date ||
+            existing.time !== lr.time ||
+            existing.guests !== lr.guests ||
+            existing.phone !== lr.phone
+          ) {
+            merged[existingIdx] = { ...existing, ...lr };
+            changed = true;
+          }
+        } else {
+          merged.unshift(lr);
+          changed = true;
+        }
+      });
+
+      if (changed) {
+        updateData({ reservations: merged });
+      }
+    }
+  }, [liveReservations]);
+
   const [pendingReservation, setPendingReservation] = useState<any>(null);
 
   const handleReservationComplete = async (reservationData: any, advanceOrder?: boolean) => {
     const cleanData = sanitizeObjectKeys(reservationData);
     
     // Save to Convex Real-Time DB
+    let convexId: any = null;
     try {
-      await createReservationMutation({
+      convexId = await createReservationMutation({
         customerName: sanitizeString(cleanData.name || cleanData.customerName || 'Cliente'),
         date: cleanData.date || new Date().toISOString().split('T')[0],
         timeSlot: cleanData.time || cleanData.timeSlot || '12:00',
-        area: cleanData.area || 'Terraza Principal',
+        area: cleanData.occasion || 'Cena casual',
         guests: Number(cleanData.guests || cleanData.people) || 2,
+        phone: cleanData.phone || '',
+        email: cleanData.email || '',
+        occasion: cleanData.occasion || 'Cena casual',
+        dishReference: cleanData.dishReference || '',
       });
     } catch (e) {
       console.warn('Convex reservation write error:', e);
@@ -210,10 +281,11 @@ export default function App() {
 
     const newReservation = {
       ...cleanData,
-      id: Math.random().toString(36).substr(2, 9),
-      status: 'pending',
+      id: convexId || Math.random().toString(36).substr(2, 9),
+      status: 'pending' as const,
       createdAt: Date.now()
     };
+    
     const updatedReservations = [newReservation, ...data.reservations];
     updateData({ reservations: updatedReservations });
     
@@ -226,11 +298,6 @@ export default function App() {
       setCurrentView('dashboard');
     }
     window.scrollTo(0, 0);
-  };
-
-  const updateReservationStatus = (id: string, status: any) => {
-    const updated = data.reservations.map(r => r.id === id ? { ...r, status } : r);
-    updateData({ reservations: updated });
   };
 
   if (loading) {

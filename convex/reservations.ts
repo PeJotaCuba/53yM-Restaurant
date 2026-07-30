@@ -15,6 +15,19 @@ export const createReservation = mutation({
     timeSlot: v.string(),
     area: v.string(),
     guests: v.number(),
+    phone: v.optional(v.string()),
+    email: v.optional(v.string()),
+    occasion: v.optional(v.string()),
+    dishReference: v.optional(v.string()),
+    dishes: v.optional(
+      v.array(
+        v.object({
+          name: v.string(),
+          quantity: v.number(),
+          priceCUP: v.optional(v.number()),
+        })
+      )
+    ),
   },
   handler: async (ctx, args) => {
     const now = Date.now();
@@ -26,6 +39,11 @@ export const createReservation = mutation({
       guests: args.guests,
       status: "pending",
       createdAt: now,
+      phone: args.phone,
+      email: args.email,
+      occasion: args.occasion,
+      dishReference: args.dishReference,
+      dishes: args.dishes,
     });
 
     await ctx.db.insert("bitacora", {
@@ -42,7 +60,7 @@ export const createReservation = mutation({
 export const updateReservationStatus = mutation({
   args: {
     id: v.id("reservations"),
-    status: v.union(v.literal("pending"), v.literal("confirmed"), v.literal("cancelled")),
+    status: v.union(v.literal("pending"), v.literal("confirmed"), v.literal("paid"), v.literal("cancelled")),
     username: v.string(),
     userRole: v.string(),
   },

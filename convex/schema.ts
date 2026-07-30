@@ -49,9 +49,23 @@ export default defineSchema({
     status: v.union(
       v.literal("pending"),
       v.literal("confirmed"),
+      v.literal("paid"),
       v.literal("cancelled")
     ),
     createdAt: v.number(),
+    phone: v.optional(v.string()),
+    email: v.optional(v.string()),
+    occasion: v.optional(v.string()),
+    dishReference: v.optional(v.string()),
+    dishes: v.optional(
+      v.array(
+        v.object({
+          name: v.string(),
+          quantity: v.number(),
+          priceCUP: v.optional(v.number()),
+        })
+      )
+    ),
   }),
 
   menuItems: defineTable({

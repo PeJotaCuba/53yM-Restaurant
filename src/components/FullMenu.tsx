@@ -92,6 +92,13 @@ export function FullMenu({ onClose, pendingReservation, menuItems, exchangeRate 
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+
+    // Redirect client to normal home view after submitting
+    if (pendingReservation && onClose) {
+      setTimeout(() => {
+        onClose();
+      }, 500);
+    }
   };
 
   return (
