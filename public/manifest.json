@@ -1,0 +1,62 @@
+{
+  "name": "Restaurante Terraza 53&M",
+  "short_name": "53&M",
+  "description": "Aplicación Web PWA Oficial de Restaurante - Terraza 53&M en Bayamo. Menú digital, reservas, pedidos e instalación móvil.",
+  "id": "com.restaurante.terraza53m",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui", "browser"],
+  "background_color": "#0B1D16",
+  "theme_color": "#0B1D16",
+  "orientation": "portrait-primary",
+  "categories": ["food", "lifestyle", "business"],
+  "icons": [
+    {
+      "src": "/pwa-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    },
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Ver Menú Digital",
+      "short_name": "Menú",
+      "description": "Consulta el menú con precios en CUP y USD",
+      "url": "/?view=menu",
+      "icons": [{ "src": "/pwa-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Reservar Mesa",
+      "short_name": "Reservar",
+      "description": "Haz tu reserva online en Restaurante 53&M",
+      "url": "/?view=reservation",
+      "icons": [{ "src": "/pwa-192.png", "sizes": "192x192" }]
+    }
+  ],
+  "related_applications": [],
+  "prefer_related_applications": false
+}

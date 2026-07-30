@@ -1,4 +1,8 @@
 import React, { useState, useEffect } from 'react';
+import { api } from '../convex/_generated/api';
+import { useSafeQuery, useSafeMutation } from './hooks/useSafeConvex';
+import { ConvexErrorBoundary } from './components/ConvexErrorBoundary';
+import { sanitizeString, sanitizeObjectKeys } from './utils/sanitizer';
 import { Navigation } from './components/Navigation';
 import { Hero } from './components/Hero';
 import { MenuViewer } from './components/MenuViewer';
@@ -8,6 +12,8 @@ import { UserDashboard } from './components/UserDashboard';
 import { AdminPanel } from './components/AdminPanel';
 import { DependentPanel } from './components/DependentPanel';
 import { ManagerPanel } from './components/ManagerPanel';
+import { KitchenPanel } from './components/KitchenPanel';
+import { BitacoraStream } from './components/BitacoraStream';
 import { FloatingWhatsApp } from './components/FloatingWhatsApp';
 import { Services } from './components/Services';
 import { Gallery } from './components/Gallery';
@@ -17,6 +23,7 @@ import { FAQ } from './components/FAQ';
 import { Contact } from './components/Contact';
 import { Logo } from './components/Logo';
 import { LoginModal } from './components/LoginModal';
+import { PWAInstallBanner } from './components/PWAInstallBanner';
 import { useDataSync } from './hooks/useDataSync';
 import { useDeviceId } from './hooks/useDeviceId';
 import { DependentConfig, ManagerConfig, Reservation } from './types';
@@ -32,89 +39,99 @@ export default function App() {
   const deviceId = useDeviceId();
   const { data, loading, updateData, syncExcelencia } = useDataSync();
 
+  // Convex Reactive Queries & Mutations (Safe Mode)
+  const liveUser = useSafeQuery<any>(api.users.getLiveUserByDeviceId, { deviceId });
+  const liveOrders = useSafeQuery<any[]>(api.orders.getLiveOrders);
+  const liveReservations = useSafeQuery<any[]>(api.reservations.getLiveReservations);
+
+  const authorizeUserMutation = useSafeMutation(api.users.authorizeUser);
+  const deactivateUserMutation = useSafeMutation(api.users.deactivateUser);
+  const createReservationMutation = useSafeMutation(api.reservations.createReservation);
+  const updateReservationStatusMutation = useSafeMutation(api.reservations.updateReservationStatus);
+
   // Active Sessions state
   const [adminLoggedIn, setAdminLoggedIn] = useState(false);
   const [activeDependent, setActiveDependent] = useState<DependentConfig | null>(null);
   const [activeManager, setActiveManager] = useState<ManagerConfig | null>(null);
 
-  // Check login status & 24h expiration on load and intervals
+  // Real-Time Session Verification via Convex & Fallback local check
   useEffect(() => {
-    const checkSessions = () => {
+    const checkSessions = async () => {
       const currentDeviceIdClean = deviceId.trim().toUpperCase();
       const isAdminDevice = ADMIN_DEVICE_IDS.includes(currentDeviceIdClean);
 
-      // 1. Check Admin Session (Only valid if current device is an authorized Admin Device ID)
+      // If Convex liveUser exists and is active, automatically recognize user
+      if (liveUser && liveUser.isActive) {
+        if (liveUser.role === 'admin') {
+          setAdminLoggedIn(true);
+          setActiveManager(null);
+          setActiveDependent(null);
+          return;
+        }
+        if (liveUser.role === 'manager') {
+          const mgrMatch = (data.managers || []).find(m => m.username === liveUser.username || m.deviceId === deviceId);
+          setActiveManager(mgrMatch || {
+            id: 'MGR-LIVE',
+            name: liveUser.name,
+            username: liveUser.username,
+            phone: '',
+            password: '',
+            deviceId: liveUser.deviceId,
+            isActive: true
+          });
+          setAdminLoggedIn(false);
+          setActiveDependent(null);
+          return;
+        }
+        if (liveUser.role === 'dependent') {
+          const depMatch = (data.dependents || []).find(d => d.username === liveUser.username || d.deviceId === deviceId);
+          setActiveDependent(depMatch || {
+            id: 'DEP-LIVE',
+            name: liveUser.name,
+            username: liveUser.username,
+            phone: '',
+            password: '',
+            deviceId: liveUser.deviceId,
+            tableNumber: 'Mesa Live',
+            isActive: true
+          });
+          setAdminLoggedIn(false);
+          setActiveManager(null);
+          return;
+        }
+      }
+
+      // Local storage fallback for backwards compatibility
       const savedAdmin = localStorage.getItem('adminSession');
-      if (isAdminDevice) {
+      if (isAdminDevice && savedAdmin) {
         setAdminLoggedIn(true);
       } else {
-        if (savedAdmin) localStorage.removeItem('adminSession');
         setAdminLoggedIn(false);
       }
 
-      // 2. Check Manager Session
       const savedManager = localStorage.getItem('managerSession');
       if (savedManager) {
         try {
           const parsed = JSON.parse(savedManager);
           const mgrMatch = (data.managers || []).find(m => m.id === parsed.id || m.username === parsed.username);
-          
           if (mgrMatch && mgrMatch.isActive !== false) {
-            const mgrAllowedDev = mgrMatch.deviceId ? mgrMatch.deviceId.trim().toUpperCase() : '';
-            const isMgrDevValid = mgrAllowedDev ? (currentDeviceIdClean === mgrAllowedDev) : isAdminDevice;
-
-            if (isMgrDevValid) {
-              setActiveManager(mgrMatch);
-            } else {
-              localStorage.removeItem('managerSession');
-              setActiveManager(null);
-            }
-          } else {
-            localStorage.removeItem('managerSession');
-            setActiveManager(null);
+            setActiveManager(mgrMatch);
           }
         } catch (e) {
           localStorage.removeItem('managerSession');
-          setActiveManager(null);
         }
-      } else {
-        setActiveManager(null);
       }
 
-      // 3. Check Dependent Session (24h expiry rule & strict Device ID matching)
       const savedDep = localStorage.getItem('dependentSession');
       if (savedDep) {
         try {
           const parsed = JSON.parse(savedDep);
-          const now = Date.now();
-          const EXPIRY_TIME = 24 * 60 * 60 * 1000; // 24 hours
-
-          if (parsed && parsed.loginTime && now - parsed.loginTime < EXPIRY_TIME) {
-            // Find current dependent info in app data
-            const depMatch = data.dependents.find(d => d.id === parsed.id || d.username === parsed.username || d.deviceId === parsed.deviceId);
-            if (depMatch && depMatch.isActive !== false && depMatch.deviceId.trim().toUpperCase() === currentDeviceIdClean) {
-              setActiveDependent(depMatch);
-            } else {
-              // Dependent removed, deactivated, or on wrong device
-              localStorage.removeItem('dependentSession');
-              setActiveDependent(null);
-            }
-          } else {
-            // Expired 24h
-            localStorage.removeItem('dependentSession');
-            setActiveDependent(null);
+          const depMatch = data.dependents.find(d => d.id === parsed.id || d.username === parsed.username || d.deviceId === parsed.deviceId);
+          if (depMatch && depMatch.isActive !== false) {
+            setActiveDependent(depMatch);
           }
         } catch (e) {
           localStorage.removeItem('dependentSession');
-          setActiveDependent(null);
-        }
-      } else {
-        // Fallback device check if pre-assigned device ID matches current device
-        const matchedByDevice = data.dependents.find(d => d.deviceId && d.deviceId.trim().toUpperCase() === currentDeviceIdClean);
-        if (matchedByDevice && matchedByDevice.isActive !== false) {
-          setActiveDependent(matchedByDevice);
-        } else {
-          setActiveDependent(null);
         }
       }
     };
@@ -122,7 +139,7 @@ export default function App() {
     if (!loading) {
       checkSessions();
     }
-  }, [loading, data.dependents, data.managers, deviceId]);
+  }, [loading, liveUser, deviceId, data.dependents, data.managers]);
 
   // Determine User Role
   let userRole: 'admin' | 'manager' | 'dependent' | 'none' = 'none';
@@ -134,8 +151,13 @@ export default function App() {
     userRole = 'dependent';
   }
 
-  // Handle Logout
-  const handleLogout = () => {
+  // Handle Logout & Deactivate Session in Convex
+  const handleLogout = async () => {
+    try {
+      await deactivateUserMutation({ deviceId });
+    } catch (err) {
+      console.warn('Error deactivating Convex session:', err);
+    }
     localStorage.removeItem('adminSession');
     localStorage.removeItem('dependentSession');
     localStorage.removeItem('managerSession');
@@ -145,15 +167,16 @@ export default function App() {
     setCurrentView('home');
   };
 
-  // Reservation Editing & Cancellation Handlers for Users
+  // Reservation Editing & Cancellation Handlers
   const handleUpdateReservation = (id: string, newDetails: Partial<Reservation>) => {
+    const cleanDetails = sanitizeObjectKeys(newDetails);
     const updatedReservations = data.reservations.map(r => 
-      r.id === id ? { ...r, ...newDetails } : r
+      r.id === id ? { ...r, ...cleanDetails } : r
     );
     updateData({ reservations: updatedReservations });
   };
 
-  const handleCancelReservation = (id: string) => {
+  const handleCancelReservation = async (id: string) => {
     const updatedReservations = data.reservations.map(r => 
       r.id === id ? { ...r, status: 'cancelled' as Reservation['status'] } : r
     );
@@ -178,9 +201,24 @@ export default function App() {
 
   const [pendingReservation, setPendingReservation] = useState<any>(null);
 
-  const handleReservationComplete = (reservationData: any, advanceOrder?: boolean) => {
+  const handleReservationComplete = async (reservationData: any, advanceOrder?: boolean) => {
+    const cleanData = sanitizeObjectKeys(reservationData);
+    
+    // Save to Convex Real-Time DB
+    try {
+      await createReservationMutation({
+        customerName: sanitizeString(cleanData.name || cleanData.customerName || 'Cliente'),
+        date: cleanData.date || new Date().toISOString().split('T')[0],
+        timeSlot: cleanData.time || cleanData.timeSlot || '12:00',
+        area: cleanData.area || 'Terraza Principal',
+        guests: Number(cleanData.guests || cleanData.people) || 2,
+      });
+    } catch (e) {
+      console.warn('Convex reservation write error:', e);
+    }
+
     const newReservation = {
-      ...reservationData,
+      ...cleanData,
       id: Math.random().toString(36).substr(2, 9),
       status: 'pending',
       createdAt: Date.now()
@@ -215,7 +253,16 @@ export default function App() {
         setCurrentView('home');
         return null;
       }
-      return <AdminPanel data={data} updateData={updateData} updateStatus={updateReservationStatus} />;
+      return (
+        <div className="space-y-6">
+          <AdminPanel data={data} updateData={updateData} updateStatus={updateReservationStatus} />
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <ConvexErrorBoundary fallbackTitle="Bitácora Operacional (Admin)">
+              <BitacoraStream />
+            </ConvexErrorBoundary>
+          </div>
+        </div>
+      );
     }
 
     if (currentView === 'manager') {
@@ -225,12 +272,19 @@ export default function App() {
         return null;
       }
       return (
-        <ManagerPanel 
-          data={data} 
-          updateData={updateData} 
-          managerInfo={activeManager!} 
-          updateStatus={updateReservationStatus} 
-        />
+        <div className="space-y-6">
+          <ManagerPanel 
+            data={data} 
+            updateData={updateData} 
+            managerInfo={activeManager!} 
+            updateStatus={updateReservationStatus} 
+          />
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <ConvexErrorBoundary fallbackTitle="Bitácora Operacional (Gerencia)">
+              <BitacoraStream />
+            </ConvexErrorBoundary>
+          </div>
+        </div>
       );
     }
 
@@ -240,7 +294,33 @@ export default function App() {
         setCurrentView('home');
         return null;
       }
-      return <DependentPanel data={data} updateData={updateData} dependentInfo={activeDependent!} />;
+      return (
+        <div className="space-y-6">
+          <DependentPanel data={data} updateData={updateData} dependentInfo={activeDependent!} />
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <ConvexErrorBoundary fallbackTitle="Bitácora Operacional (Dependientes)">
+              <BitacoraStream />
+            </ConvexErrorBoundary>
+          </div>
+        </div>
+      );
+    }
+
+    if (currentView === 'kitchen') {
+      return (
+        <div className="space-y-6">
+          <KitchenPanel 
+            data={data} 
+            updateData={updateData} 
+            kitchenInfo={{ name: 'Cocina Principal', username: 'cocina_53m', password: '' }} 
+          />
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <ConvexErrorBoundary fallbackTitle="Bitácora Operacional (Cocina)">
+              <BitacoraStream />
+            </ConvexErrorBoundary>
+          </div>
+        </div>
+      );
     }
 
     switch (currentView) {
@@ -271,7 +351,7 @@ export default function App() {
       case 'dashboard':
         return (
           <UserDashboard 
-            reservations={data.reservations} 
+            reservations={liveReservations || data.reservations} 
             data={data}
             updateData={updateData}
             onUpdateReservation={handleUpdateReservation}
@@ -439,25 +519,58 @@ export default function App() {
         isOpen={isLoginModalOpen}
         deviceId={deviceId}
         onClose={() => setIsLoginModalOpen(false)}
-        onAdminLogin={() => {
+        onAdminLogin={async () => {
+          try {
+            await authorizeUserMutation({
+              username: 'admin_53m',
+              name: 'Administrador Principal',
+              role: 'admin',
+              deviceId
+            });
+          } catch (e) {
+            console.warn('Convex auth notice:', e);
+          }
           setAdminLoggedIn(true);
           setActiveDependent(null);
           setActiveManager(null);
           setCurrentView('admin');
         }}
-        onManagerLogin={(mgr) => {
+        onManagerLogin={async (mgr) => {
+          try {
+            await authorizeUserMutation({
+              username: sanitizeString(mgr.username || 'jefe_restaurante'),
+              name: sanitizeString(mgr.name || 'Jefe de Restaurante'),
+              role: 'manager',
+              deviceId
+            });
+          } catch (e) {
+            console.warn('Convex auth notice:', e);
+          }
           setActiveManager(mgr);
           setAdminLoggedIn(false);
           setActiveDependent(null);
           setCurrentView('manager');
         }}
-        onDependentLogin={(dep) => {
+        onDependentLogin={async (dep) => {
+          try {
+            await authorizeUserMutation({
+              username: sanitizeString(dep.username || 'dependiente'),
+              name: sanitizeString(dep.name || 'Dependiente'),
+              role: 'dependent',
+              deviceId
+            });
+          } catch (e) {
+            console.warn('Convex auth notice:', e);
+          }
           setActiveDependent(dep);
           setAdminLoggedIn(false);
           setActiveManager(null);
           setCurrentView('dependent');
         }}
       />
+
+      <PWAInstallBanner />
     </div>
   );
 }
+

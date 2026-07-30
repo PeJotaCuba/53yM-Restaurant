@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Menu, X, Calendar, User, UserCog, UserCheck, LogOut, Lock, RefreshCw, ShieldCheck } from 'lucide-react';
+import { Menu, X, Calendar, User, UserCog, UserCheck, LogOut, Lock, RefreshCw, ShieldCheck, Download, Smartphone } from 'lucide-react';
 import { Logo } from './Logo';
 import { AppData } from '../types';
 import { isDeviceRegistered } from '../utils/deviceUtils';
 import { useLanguage } from '../context/LanguageContext';
 import { LanguageSelector } from './LanguageSelector';
+import { usePWA } from '../hooks/usePWA';
 
 interface NavigationProps {
   currentView: string;
@@ -28,6 +29,7 @@ export function Navigation({
   data
 }: NavigationProps) {
   const { t } = useLanguage();
+  const { isInstallable, isStandalone, isIOS, promptInstall } = usePWA();
   const [isScrolled, setIsScrolled] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -163,6 +165,20 @@ export function Navigation({
           {/* Language Selector Dropdown */}
           <LanguageSelector />
 
+          {/* PWA Install Button if available and not standalone */}
+          {!isStandalone && (isInstallable || isIOS) && (
+            <button
+              onClick={() => {
+                if (isInstallable) promptInstall();
+              }}
+              className="bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 px-3 py-1.5 rounded-full uppercase text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm"
+              title="Instalar App Web en tu dispositivo"
+            >
+              <Download size={13} className="text-amber-400" />
+              <span>{t('Instalar App')}</span>
+            </button>
+          )}
+
           {userRole === 'none' ? (
             <>
               <button onClick={() => handleNavClick('reservation')} className="bg-gold hover:bg-gold-light text-stone-900 px-5 py-2 rounded-full uppercase text-xs font-bold tracking-wider transition-all transform hover:-translate-y-1 hover:shadow-lg hover:shadow-gold/30">
@@ -237,6 +253,19 @@ export function Navigation({
             <button onClick={() => handleNavClick('home', 'menu')} className="text-white text-left uppercase font-bold py-2 border-b border-white/10">{t('Menú')}</button>
             <button onClick={() => handleNavClick('home', 'promos')} className="text-white text-left uppercase font-bold py-2 border-b border-white/10">{t('Promociones')}</button>
             
+            {!isStandalone && (isInstallable || isIOS) && (
+              <button
+                onClick={() => {
+                  setIsMobileMenuOpen(false);
+                  if (isInstallable) promptInstall();
+                }}
+                className="w-full bg-amber-500/20 text-amber-300 border border-amber-500/40 rounded-xl py-3 px-4 font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-sm"
+              >
+                <Download size={16} className="text-amber-400" />
+                <span>{t('Instalar App Web en Móvil')}</span>
+              </button>
+            )}
+
             {renderAccountButton(true)}
             
             {userRole === 'none' ? (
