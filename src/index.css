@@ -1,0 +1,21 @@
+@import "tailwindcss";
+
+@theme {
+  --color-gold: #C5A059;
+  --color-gold-light: #e0c48a;
+  --color-dark-green: #1E3A32;
+  --font-sans: 'Montserrat', sans-serif;
+  --font-serif: 'Playfair Display', serif;
+}
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+  body {
+    @apply text-stone-700 bg-stone-50 font-sans antialiased;
+  }
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-serif text-stone-900;
+  }
+}

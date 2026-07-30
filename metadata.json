@@ -1,0 +1,6 @@
+{
+  "name": "53&M",
+  "description": "Restaurante y Terraza 53&M",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

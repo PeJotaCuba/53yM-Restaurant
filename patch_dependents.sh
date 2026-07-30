@@ -1,0 +1,33 @@
+#!/bin/bash
+cat << 'INNEREOF' > deps.patch
+--- src/components/AdminPanel.tsx
++++ src/components/AdminPanel.tsx
+@@ -99,6 +99,13 @@
+     });
+   };
+ 
++  const handleToggleDependent = (idOrDeviceId: string, active: boolean) => {
++    const updated = data.dependents.map(d => 
++      (d.id === idOrDeviceId || d.deviceId === idOrDeviceId) ? { ...d, isActive: active } : d
++    );
++    updateData({ dependents: updated });
++  };
++
+   const handleSaveAdminCredentials = (e: React.FormEvent) => {
+     e.preventDefault();
+@@ -357,6 +364,15 @@
+                     {dep.phone && <span>Móvil: <strong>{dep.phone}</strong></span>}
+                   </div>
+                 </div>
++                <div className="flex items-center gap-3">
++                  <button 
++                    onClick={() => handleToggleDependent(dep.id || dep.deviceId, !dep.isActive)} 
++                    className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center transition-colors ${dep.isActive ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'bg-stone-200 text-stone-600 hover:bg-stone-300'}`}
++                  >
++                    {dep.isActive ? 'Activo (Desactivar)' : 'Inactivo (Activar)'}
++                  </button>
+                 <button 
+                   onClick={() => handleRemoveDependent(dep.id || dep.deviceId)} 
+                   className="text-red-500 hover:text-red-700 hover:bg-red-50 p-2 rounded-lg transition-colors text-xs font-bold flex items-center gap-1"
+INNEREOF
+patch -p0 < deps.patch
