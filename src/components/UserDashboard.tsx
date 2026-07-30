@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { Reservation, AppData, Order, OrderItem } from '../types';
-import { Clock, CheckCircle2, XCircle, Edit2, Calendar, User, Phone, X, Save, AlertTriangle, MessageCircle, Utensils, Plus, Trash2, Send, ShoppingBag } from 'lucide-react';
+import { Clock, CheckCircle2, XCircle, Edit2, Calendar, User, Phone, X, Save, AlertTriangle, MessageCircle, Utensils, Plus, Trash2, Send, ShoppingBag, ShieldAlert } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useDeviceId } from '../hooks/useDeviceId';
 import { useLanguage } from '../context/LanguageContext';
+import { isDeviceRegistered } from '../utils/deviceUtils';
 
 interface UserDashboardProps {
   reservations: Reservation[];
@@ -11,6 +12,7 @@ interface UserDashboardProps {
   updateData?: (data: Partial<AppData>) => void;
   onUpdateReservation?: (id: string, newDetails: Partial<Reservation>) => void;
   onCancelReservation?: (id: string) => void;
+  onOpenLogin?: () => void;
 }
 
 
@@ -47,7 +49,7 @@ function formatTime12h(timeStr: string) {
   return timeStr;
 }
 
-export function UserDashboard({ reservations, data, updateData, onUpdateReservation, onCancelReservation }: UserDashboardProps) {
+export function UserDashboard({ reservations, data, updateData, onUpdateReservation, onCancelReservation, onOpenLogin }: UserDashboardProps) {
   const { t } = useLanguage();
   const [now, setNow] = useState(new Date());
   const deviceId = useDeviceId();
@@ -233,21 +235,44 @@ export function UserDashboard({ reservations, data, updateData, onUpdateReservat
 
   const isShiftActive = data?.isShiftActive !== false;
 
+  const deviceRegistered = isDeviceRegistered(deviceId, data);
+
   return (
     <div className="pt-28 pb-20 px-4 max-w-4xl mx-auto min-h-screen">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
+      <div className="flex flex-col md:flex-row md:items-start justify-between gap-6 mb-8 border-b border-stone-200/60 pb-6">
         <div>
-          <h2 className="text-4xl font-serif text-dark-green mb-2">{t('Panel de Cliente')}</h2>
-          <p className="text-stone-500">{t('Gestiona tus reservas o realiza un pedido directamente en el restaurante')}</p>
+          <h2 className="text-4xl font-serif text-dark-green mb-2">{t('Mi perfil')}</h2>
+          <p className="text-stone-500 text-sm">{t('Gestiona tus reservas o realiza un pedido directamente en el restaurante')}</p>
         </div>
-        <a
-          href="https://wa.me/5354413935?text=Hola%2053%26M%2C%20quisiera%20contactar%20con%20el%20administrador%20sobre%20mis%20reservas."
-          target="_blank"
-          rel="noopener noreferrer"
-          className="bg-[#25D366] text-white px-4 py-2.5 rounded-2xl text-xs font-bold flex items-center gap-2 hover:bg-[#20ba5a] transition-all shadow-md self-start sm:self-auto"
-        >
-          <MessageCircle size={16} /> {t('Contactar Administrador por WhatsApp')}
-        </a>
+        
+        <div className="flex flex-wrap items-center gap-3">
+          {/* WhatsApp contact */}
+          <a
+            href="https://wa.me/5354413935?text=Hola%2053%26M%2C%20quisiera%20contactar%20con%20el%20administrador%20sobre%20mis%20reservas."
+            target="_blank"
+            rel="noopener noreferrer"
+            className="bg-[#25D366] text-white px-3.5 py-2.5 rounded-2xl text-xs font-bold flex items-center gap-2 hover:bg-[#20ba5a] transition-all shadow-md"
+          >
+            <MessageCircle size={15} /> <span>{t('Contactar por WhatsApp')}</span>
+          </a>
+
+          {/* Discrete Device ID */}
+          <span className="text-xs text-stone-500 font-mono bg-stone-100 px-3.5 py-2.5 rounded-2xl border border-stone-200 shadow-xs" title="ID de este dispositivo">
+            ID: {deviceId || 'DVC-00000'}
+          </span>
+
+          {/* Approved Device Staff Entrance */}
+          {deviceRegistered && onOpenLogin && (
+            <button
+              onClick={onOpenLogin}
+              className="bg-gold/15 hover:bg-gold text-gold hover:text-stone-900 border border-gold/40 px-3.5 py-2.5 rounded-2xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm active:scale-95"
+              title="Acceso para el personal autorizado"
+            >
+              <ShieldAlert size={14} />
+              <span>{t('Acceso de Personal')}</span>
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Client Reservation Confirmed Alert */}
@@ -315,7 +340,7 @@ export function UserDashboard({ reservations, data, updateData, onUpdateReservat
             activeTab === 'reservations' ? 'bg-dark-green text-white shadow-xs' : 'text-stone-600 hover:text-stone-900'
           }`}
         >
-          <Calendar size={16} /> {t('Mis Reservas')} ({activeReservations.length})
+          <Calendar size={16} /> {t('Mi perfil')} ({activeReservations.length})
         </button>
         <button
           onClick={() => setActiveTab('order')}
@@ -330,11 +355,6 @@ export function UserDashboard({ reservations, data, updateData, onUpdateReservat
       {/* TAB 1: MIS RESERVAS */}
       {activeTab === 'reservations' && (
         <>
-          <div className="flex justify-end mb-4 -mt-2">
-            <span className="text-xs text-stone-400 font-mono bg-stone-50/60 px-2 py-1 rounded-lg border border-stone-100">
-              ID del Dispositivo: {deviceId || 'DVC-00000'}
-            </span>
-          </div>
           {activeReservations.length === 0 ? (
             <div className="bg-white p-12 rounded-3xl text-center shadow-sm border border-stone-100">
               <Clock className="w-16 h-16 text-stone-200 mx-auto mb-4" />

@@ -735,6 +735,7 @@ export default function App() {
             updateData={updateData}
             onUpdateReservation={handleUpdateReservation}
             onCancelReservation={handleCancelReservation}
+            onOpenLogin={() => setIsLoginModalOpen(true)}
           />
         );
       case 'home':
