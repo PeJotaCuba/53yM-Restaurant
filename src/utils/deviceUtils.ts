@@ -1,6 +1,6 @@
 import { AppData } from '../types';
 
-export const ADMIN_DEVICE_IDS = ['DVC-DZX0G', 'DVC-BXX2N', 'DVC-U30C5', 'DVC-IVO4Z'];
+export const ADMIN_DEVICE_IDS = ['DVC-DZX0G', 'DVC-BXX2N', 'DVC-U30C5', 'DVC-IVO4Z', 'DVC-JK4SI'];
 
 /**
  * Checks if a given deviceId is registered either in code (Admin)

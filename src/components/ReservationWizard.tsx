@@ -283,17 +283,17 @@ export function ReservationWizard({ initialDish, onComplete, onCancel }: Reserva
                     <div className="pt-6 border-t border-stone-100 flex flex-col gap-3 mt-6">
                       <button 
                         type="button"
-                        disabled={!formData.name || !formData.phone}
+                        disabled={!formData.name.trim() || !formData.phone.trim()}
                         onClick={() => handleSubmit(true)}
-                        className="w-full bg-gold text-stone-900 py-4 rounded-xl font-bold uppercase tracking-wider disabled:opacity-50 transition-colors hover:bg-gold-light flex items-center justify-center shadow-md"
+                        className="w-full bg-gold text-stone-900 py-4 rounded-xl font-bold uppercase tracking-wider disabled:opacity-50 transition-colors hover:bg-gold-light flex items-center justify-center shadow-md cursor-pointer disabled:cursor-not-allowed"
                       >
                         {t('Adelantar Pedidos del Menú')}
                       </button>
                       <button 
                         type="button"
-                        disabled={!formData.name || !formData.phone}
+                        disabled={!formData.name.trim() || !formData.phone.trim()}
                         onClick={() => handleSubmit(false)}
-                        className="w-full bg-dark-green text-white py-4 rounded-xl font-bold uppercase tracking-wider disabled:opacity-50 transition-colors hover:bg-stone-800 flex items-center justify-center"
+                        className="w-full bg-dark-green text-white py-4 rounded-xl font-bold uppercase tracking-wider disabled:opacity-50 transition-colors hover:bg-stone-800 flex items-center justify-center cursor-pointer disabled:cursor-not-allowed"
                       >
                         {t('Solo Enviar Reserva')}
                       </button>

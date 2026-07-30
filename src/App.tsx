@@ -183,15 +183,6 @@ export default function App() {
     updateData({ reservations: updatedReservations });
   };
 
-  // View Guard: Admins, Managers and Dependents cannot reserve
-  useEffect(() => {
-    if ((userRole === 'admin' || userRole === 'manager' || userRole === 'dependent') && currentView === 'reservation') {
-      if (userRole === 'admin') setCurrentView('admin');
-      if (userRole === 'manager') setCurrentView('manager');
-      if (userRole === 'dependent') setCurrentView('dependent');
-    }
-  }, [userRole, currentView]);
-
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get('view') === 'menu') {
@@ -335,9 +326,6 @@ export default function App() {
           }} 
         />;
       case 'reservation':
-        if (userRole !== 'none') {
-          return null;
-        }
         return (
           <ReservationWizard 
             initialDish={selectedDishForReservation}
