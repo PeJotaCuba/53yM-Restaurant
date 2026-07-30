@@ -14,6 +14,11 @@ export default defineSchema({
     deviceId: v.string(),
     isActive: v.boolean(),
     loginTime: v.number(),
+    // Optional synchronized fields for dependents, managers, and admin authorized IDs
+    password: v.optional(v.string()),
+    phone: v.optional(v.string()),
+    tableNumber: v.optional(v.string()),
+    authorizedAdminIds: v.optional(v.array(v.string())),
   }).index("by_deviceId", ["deviceId"]),
 
   orders: defineTable({

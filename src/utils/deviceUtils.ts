@@ -1,6 +1,6 @@
 import { AppData } from '../types';
 
-export const ADMIN_DEVICE_IDS = ['DVC-DZX0G', 'DVC-BXX2N', 'DVC-U30C5', 'DVC-IVO4Z', 'DVC-JK4SI'];
+export const ADMIN_DEVICE_IDS = ['DVC-39D3R'];
 
 /**
  * Checks if a given deviceId is registered either in code (Admin)
@@ -20,6 +20,10 @@ export function isDeviceRegistered(deviceId: string, data?: AppData): boolean {
     const customAdmin = (data.adminConfig as any).deviceId || (data.adminConfig as any).deviceIds;
     if (typeof customAdmin === 'string' && customAdmin.trim().toUpperCase() === cleanId) return true;
     if (Array.isArray(customAdmin) && customAdmin.some((id: string) => id.trim().toUpperCase() === cleanId)) return true;
+    
+    // Check real-time authorized admin IDs from Convex config record
+    const authorizedAdminIds = (data.adminConfig as any).authorizedAdminIds;
+    if (Array.isArray(authorizedAdminIds) && authorizedAdminIds.some((id: string) => id.trim().toUpperCase() === cleanId)) return true;
   }
 
   // 3. Check Dependents Device IDs

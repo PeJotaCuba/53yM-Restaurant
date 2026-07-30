@@ -6,6 +6,8 @@ import { AdminLandingEditor } from './AdminLandingEditor';
 import { AdminMenuEditor } from './AdminMenuEditor';
 import { AdminSimulator } from './AdminSimulator';
 import { useLanguage } from '../context/LanguageContext';
+import { useSafeMutation } from '../hooks/useSafeConvex';
+import { api } from '../../convex/_generated/api';
 
 interface AdminPanelProps {
   data: AppData;
@@ -16,6 +18,11 @@ interface AdminPanelProps {
 export function AdminPanel({ data, updateData, updateStatus }: AdminPanelProps) {
   const { t } = useLanguage();
   const [activeTab, setActiveTab] = useState<'reservations' | 'landing' | 'menu' | 'dependents' | 'managers' | 'exchange' | 'security' | 'simulator'>('reservations');
+  
+  // Convex mutations for real-time synchronization
+  const upsertUserMutation = useSafeMutation(api.users.upsertUser);
+  const removeUserByUsernameMutation = useSafeMutation(api.users.removeUserByUsername);
+  const setAdminAuthorizedIdsMutation = useSafeMutation(api.users.setAdminAuthorizedIds);
   
   // Exchange Rate state
   const [usdRate, setUsdRate] = useState<number>(data.exchangeRate?.usdCUP || 320);
@@ -80,7 +87,7 @@ export function AdminPanel({ data, updateData, updateStatus }: AdminPanelProps) 
     URL.revokeObjectURL(url);
   };
 
-  const handleAddDependent = (e: React.FormEvent) => {
+  const handleAddDependent = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newDep.username || !newDep.password || !newDep.tableNumber) {
       alert('Por favor complete al menos Usuario, Contraseña y Mesa Asignada.');
@@ -102,6 +109,21 @@ export function AdminPanel({ data, updateData, updateStatus }: AdminPanelProps) 
       isActive: true
     };
 
+    try {
+      await upsertUserMutation({
+        username: createdDependent.username,
+        name: createdDependent.name,
+        role: 'dependent',
+        deviceId: createdDependent.deviceId,
+        isActive: true,
+        password: createdDependent.password,
+        phone: createdDependent.phone,
+        tableNumber: createdDependent.tableNumber,
+      });
+    } catch (err) {
+      console.error('Error syncing dependent to Convex:', err);
+    }
+
     updateData({ dependents: [...data.dependents, createdDependent] });
     setNewDep({
       deviceId: '',
@@ -113,13 +135,24 @@ export function AdminPanel({ data, updateData, updateStatus }: AdminPanelProps) 
     });
   };
 
-  const handleRemoveDependent = (idOrDeviceId: string) => {
+  const handleRemoveDependent = async (idOrDeviceId: string) => {
+    const dep = data.dependents.find(d => d.id === idOrDeviceId || d.deviceId === idOrDeviceId);
+    if (dep) {
+      try {
+        await removeUserByUsernameMutation({
+          username: dep.username,
+          role: 'dependent',
+        });
+      } catch (err) {
+        console.error('Error removing dependent from Convex:', err);
+      }
+    }
     updateData({
       dependents: data.dependents.filter(d => d.id !== idOrDeviceId && d.deviceId !== idOrDeviceId)
     });
   };
 
-  const handleAddManager = (e: React.FormEvent) => {
+  const handleAddManager = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newManager.username || !newManager.password || !newManager.name) {
       alert('Por favor complete Nombre, Nombre de Usuario y Contraseña para el Jefe de Restaurante');
@@ -136,6 +169,20 @@ export function AdminPanel({ data, updateData, updateStatus }: AdminPanelProps) 
       isActive: true
     };
 
+    try {
+      await upsertUserMutation({
+        username: managerObj.username,
+        name: managerObj.name,
+        role: 'manager',
+        deviceId: managerObj.deviceId || '',
+        isActive: true,
+        password: managerObj.password,
+        phone: managerObj.phone,
+      });
+    } catch (err) {
+      console.error('Error syncing manager to Convex:', err);
+    }
+
     updateData({
       managers: [...(data.managers || []), managerObj]
     });
@@ -151,15 +198,43 @@ export function AdminPanel({ data, updateData, updateStatus }: AdminPanelProps) 
     alert('¡Cuenta de Jefe de Restaurante creada exitosamente!');
   };
 
-  const handleRemoveManager = (idOrUsername: string) => {
+  const handleRemoveManager = async (idOrUsername: string) => {
     if (confirm('¿Desea eliminar este Jefe de Restaurante?')) {
+      const mgr = (data.managers || []).find(m => m.id === idOrUsername || m.username === idOrUsername);
+      if (mgr) {
+        try {
+          await removeUserByUsernameMutation({
+            username: mgr.username,
+            role: 'manager',
+          });
+        } catch (err) {
+          console.error('Error removing manager from Convex:', err);
+        }
+      }
       updateData({
         managers: (data.managers || []).filter(m => m.id !== idOrUsername && m.username !== idOrUsername)
       });
     }
   };
 
-  const handleToggleDependent = (idOrDeviceId: string, active: boolean) => {
+  const handleToggleDependent = async (idOrDeviceId: string, active: boolean) => {
+    const dep = data.dependents.find(d => d.id === idOrDeviceId || d.deviceId === idOrDeviceId);
+    if (dep) {
+      try {
+        await upsertUserMutation({
+          username: dep.username,
+          name: dep.name,
+          role: 'dependent',
+          deviceId: dep.deviceId,
+          isActive: active,
+          password: dep.password || '',
+          phone: dep.phone || '',
+          tableNumber: dep.tableNumber || '',
+        });
+      } catch (err) {
+        console.error('Error toggling dependent on Convex:', err);
+      }
+    }
     const updated = data.dependents.map(d => 
       (d.id === idOrDeviceId || d.deviceId === idOrDeviceId) ? { ...d, isActive: active } : d
     );
@@ -521,12 +596,91 @@ export function AdminPanel({ data, updateData, updateStatus }: AdminPanelProps) 
               <Shield size={24} />
             </div>
             <div>
-              <h3 className="font-serif text-xl text-stone-900">Respaldo de Dispositivo Administrador</h3>
-              <p className="text-xs text-stone-500">Los ID asignados (DVC-DZX0G, DVC-BXX2N y DVC-U30C5) te permiten acceder sin contraseña. Configura este dispositivo.</p>
+              <h3 className="font-serif text-xl text-stone-900">Dispositivos Autorizados de Administrador</h3>
+              <p className="text-xs text-stone-500">Puedes autorizar hasta 3 ID de dispositivos totales para abrir tu cuenta de Administrador.</p>
             </div>
           </div>
           
           <div className="space-y-4">
+            <div>
+              <label className="block text-xs font-bold uppercase text-stone-600 mb-2">IDs de Dispositivos Autorizados (Máx 3)</label>
+              <div className="space-y-2 mb-4">
+                {((data.adminConfig as any).authorizedAdminIds || ['DVC-39D3R']).map((id: string, index: number) => (
+                  <div key={index} className="flex items-center justify-between bg-stone-50 border border-stone-200 rounded-xl py-2 px-4 text-sm font-mono text-stone-700">
+                    <span>{id}</span>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const currentIds = (data.adminConfig as any).authorizedAdminIds || ['DVC-39D3R'];
+                        if (currentIds.length <= 1) {
+                          alert('Debe quedar al menos un dispositivo autorizado.');
+                          return;
+                        }
+                        const updatedIds = currentIds.filter((cid: string) => cid !== id);
+                        try {
+                          await setAdminAuthorizedIdsMutation({ authorizedAdminIds: updatedIds });
+                          alert('Dispositivo eliminado exitosamente.');
+                        } catch (err) {
+                          console.error('Error removing admin device ID:', err);
+                        }
+                      }}
+                      className="text-red-600 hover:text-red-800 font-bold text-xs"
+                    >
+                      Eliminar
+                    </button>
+                  </div>
+                ))}
+              </div>
+
+              {((data.adminConfig as any).authorizedAdminIds || ['DVC-39D3R']).length < 3 && (
+                <div className="flex gap-4 items-center">
+                  <input
+                    type="text"
+                    id="new-admin-id"
+                    placeholder="Ej. DVC-39D3R"
+                    className="w-full border border-stone-200 rounded-xl py-2.5 px-4 text-sm font-mono text-stone-700 outline-none uppercase"
+                  />
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const input = document.getElementById('new-admin-id') as HTMLInputElement;
+                      const val = input ? input.value.trim().toUpperCase() : '';
+                      if (!val) {
+                        alert('Por favor ingrese un ID de dispositivo válido.');
+                        return;
+                      }
+                      if (!val.startsWith('DVC-')) {
+                        alert('El ID debe comenzar con "DVC-"');
+                        return;
+                      }
+                      const currentIds = (data.adminConfig as any).authorizedAdminIds || ['DVC-39D3R'];
+                      if (currentIds.includes(val)) {
+                        alert('Este dispositivo ya está autorizado.');
+                        return;
+                      }
+                      if (currentIds.length >= 3) {
+                        alert('Solo puedes autorizar hasta 3 dispositivos en total.');
+                        return;
+                      }
+                      const updatedIds = [...currentIds, val];
+                      try {
+                        await setAdminAuthorizedIdsMutation({ authorizedAdminIds: updatedIds });
+                        if (input) input.value = '';
+                        alert('Dispositivo autorizado exitosamente.');
+                      } catch (err) {
+                        console.error('Error adding admin device ID:', err);
+                      }
+                    }}
+                    className="whitespace-nowrap bg-stone-900 text-white px-4 py-2.5 rounded-xl font-bold text-sm hover:bg-stone-800 transition-colors shadow-sm"
+                  >
+                    Autorizar ID
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <hr className="my-6 border-stone-100" />
+
             <div>
               <label className="block text-xs font-bold uppercase text-stone-600 mb-1">ID de este dispositivo actual</label>
               <div className="flex gap-4 items-center">
@@ -539,7 +693,7 @@ export function AdminPanel({ data, updateData, updateStatus }: AdminPanelProps) 
                 <button 
                   type="button"
                   onClick={() => {
-                    const newId = prompt('Ingrese el ID de administrador para restaurar en este dispositivo (ej: DVC-DZX0G):');
+                    const newId = prompt('Ingrese el ID de administrador para restaurar en este dispositivo (ej: DVC-39D3R):');
                     if (newId && newId.trim()) {
                       localStorage.setItem('deviceId', newId.trim().toUpperCase());
                       window.location.reload();

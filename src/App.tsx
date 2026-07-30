@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { api } from '../convex/_generated/api';
 import { useSafeQuery, useSafeMutation } from './hooks/useSafeConvex';
 import { ConvexErrorBoundary } from './components/ConvexErrorBoundary';
@@ -44,6 +44,51 @@ export default function App() {
   const liveOrders = useSafeQuery<any[]>(api.orders.getLiveOrders);
   const liveReservations = useSafeQuery<any[]>(api.reservations.getLiveReservations);
   const liveLogs = useSafeQuery<any[]>(api.bitacora.getLiveLogs, { limit: 100 });
+  const convexUsers = useSafeQuery<any[]>(api.users.getAllUsers) || [];
+
+  // Create a merged AppData object that combines local data with live Convex users!
+  const mergedData = useMemo(() => {
+    if (!convexUsers || convexUsers.length === 0) return data;
+    
+    const dbManagers = convexUsers
+      .filter((u: any) => u.role === 'manager')
+      .map((u: any) => ({
+        id: u._id,
+        name: u.name,
+        username: u.username,
+        password: u.password || '',
+        phone: u.phone || '',
+        deviceId: u.deviceId || '',
+        isActive: u.isActive !== false
+      }));
+
+    const dbDependents = convexUsers
+      .filter((u: any) => u.role === 'dependent')
+      .map((u: any) => ({
+        id: u._id,
+        deviceId: u.deviceId || '',
+        tableNumber: u.tableNumber || '',
+        name: u.name,
+        phone: u.phone || '',
+        username: u.username,
+        password: u.password || '',
+        isActive: u.isActive !== false
+      }));
+
+    // Also get the authorizedAdminIds if present
+    const configRecord = convexUsers.find((u: any) => u.username === 'admin_config_doc');
+    const authorizedAdminIds = configRecord?.authorizedAdminIds || ['DVC-39D3R'];
+
+    return {
+      ...data,
+      managers: dbManagers,
+      dependents: dbDependents,
+      adminConfig: {
+        ...data.adminConfig,
+        authorizedAdminIds
+      }
+    };
+  }, [data, convexUsers]);
 
   const authorizeUserMutation = useSafeMutation(api.users.authorizeUser);
   const deactivateUserMutation = useSafeMutation(api.users.deactivateUser);
@@ -134,7 +179,9 @@ export default function App() {
   useEffect(() => {
     const checkSessions = async () => {
       const currentDeviceIdClean = deviceId.trim().toUpperCase();
-      const isAdminDevice = ADMIN_DEVICE_IDS.includes(currentDeviceIdClean);
+      const currentIds = (mergedData.adminConfig as any)?.authorizedAdminIds || ['DVC-39D3R'];
+      const isAdminDevice = ADMIN_DEVICE_IDS.includes(currentDeviceIdClean) || 
+        currentIds.some((id: string) => id.trim().toUpperCase() === currentDeviceIdClean);
 
       // If Convex liveUser exists and is active, automatically recognize user
       if (liveUser && liveUser.isActive) {
@@ -145,7 +192,7 @@ export default function App() {
           return;
         }
         if (liveUser.role === 'manager') {
-          const mgrMatch = (data.managers || []).find(m => m.username === liveUser.username || m.deviceId === deviceId);
+          const mgrMatch = (mergedData.managers || []).find(m => m.username === liveUser.username || m.deviceId === deviceId);
           setActiveManager(mgrMatch || {
             id: 'MGR-LIVE',
             name: liveUser.name,
@@ -160,7 +207,7 @@ export default function App() {
           return;
         }
         if (liveUser.role === 'dependent') {
-          const depMatch = (data.dependents || []).find(d => d.username === liveUser.username || d.deviceId === deviceId);
+          const depMatch = (mergedData.dependents || []).find(d => d.username === liveUser.username || d.deviceId === deviceId);
           setActiveDependent(depMatch || {
             id: 'DEP-LIVE',
             name: liveUser.name,
@@ -189,7 +236,7 @@ export default function App() {
       if (savedManager) {
         try {
           const parsed = JSON.parse(savedManager);
-          const mgrMatch = (data.managers || []).find(m => m.id === parsed.id || m.username === parsed.username);
+          const mgrMatch = (mergedData.managers || []).find(m => m.id === parsed.id || m.username === parsed.username);
           if (mgrMatch && mgrMatch.isActive !== false) {
             setActiveManager(mgrMatch);
           }
@@ -202,7 +249,7 @@ export default function App() {
       if (savedDep) {
         try {
           const parsed = JSON.parse(savedDep);
-          const depMatch = data.dependents.find(d => d.id === parsed.id || d.username === parsed.username || d.deviceId === parsed.deviceId);
+          const depMatch = mergedData.dependents.find(d => d.id === parsed.id || d.username === parsed.username || d.deviceId === parsed.deviceId);
           if (depMatch && depMatch.isActive !== false) {
             setActiveDependent(depMatch);
           }
@@ -215,7 +262,7 @@ export default function App() {
     if (!loading) {
       checkSessions();
     }
-  }, [loading, liveUser, deviceId, data.dependents, data.managers]);
+  }, [loading, liveUser, deviceId, mergedData.dependents, mergedData.managers, mergedData.adminConfig]);
 
   // Determine User Role
   let userRole: 'admin' | 'manager' | 'dependent' | 'none' = 'none';
@@ -589,7 +636,7 @@ export default function App() {
       }
       return (
         <div className="space-y-6">
-          <AdminPanel data={data} updateData={updateData} updateStatus={updateReservationStatus} />
+          <AdminPanel data={mergedData} updateData={updateData} updateStatus={updateReservationStatus} />
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <ConvexErrorBoundary fallbackTitle="Bitácora Operacional (Admin)">
               <BitacoraStream />
@@ -608,7 +655,7 @@ export default function App() {
       return (
         <div className="space-y-6">
           <ManagerPanel 
-            data={data} 
+            data={mergedData} 
             updateData={updateData} 
             managerInfo={activeManager!} 
             updateStatus={updateReservationStatus} 
@@ -630,7 +677,7 @@ export default function App() {
       }
       return (
         <div className="space-y-6">
-          <DependentPanel data={data} updateData={updateData} dependentInfo={activeDependent!} />
+          <DependentPanel data={mergedData} updateData={updateData} dependentInfo={activeDependent!} />
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <ConvexErrorBoundary fallbackTitle="Bitácora Operacional (Dependientes)">
               <BitacoraStream />
@@ -644,7 +691,7 @@ export default function App() {
       return (
         <div className="space-y-6">
           <KitchenPanel 
-            data={data} 
+            data={mergedData} 
             updateData={updateData} 
             kitchenInfo={{ name: 'Cocina Principal', username: 'cocina_53m', password: '' }} 
           />
@@ -684,7 +731,7 @@ export default function App() {
         return (
           <UserDashboard 
             reservations={liveReservations || data.reservations} 
-            data={data}
+            data={mergedData}
             updateData={updateData}
             onUpdateReservation={handleUpdateReservation}
             onCancelReservation={handleCancelReservation}
@@ -817,7 +864,7 @@ export default function App() {
         onLogout={handleLogout}
         onSyncExcelencia={syncExcelencia}
         deviceId={deviceId}
-        data={data}
+        data={mergedData}
       />
       
       <main className="flex-grow">
@@ -847,7 +894,7 @@ export default function App() {
       )}
 
       <LoginModal 
-        data={data}
+        data={mergedData}
         isOpen={isLoginModalOpen}
         deviceId={deviceId}
         onClose={() => setIsLoginModalOpen(false)}
