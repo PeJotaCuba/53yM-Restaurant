@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { AppData, Reservation, DependentConfig, AdminConfig, ManagerConfig } from '../types';
-import { Users, DollarSign, CalendarCheck, Check, X, Download, Plus, Settings, FileText, Send, Shield, Key, User, Phone, Trash2, Utensils, ShieldCheck, Tv, Play, Power, RefreshCw, AlertCircle } from 'lucide-react';
+import { Users, DollarSign, CalendarCheck, Check, X, Download, Plus, Settings, FileText, Send, Shield, Key, User, Phone, Trash2, Utensils, ShieldCheck, Tv, Play, Power, RefreshCw, AlertCircle, ChefHat } from 'lucide-react';
 import jsPDF from 'jspdf';
 import { AdminLandingEditor } from './AdminLandingEditor';
 import { AdminMenuEditor } from './AdminMenuEditor';
 import { AdminSimulator } from './AdminSimulator';
 import { useLanguage } from '../context/LanguageContext';
-import { useMutation } from 'convex/react';
+import { useMutation, useQuery } from 'convex/react';
 import { api } from '../../convex/_generated/api';
 
 interface AdminPanelProps {
@@ -17,10 +17,12 @@ interface AdminPanelProps {
 
 export function AdminPanel({ data, updateData, updateStatus }: AdminPanelProps) {
   const { t } = useLanguage();
-  const [activeTab, setActiveTab] = useState<'reservations' | 'landing' | 'menu' | 'dependents' | 'managers' | 'exchange' | 'security' | 'simulator'>('reservations');
+  const [activeTab, setActiveTab] = useState<'reservations' | 'landing' | 'menu' | 'dependents' | 'managers' | 'kitchen' | 'exchange' | 'security' | 'simulator'>('reservations');
   
-  // Convex mutations for real-time synchronization
+  // Convex mutations & queries for real-time synchronization
   const upsertUserMutation = useMutation(api.users.upsertUser);
+  const upsertKitchenUserMutation = useMutation(api.users.upsertKitchenUser);
+  const activeKitchenUser = useQuery(api.users.getActiveKitchenUser);
   const removeUserByUsernameMutation = useMutation(api.users.removeUserByUsername);
   const resetWorkdayMutation = useMutation(api.admin.resetWorkday);
   
@@ -28,6 +30,27 @@ export function AdminPanel({ data, updateData, updateStatus }: AdminPanelProps) 
   const [usdRate, setUsdRate] = useState<number>(data.exchangeRate?.usdCUP || 320);
   const [eurRate, setEurRate] = useState<number>(data.exchangeRate?.eurCUP || 350);
   const [exchangeSavedMessage, setExchangeSavedMessage] = useState('');
+
+  // Kitchen form state
+  const [kitchenForm, setKitchenForm] = useState({
+    name: '',
+    username: 'cocina_53m',
+    password: 'cocina53ym',
+    phone: '54413935',
+    deviceId: 'DVC-KITCHEN-01',
+  });
+
+  useEffect(() => {
+    if (activeKitchenUser) {
+      setKitchenForm({
+        name: activeKitchenUser.name || '',
+        username: activeKitchenUser.username || 'cocina_53m',
+        password: activeKitchenUser.password || 'cocina53ym',
+        phone: activeKitchenUser.phone || '54413935',
+        deviceId: activeKitchenUser.deviceId || 'DVC-KITCHEN-01',
+      });
+    }
+  }, [activeKitchenUser]);
 
   useEffect(() => {
     if (data.exchangeRate) {
@@ -479,6 +502,12 @@ Esta acción no se puede deshacer.`);
           className={`flex items-center gap-2 px-6 py-3 rounded-full text-sm font-bold whitespace-nowrap transition-colors ${activeTab === 'managers' ? 'bg-dark-green text-white' : 'bg-white text-stone-600 border border-stone-200 hover:bg-stone-50'}`}
         >
           <ShieldCheck size={18} /> Gerentes de Restaurante
+        </button>
+        <button 
+          onClick={() => setActiveTab('kitchen')}
+          className={`flex items-center gap-2 px-6 py-3 rounded-full text-sm font-bold whitespace-nowrap transition-colors ${activeTab === 'kitchen' ? 'bg-dark-green text-white' : 'bg-white text-stone-600 border border-stone-200 hover:bg-stone-50'}`}
+        >
+          <ChefHat size={18} /> Gestión de Cocina
         </button>
         <button 
           onClick={() => setActiveTab('exchange')}
@@ -938,6 +967,166 @@ Esta acción no se puede deshacer.`);
               </p>
             )}
           </div>
+        </div>
+      )}
+
+      {/* KITCHEN TAB */}
+      {activeTab === 'kitchen' && (
+        <div className="bg-white rounded-3xl p-6 md:p-8 border border-stone-100 shadow-sm space-y-8">
+          <div>
+            <h3 className="font-serif text-xl text-stone-900 mb-1 flex items-center gap-2">
+              <ChefHat className="text-dark-green" size={24} /> Gestión de Perfil Único de Cocina
+            </h3>
+            <p className="text-xs text-stone-500">
+              Administra el perfil del responsable de Cocina. Debe existir <strong>como máximo una cuenta activa</strong> en el sistema.
+            </p>
+          </div>
+
+          {/* Current Status Banner */}
+          <div className="p-5 rounded-2xl border flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-stone-50 border-stone-200">
+            <div>
+              <div className="flex items-center gap-3 mb-2">
+                <span className="text-xs font-bold uppercase tracking-wider text-stone-500">Estado de la Cuenta:</span>
+                {activeKitchenUser?.isActive ? (
+                  <span className="bg-green-100 text-green-800 text-xs font-extrabold px-3 py-1 rounded-full flex items-center gap-1.5 border border-green-200">
+                    <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span> ACTIVA
+                  </span>
+                ) : (
+                  <span className="bg-stone-200 text-stone-700 text-xs font-bold px-3 py-1 rounded-full border border-stone-300">
+                    INACTIVA / SIN ASIGNAR
+                  </span>
+                )}
+              </div>
+              {activeKitchenUser?.isActive ? (
+                <div className="text-sm font-medium text-stone-800 space-y-1">
+                  <p><strong>Responsable Activo:</strong> {activeKitchenUser.name}</p>
+                  <p className="text-xs text-stone-500 font-mono">
+                    Usuario: <strong>@{activeKitchenUser.username}</strong> | Teléfono: <strong>{activeKitchenUser.phone || 'N/A'}</strong> | Dispositivo: <strong>{activeKitchenUser.deviceId || 'Sin restricción'}</strong>
+                  </p>
+                </div>
+              ) : (
+                <p className="text-xs text-stone-500">
+                  No hay ningún perfil de cocina activo actualmente. Completa el formulario a continuación para crear o activar un responsable.
+                </p>
+              )}
+            </div>
+
+            {activeKitchenUser?.isActive && (
+              <button
+                onClick={async () => {
+                  if (confirm('¿Seguro que deseas desactivar la cuenta de Cocina activa?')) {
+                    try {
+                      await upsertKitchenUserMutation({
+                        username: activeKitchenUser.username,
+                        name: activeKitchenUser.name,
+                        password: activeKitchenUser.password || 'cocina53ym',
+                        phone: activeKitchenUser.phone || '',
+                        deviceId: activeKitchenUser.deviceId || '',
+                        isActive: false
+                      });
+                      alert('Cuenta de Cocina desactivada.');
+                    } catch (err: any) {
+                      alert(err?.message || 'Error al desactivar la cuenta.');
+                    }
+                  }
+                }}
+                className="bg-red-50 text-red-700 hover:bg-red-100 border border-red-200 px-4 py-2 rounded-xl text-xs font-bold transition-colors shadow-xs"
+              >
+                Desactivar Cuenta Activa
+              </button>
+            )}
+          </div>
+
+          {/* Form */}
+          <form 
+            onSubmit={async (e) => {
+              e.preventDefault();
+              if (!kitchenForm.name.trim()) {
+                alert('El Nombre del Responsable es obligatorio para la cuenta de Cocina.');
+                return;
+              }
+              try {
+                await upsertKitchenUserMutation({
+                  username: kitchenForm.username.trim() || 'cocina_53m',
+                  name: kitchenForm.name.trim(),
+                  password: kitchenForm.password.trim() || 'cocina53ym',
+                  phone: kitchenForm.phone.trim() || '',
+                  deviceId: kitchenForm.deviceId.trim() || 'DVC-KITCHEN-01',
+                  isActive: true
+                });
+                alert('Perfil de Cocina activado/guardado correctamente.');
+              } catch (err: any) {
+                alert(err?.message || 'Error al guardar la cuenta de cocina.');
+              }
+            }} 
+            className="bg-stone-50 p-6 rounded-2xl border border-stone-200 space-y-4"
+          >
+            <h4 className="font-bold text-sm text-stone-800">
+              {activeKitchenUser?.isActive ? 'Editar Responsable de Cocina' : 'Crear / Activar Perfil de Cocina'}
+            </h4>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-semibold text-stone-600 mb-1">Nombre del Responsable *</label>
+                <input 
+                  type="text" 
+                  placeholder="Ej. Chef Carlos Mendoza" 
+                  value={kitchenForm.name}
+                  onChange={e => setKitchenForm(prev => ({ ...prev, name: e.target.value }))}
+                  className="w-full border-stone-200 rounded-xl text-sm px-3 py-2"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-stone-600 mb-1">Teléfono Móvil (WhatsApp)</label>
+                <input 
+                  type="text" 
+                  placeholder="Ej. 54413935" 
+                  value={kitchenForm.phone}
+                  onChange={e => setKitchenForm(prev => ({ ...prev, phone: e.target.value }))}
+                  className="w-full border-stone-200 rounded-xl text-sm px-3 py-2"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-stone-600 mb-1">Usuario de Acceso *</label>
+                <input 
+                  type="text" 
+                  placeholder="Ej. cocina_53m" 
+                  value={kitchenForm.username}
+                  onChange={e => setKitchenForm(prev => ({ ...prev, username: e.target.value }))}
+                  className="w-full border-stone-200 rounded-xl text-sm px-3 py-2"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-stone-600 mb-1">Contraseña *</label>
+                <input 
+                  type="text" 
+                  placeholder="Ej. cocina53ym" 
+                  value={kitchenForm.password}
+                  onChange={e => setKitchenForm(prev => ({ ...prev, password: e.target.value }))}
+                  className="w-full border-stone-200 rounded-xl text-sm px-3 py-2 font-mono"
+                  required
+                />
+              </div>
+              <div className="md:col-span-2">
+                <label className="block text-xs font-semibold text-stone-600 mb-1">
+                  ID de Dispositivo Asignado (Opcional - Restringe el acceso a este dispositivo)
+                </label>
+                <input 
+                  type="text" 
+                  placeholder="Ej. DVC-KITCHEN-01 o dejar en blanco" 
+                  value={kitchenForm.deviceId}
+                  onChange={e => setKitchenForm(prev => ({ ...prev, deviceId: e.target.value }))}
+                  className="w-full border-stone-200 rounded-xl text-sm px-3 py-2 font-mono uppercase"
+                />
+              </div>
+            </div>
+
+            <button type="submit" className="bg-dark-green text-white px-5 py-2.5 rounded-xl font-bold text-sm hover:bg-stone-800 transition-colors flex items-center gap-2">
+              <ChefHat size={16} /> {activeKitchenUser?.isActive ? 'Guardar Cambios' : 'Crear / Activar Perfil de Cocina'}
+            </button>
+          </form>
         </div>
       )}
 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Menu, X, Calendar, User, UserCog, UserCheck, LogOut, Lock, RefreshCw, ShieldCheck, Download, Smartphone } from 'lucide-react';
+import { Menu, X, Calendar, User, UserCog, UserCheck, LogOut, Lock, RefreshCw, ShieldCheck, Download, Smartphone, Utensils } from 'lucide-react';
 import { Logo } from './Logo';
 import { AppData } from '../types';
 import { isDeviceRegistered } from '../utils/deviceUtils';
@@ -10,7 +10,7 @@ import { usePWA } from '../hooks/usePWA';
 interface NavigationProps {
   currentView: string;
   setView: (view: string) => void;
-  userRole: 'admin' | 'manager' | 'dependent' | 'none';
+  userRole: 'admin' | 'manager' | 'dependent' | 'kitchen' | 'none';
   onOpenLogin: () => void;
   onLogout: () => void;
   onSyncExcelencia?: () => Promise<boolean>;
@@ -118,6 +118,19 @@ export function Navigation({
           }`}
         >
           <UserCheck size={16} /> {t('Mi cuenta')}
+        </button>
+      );
+    }
+
+    if (userRole === 'kitchen') {
+      return (
+        <button
+          onClick={() => handleNavClick('kitchen')}
+          className={`text-amber-400 hover:text-white flex items-center gap-2 uppercase text-xs font-bold transition-colors ${
+            !isMobile ? 'border-l border-white/20 pl-6' : 'w-full text-left py-2 border-b border-white/10'
+          }`}
+        >
+          <Utensils size={16} /> {t('Cocina')}
         </button>
       );
     }

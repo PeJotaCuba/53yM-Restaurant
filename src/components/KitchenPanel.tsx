@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { AppData, Order, KitchenConfig, KitchenReport, AppNotification } from '../types';
 import { useLanguage } from '../context/LanguageContext';
+import { useQuery, useMutation } from 'convex/react';
+import { api } from '../../convex/_generated/api';
 import { 
   ChefHat, 
   Clock, 
@@ -25,6 +27,10 @@ export function KitchenPanel({ data, updateData, kitchenInfo }: KitchenPanelProp
   const { t } = useLanguage();
   const [filter, setFilter] = useState<'all' | 'pending' | 'in_progress' | 'ready'>('all');
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
+
+  // Live Convex kitchen user query & order mutation
+  const activeKitchenUser = useQuery(api.users.getActiveKitchenUser);
+  const syncOrUpdateOrderMutation = useMutation(api.orders.syncOrUpdateOrder);
 
   const orders = data.orders || [];
 
@@ -139,6 +145,33 @@ export function KitchenPanel({ data, updateData, kitchenInfo }: KitchenPanelProp
       action: `Cocina: ${statusLabel}`,
       details: `Cambió estado del pedido #${orderId} (${targetOrder.tableNumber || 'Mesa'}) a '${statusLabel}'${status === 'kitchen_ready' ? ' y notificó al dependiente y cliente.' : ''}`
     };
+
+    // Sync directly to Convex for real-time reactivity and automatic bitacora entry
+    const activeUsername = activeKitchenUser?.username || kitchenInfo.username || 'cocina_53m';
+    const formattedItems = (targetOrder.orderItems && targetOrder.orderItems.length > 0)
+      ? targetOrder.orderItems.map((it: any, idx: number) => ({
+          id: it.id || `it-${idx}`,
+          name: it.name,
+          quantity: it.quantity,
+          priceCUP: it.priceCUP || 0,
+          priceUSD: it.priceUSD || 0,
+          notes: it.notes || ''
+        }))
+      : targetOrder.items.map((it: string, idx: number) => ({ id: `it-${idx}`, name: it, quantity: 1, priceCUP: 0, priceUSD: 0, notes: '' }));
+
+    syncOrUpdateOrderMutation({
+      id: targetOrder.id,
+      tableNumber: targetOrder.tableNumber,
+      items: formattedItems,
+      totalCUP: targetOrder.totalCUP || 0,
+      totalUSD: targetOrder.totalUSD || 0,
+      status: status,
+      timestamp: targetOrder.timestamp || Date.now(),
+      assignedDependentId: targetOrder.assignedDependentId,
+      reservationId: targetOrder.reservationId,
+      username: activeUsername,
+      userRole: 'kitchen'
+    }).catch(err => console.warn('Kitchen syncOrUpdateOrder error:', err));
 
     updateData({
       orders: updated,
@@ -280,10 +313,10 @@ export function KitchenPanel({ data, updateData, kitchenInfo }: KitchenPanelProp
                 <span className="text-xs uppercase font-bold tracking-widest text-gold bg-stone-800 px-2.5 py-0.5 rounded-full border border-stone-700">
                   {t('Comandas en Vivo')}
                 </span>
-                <span className="text-xs text-stone-400 font-mono">@{kitchenInfo.username}</span>
+                <span className="text-xs text-stone-400 font-mono">@{activeKitchenUser?.username || kitchenInfo.username || 'cocina_53m'}</span>
               </div>
               <h2 className="text-2xl md:text-3xl font-serif font-bold text-white mt-1">
-                {kitchenInfo.name || t('Panel General de Cocina')}
+                {activeKitchenUser?.name ? `Responsable: ${activeKitchenUser.name}` : (kitchenInfo.name || t('Panel General de Cocina'))}
               </h2>
             </div>
           </div>

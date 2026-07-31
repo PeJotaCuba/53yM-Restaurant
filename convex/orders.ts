@@ -24,6 +24,9 @@ export const syncOrUpdateOrder = mutation({
     assignedDependentId: v.string(),
     reservationId: v.optional(v.string()),
     timestamp: v.optional(v.number()),
+    username: v.optional(v.string()),
+    userRole: v.optional(v.string()),
+    deviceId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const data = {
@@ -60,10 +63,25 @@ export const syncOrUpdateOrder = mutation({
         await ctx.db.patch(existingDoc._id, data);
         
         if (oldStatus !== args.status) {
+          const userStr = args.username || "Dependiente";
+          let actionText = `Pedido de Mesa #${args.tableNumber} cambió de estado a '${args.status.toUpperCase()}'`;
+          
+          if (args.status === 'in_kitchen' || args.status === 'pending') {
+            actionText = `El dependiente '${userStr}' envió la comanda (Mesa #${args.tableNumber}) a cocina`;
+          } else if (args.status === 'kitchen_in_progress' || args.status === 'in_progress') {
+            actionText = `Cocina inició la elaboración del pedido de Mesa #${args.tableNumber}`;
+          } else if (args.status === 'kitchen_ready' || args.status === 'ready_to_serve') {
+            actionText = `Cocina marcó el pedido de Mesa #${args.tableNumber} como LISTO PARA SERVIR`;
+          } else if (args.status === 'delivered') {
+            actionText = `El dependiente '${userStr}' entregó el pedido a Mesa #${args.tableNumber}`;
+          } else if (args.status === 'paid' || args.status === 'closed') {
+            actionText = `Pedido de Mesa #${args.tableNumber} cobrado y cerrado por ${userStr} ($${args.totalCUP} CUP)`;
+          }
+
           await ctx.db.insert("bitacora", {
-            action: `Pedido de Mesa #${args.tableNumber} cambió de estado a '${args.status.toUpperCase()}'`,
-            userRole: "sistema",
-            username: "Sistema",
+            action: actionText,
+            userRole: args.userRole || "dependiente",
+            username: userStr,
             timestamp: Date.now(),
           });
         }
@@ -73,11 +91,12 @@ export const syncOrUpdateOrder = mutation({
 
     // Insert new order
     const newId = await ctx.db.insert("orders", data);
+    const creator = args.username || "Cliente";
     
     await ctx.db.insert("bitacora", {
-      action: `Nuevo pedido creado en Mesa #${args.tableNumber} por un total de $${args.totalCUP} CUP`,
-      userRole: "sistema",
-      username: "Sistema",
+      action: `Nuevo pedido creado en Mesa #${args.tableNumber} por ${creator} ($${args.totalCUP} CUP)`,
+      userRole: args.userRole || "cliente",
+      username: creator,
       timestamp: Date.now(),
     });
 
