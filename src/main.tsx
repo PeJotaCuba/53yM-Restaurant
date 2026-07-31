@@ -6,6 +6,7 @@ import { ConvexProvider } from 'convex/react';
 import { convex } from './lib/convexClient.ts';
 import './index.css';
 
+console.log('[Main] Initializing application...');
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ConvexProvider client={convex}>

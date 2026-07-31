@@ -31,6 +31,7 @@ import { ADMIN_DEVICE_IDS } from './utils/deviceUtils';
 import { useLanguage } from './context/LanguageContext';
 
 export default function App() {
+  console.log('[App] Rendering...');
   const { t } = useLanguage();
   const [currentView, setCurrentView] = useState('home');
   const [selectedDishForReservation, setSelectedDishForReservation] = useState<string | undefined>(undefined);

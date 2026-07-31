@@ -100,6 +100,7 @@ export function useDataSync() {
 
   useEffect(() => {
     const fetchData = async () => {
+      console.log('[DataSync] Fetching initial data...');
       // First check if user has local state saved in localStorage
       const localData = localStorage.getItem('appData');
       if (localData) {
