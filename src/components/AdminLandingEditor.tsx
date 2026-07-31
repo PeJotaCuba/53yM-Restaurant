@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { LandingConfig } from '../types';
 import { Save, Plus, Trash2, Upload, Image as ImageIcon, Utensils, Wine, Leaf, PartyPopper, Coffee, Cake, Music, Star, Gift, Shield, Heart, CalendarCheck, Tag, Award, Zap, Percent, X } from 'lucide-react';
 
@@ -40,6 +40,19 @@ export function AdminLandingEditor({ config, onSave }: AdminLandingEditorProps) 
     aboutTags: config.aboutTags || [],
     teamImages: config.teamImages || []
   });
+
+  useEffect(() => {
+    if (config) {
+      setFormData({
+        ...config,
+        services: config.services || [],
+        promotions: config.promotions || [],
+        galleryImages: config.galleryImages || [],
+        aboutTags: config.aboutTags || [],
+        teamImages: config.teamImages || []
+      });
+    }
+  }, [config]);
 
   const [newTagInput, setNewTagInput] = useState('');
 

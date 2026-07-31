@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { MenuItem } from '../types';
 import { Plus, Trash2, Save, Edit2, X, Upload, Image as ImageIcon } from 'lucide-react';
 
@@ -10,6 +10,12 @@ interface AdminMenuEditorProps {
 export function AdminMenuEditor({ menuItems, onSave }: AdminMenuEditorProps) {
   const [items, setItems] = useState<MenuItem[]>(menuItems || []);
   const [editingItem, setEditingItem] = useState<MenuItem | null>(null);
+
+  useEffect(() => {
+    if (menuItems) {
+      setItems(menuItems);
+    }
+  }, [menuItems]);
 
   const handleDelete = (id: string) => {
     if (window.confirm('¿Seguro que desea eliminar este plato?')) {

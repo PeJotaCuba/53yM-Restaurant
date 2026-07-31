@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AppData, Reservation, DependentConfig, AdminConfig, ManagerConfig } from '../types';
 import { Users, DollarSign, CalendarCheck, Check, X, Download, Plus, Settings, FileText, Send, Shield, Key, User, Phone, Trash2, Utensils, ShieldCheck, Tv, Play, Power, RefreshCw, AlertCircle } from 'lucide-react';
 import jsPDF from 'jspdf';
@@ -6,7 +6,7 @@ import { AdminLandingEditor } from './AdminLandingEditor';
 import { AdminMenuEditor } from './AdminMenuEditor';
 import { AdminSimulator } from './AdminSimulator';
 import { useLanguage } from '../context/LanguageContext';
-import { useSafeMutation } from '../hooks/useSafeConvex';
+import { useMutation } from 'convex/react';
 import { api } from '../../convex/_generated/api';
 
 interface AdminPanelProps {
@@ -20,15 +20,21 @@ export function AdminPanel({ data, updateData, updateStatus }: AdminPanelProps) 
   const [activeTab, setActiveTab] = useState<'reservations' | 'landing' | 'menu' | 'dependents' | 'managers' | 'exchange' | 'security' | 'simulator'>('reservations');
   
   // Convex mutations for real-time synchronization
-  const upsertUserMutation = useSafeMutation(api.users.upsertUser);
-  const removeUserByUsernameMutation = useSafeMutation(api.users.removeUserByUsername);
-  const setAdminAuthorizedIdsMutation = useSafeMutation(api.users.setAdminAuthorizedIds);
-  const resetWorkdayMutation = useSafeMutation((api as any).admin.resetWorkday);
+  const upsertUserMutation = useMutation(api.users.upsertUser);
+  const removeUserByUsernameMutation = useMutation(api.users.removeUserByUsername);
+  const resetWorkdayMutation = useMutation(api.admin.resetWorkday);
   
   // Exchange Rate state
   const [usdRate, setUsdRate] = useState<number>(data.exchangeRate?.usdCUP || 320);
   const [eurRate, setEurRate] = useState<number>(data.exchangeRate?.eurCUP || 350);
   const [exchangeSavedMessage, setExchangeSavedMessage] = useState('');
+
+  useEffect(() => {
+    if (data.exchangeRate) {
+      if (data.exchangeRate.usdCUP) setUsdRate(data.exchangeRate.usdCUP);
+      if (data.exchangeRate.eurCUP) setEurRate(data.exchangeRate.eurCUP);
+    }
+  }, [data.exchangeRate?.usdCUP, data.exchangeRate?.eurCUP]);
 
   // State for adding a dependiente
   const [newDep, setNewDep] = useState({
@@ -411,7 +417,19 @@ export function AdminPanel({ data, updateData, updateStatus }: AdminPanelProps) 
                 alert('⚠️ ACCIÓN DENEGADA: Debe descargar la bitácora operativa antes de reiniciar la jornada.');
                 return;
               }
-              const confirmed = window.confirm('⚠️ ADVERTENCIA CRÍTICA: ¿Está seguro de reiniciar la jornada?\n\nEsto eliminará los datos operativos de la jornada actual (dependientes, gerentes, cocina y comandas antiguas).\n\nSe CONSERVARÁN los comprobantes de pago y recibos de caja.\n\nEsta acción no se puede deshacer.');
+              const confirmed = window.confirm(`⚠️ ADVERTENCIA CRÍTICA: ¿Está seguro de reiniciar la jornada?\n
+TABLA/DATO                    ELIMINAR    CONSERVAR
+----------------------------------------------------
+Dependientes                  SÍ          NO
+Gerente                       SÍ          NO
+Cocina                        SÍ          NO
+Comandas (órdenes)            SÍ          NO
+Reservaciones                 SÍ          NO
+Comprobantes de pago          NO          SÍ
+Recibos de caja               NO          SÍ
+Bitácora operativa            SÍ          NO
+Ajustes (Tasa, Menú, etc)     NO          SÍ\n
+Esta acción no se puede deshacer.`);
               if (confirmed) {
                 resetWorkdayMutation({}).then(() => {
                   alert('¡Jornada reiniciada exitosamente!');
@@ -653,83 +671,6 @@ export function AdminPanel({ data, updateData, updateStatus }: AdminPanelProps) 
           </div>
           
           <div className="space-y-4">
-            <div>
-              <label className="block text-xs font-bold uppercase text-stone-600 mb-2">IDs de Dispositivos Autorizados (Máx 3)</label>
-              <div className="space-y-2 mb-4">
-                {((data.adminConfig as any).authorizedAdminIds || ['DVC-39D3R']).map((id: string, index: number) => (
-                  <div key={index} className="flex items-center justify-between bg-stone-50 border border-stone-200 rounded-xl py-2 px-4 text-sm font-mono text-stone-700">
-                    <span>{id}</span>
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        const currentIds = (data.adminConfig as any).authorizedAdminIds || ['DVC-39D3R'];
-                        if (currentIds.length <= 1) {
-                          alert('Debe quedar al menos un dispositivo autorizado.');
-                          return;
-                        }
-                        const updatedIds = currentIds.filter((cid: string) => cid !== id);
-                        try {
-                          await setAdminAuthorizedIdsMutation({ authorizedAdminIds: updatedIds });
-                          alert('Dispositivo eliminado exitosamente.');
-                        } catch (err) {
-                          console.error('Error removing admin device ID:', err);
-                        }
-                      }}
-                      className="text-red-600 hover:text-red-800 font-bold text-xs"
-                    >
-                      Eliminar
-                    </button>
-                  </div>
-                ))}
-              </div>
-
-              {((data.adminConfig as any).authorizedAdminIds || ['DVC-39D3R']).length < 3 && (
-                <div className="flex gap-4 items-center">
-                  <input
-                    type="text"
-                    id="new-admin-id"
-                    placeholder="Ej. DVC-39D3R"
-                    className="w-full border border-stone-200 rounded-xl py-2.5 px-4 text-sm font-mono text-stone-700 outline-none uppercase"
-                  />
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      const input = document.getElementById('new-admin-id') as HTMLInputElement;
-                      const val = input ? input.value.trim().toUpperCase() : '';
-                      if (!val) {
-                        alert('Por favor ingrese un ID de dispositivo válido.');
-                        return;
-                      }
-                      if (!val.startsWith('DVC-')) {
-                        alert('El ID debe comenzar con "DVC-"');
-                        return;
-                      }
-                      const currentIds = (data.adminConfig as any).authorizedAdminIds || ['DVC-39D3R'];
-                      if (currentIds.includes(val)) {
-                        alert('Este dispositivo ya está autorizado.');
-                        return;
-                      }
-                      if (currentIds.length >= 3) {
-                        alert('Solo puedes autorizar hasta 3 dispositivos en total.');
-                        return;
-                      }
-                      const updatedIds = [...currentIds, val];
-                      try {
-                        await setAdminAuthorizedIdsMutation({ authorizedAdminIds: updatedIds });
-                        if (input) input.value = '';
-                        alert('Dispositivo autorizado exitosamente.');
-                      } catch (err) {
-                        console.error('Error adding admin device ID:', err);
-                      }
-                    }}
-                    className="whitespace-nowrap bg-stone-900 text-white px-4 py-2.5 rounded-xl font-bold text-sm hover:bg-stone-800 transition-colors shadow-sm"
-                  >
-                    Autorizar ID
-                  </button>
-                </div>
-              )}
-            </div>
-
             <hr className="my-6 border-stone-100" />
 
             <div>

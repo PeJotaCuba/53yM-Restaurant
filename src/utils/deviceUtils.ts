@@ -22,8 +22,7 @@ export function isDeviceRegistered(deviceId: string, data?: AppData): boolean {
     if (Array.isArray(customAdmin) && customAdmin.some((id: string) => id.trim().toUpperCase() === cleanId)) return true;
     
     // Check real-time authorized admin IDs from Convex config record
-    const authorizedAdminIds = (data.adminConfig as any).authorizedAdminIds;
-    if (Array.isArray(authorizedAdminIds) && authorizedAdminIds.some((id: string) => id.trim().toUpperCase() === cleanId)) return true;
+    
   }
 
   // 3. Check Dependents Device IDs

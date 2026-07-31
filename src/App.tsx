@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { api } from '../convex/_generated/api';
-import { useSafeQuery, useSafeMutation } from './hooks/useSafeConvex';
+import { useQuery, useMutation } from 'convex/react';
 import { ConvexErrorBoundary } from './components/ConvexErrorBoundary';
 import { sanitizeString, sanitizeObjectKeys } from './utils/sanitizer';
 import { Navigation } from './components/Navigation';
@@ -61,14 +61,19 @@ export default function App() {
   const { data, loading, updateData: rawUpdateData, syncExcelencia } = useDataSync();
 
   // Convex Reactive Queries & Mutations (Safe Mode)
-  const liveUser = useSafeQuery<any>(api.users.getLiveUserByDeviceId, { deviceId });
-  const liveOrders = useSafeQuery<any[]>(api.orders.getLiveOrders);
-  const liveReservations = useSafeQuery<any[]>(api.reservations.getLiveReservations);
-  const liveLogs = useSafeQuery<any[]>(api.bitacora.getLiveLogs, { limit: 100 });
-  const convexUsers = useSafeQuery<any[]>(api.users.getAllUsers) || [];
+  const liveUser = useQuery(api.users.getLiveUserByDeviceId, { deviceId });
+  const liveOrders = useQuery(api.orders.getLiveOrders);
+  const liveReservations = useQuery(api.reservations.getLiveReservations);
+  const liveLogs = useQuery(api.bitacora.getLiveLogs, { limit: 100 });
+  const liveExchangeRate = useQuery(api.admin.getSetting, { key: "exchangeRate" });
+  const liveLandingConfig = useQuery(api.admin.getSetting, { key: "landingConfig" });
+  const liveAdminConfig = useQuery(api.admin.getSetting, { key: "adminConfig" });
+
+  const liveMenuItems = useQuery(api.menuItems.getLiveMenuItems);
+  const convexUsers = useQuery(api.users.getAllUsers) || [];
 
   const mappedReservations = useMemo(() => {
-    const raw = (liveReservations && liveReservations.length > 0) ? liveReservations : (data.reservations || []);
+    const raw = (liveReservations !== undefined) ? liveReservations : (data.reservations || []);
     return raw.map((lr: any) => ({
       id: lr._id || lr.id,
       name: lr.customerName || lr.name || 'Cliente',
@@ -86,7 +91,7 @@ export default function App() {
   }, [liveReservations, data.reservations]);
 
   const mappedOrders = useMemo(() => {
-    const raw = (liveOrders && liveOrders.length > 0) ? liveOrders : (data.orders || []);
+    const raw = (liveOrders !== undefined) ? liveOrders : (data.orders || []);
     return raw.map((lo: any) => {
       const itemsList = lo.items ? lo.items.map((i: any) => typeof i === 'string' ? i : `${i.quantity}x ${i.name}`) : [];
       return {
@@ -138,33 +143,73 @@ export default function App() {
         isActive: u.isActive !== false
       }));
 
-    const configRecord = (convexUsers || []).find((u: any) => u.username === 'admin_config_doc');
-    const authorizedAdminIds = configRecord?.authorizedAdminIds || ['DVC-39D3R'];
+    
+    
+
+    const mappedAuditLogs = (!liveLogs) ? (data.auditLogs || []) : liveLogs.map((log: any) => ({
+      id: log._id,
+      timestamp: log.timestamp,
+      timeStr: new Date(log.timestamp).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }),
+      dateStr: new Date(log.timestamp).toLocaleDateString('es-ES'),
+      role: log.userRole || 'SISTEMA',
+      userOrDevice: log.username || 'usuario',
+      action: log.action || '',
+      details: log.action || ''
+    }));
+
+    const currentExchangeRate = liveExchangeRate || data.exchangeRate;
+    const currentLandingConfig = liveLandingConfig || data.landingConfig;
+    const currentAdminConfig = liveAdminConfig || data.adminConfig;
+    const currentMenuItems = (liveMenuItems !== undefined) ? liveMenuItems : data.menuItems;
 
     return {
       ...data,
+      exchangeRate: currentExchangeRate,
+      landingConfig: currentLandingConfig,
+      menuItems: currentMenuItems,
       reservations: mappedReservations,
       orders: mappedOrders,
       managers: dbManagers,
       dependents: dbDependents,
-      adminConfig: {
-        ...data.adminConfig,
-        authorizedAdminIds
-      }
+      auditLogs: mappedAuditLogs,
+      adminConfig: currentAdminConfig
     };
-  }, [data, convexUsers, mappedReservations, mappedOrders]);
+  }, [data, convexUsers, mappedReservations, mappedOrders, liveExchangeRate, liveLandingConfig, liveAdminConfig, liveMenuItems, liveLogs]);
 
-  const authorizeUserMutation = useSafeMutation(api.users.authorizeUser);
-  const deactivateUserMutation = useSafeMutation(api.users.deactivateUser);
-  const createReservationMutation = useSafeMutation(api.reservations.createReservation);
-  const createReservationAndOrderMutation = useSafeMutation(api.reservations.createReservationAndOrder);
-  const updateReservationMutation = useSafeMutation(api.reservations.updateReservation);
-  const updateReservationStatusMutation = useSafeMutation(api.reservations.updateReservationStatus);
-  const addLogMutation = useSafeMutation(api.bitacora.addLog);
-  const syncOrUpdateOrderMutation = useSafeMutation(api.orders.syncOrUpdateOrder);
+  const authorizeUserMutation = useMutation(api.users.authorizeUser);
+  const deactivateUserMutation = useMutation(api.users.deactivateUser);
+  const createReservationMutation = useMutation(api.reservations.createReservation);
+  const createReservationAndOrderMutation = useMutation(api.reservations.createReservationAndOrder);
+  const updateReservationMutation = useMutation(api.reservations.updateReservation);
+  const updateReservationStatusMutation = useMutation(api.reservations.updateReservationStatus);
+  const addLogMutation = useMutation(api.bitacora.addLog);
+  const syncOrUpdateOrderMutation = useMutation(api.orders.syncOrUpdateOrder);
+  const updateSettingMutation = useMutation(api.admin.updateSetting);
+  const syncMenuItemsMutation = useMutation(api.menuItems.syncMenuItems);
 
   // Wrapper to intercept local UI state updates and synchronize them to Convex
   const updateData = (newData: Partial<AppData>) => {
+    // Sync settings to Convex
+    if (newData.exchangeRate && JSON.stringify(newData.exchangeRate) !== JSON.stringify(data.exchangeRate)) {
+      updateSettingMutation({ key: "exchangeRate", value: newData.exchangeRate }).catch(console.warn);
+    }
+    if (newData.landingConfig && JSON.stringify(newData.landingConfig) !== JSON.stringify(data.landingConfig)) {
+      updateSettingMutation({ key: "landingConfig", value: newData.landingConfig }).catch(console.warn);
+    }
+    if (newData.menuItems && JSON.stringify(newData.menuItems) !== JSON.stringify(data.menuItems)) {
+      syncMenuItemsMutation({ 
+        items: newData.menuItems.map((item: any) => ({
+          name: item.name || '',
+          category: item.category || 'Otros',
+          priceCUP: item.priceCUP || 0,
+          priceUSD: item.priceUSD || 0,
+          isAvailable: item.isAvailable !== false,
+          image: item.image || '',
+        })),
+        username: 'Administrador'
+      }).catch(console.warn);
+    }
+
     // 1. Sync local audit logs to Convex
     if (newData.auditLogs && newData.auditLogs.length > 0) {
       const existing = data.auditLogs || [];
@@ -244,9 +289,7 @@ export default function App() {
   useEffect(() => {
     const checkSessions = async () => {
       const currentDeviceIdClean = deviceId.trim().toUpperCase();
-      const currentIds = (mergedData.adminConfig as any)?.authorizedAdminIds || ['DVC-39D3R'];
-      const isAdminDevice = ADMIN_DEVICE_IDS.includes(currentDeviceIdClean) || 
-        currentIds.some((id: string) => id.trim().toUpperCase() === currentDeviceIdClean);
+      const isAdminDevice = ADMIN_DEVICE_IDS.includes(currentDeviceIdClean); 
 
       // If Convex liveUser exists and is active, automatically recognize user
       if (liveUser && liveUser.isActive) {
@@ -418,7 +461,7 @@ export default function App() {
   }, []);
 
   const mappedLogs = useMemo(() => {
-    const raw = (liveLogs && liveLogs.length > 0) ? liveLogs : (data.auditLogs || []);
+    const raw = (liveLogs !== undefined) ? liveLogs : (data.auditLogs || []);
     return raw.map((ll: any) => ({
       id: ll._id || ll.id,
       timestamp: ll.timestamp || Date.now(),

@@ -1,11 +1,11 @@
 import React from 'react';
 import { api } from '../../convex/_generated/api';
-import { useSafeQuery } from '../hooks/useSafeConvex';
+import { useQuery } from 'convex/react';
 import { Activity, ShieldCheck, Clock, Terminal } from 'lucide-react';
 
 export function BitacoraStream() {
   // Real-time reactive Convex query streaming audit logs
-  const logs = useSafeQuery<any[]>(api.bitacora.getLiveLogs, { limit: 50 });
+  const logs = useQuery(api.bitacora.getLiveLogs, { limit: 50 });
 
   if (!logs) {
     return (

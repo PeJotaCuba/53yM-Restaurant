@@ -48,12 +48,9 @@ export function LoginModal({ data, isOpen, onClose, onAdminLogin, onDependentLog
 
     if ((isAdminUsernameMatch || isAdminPhoneMatch) && isAdminPasswordMatch) {
       // Check if current deviceId is authorized for Admin
-      const authorizedAdminIds = (admin as any).authorizedAdminIds || ['DVC-39D3R'];
-      const isAdminDeviceValid = ADMIN_DEVICE_IDS.includes(currentDeviceIdClean) || 
-        authorizedAdminIds.some((id: string) => id.trim().toUpperCase() === currentDeviceIdClean);
+      const isAdminDeviceValid = ADMIN_DEVICE_IDS.includes(currentDeviceIdClean); 
 
       if (!isAdminDeviceValid) {
-        setError(`Acceso denegado: La cuenta de Administrador solo puede abrirse en los dispositivos autorizados (${authorizedAdminIds.join(', ')}). Tu ID de dispositivo actual es: ${deviceId || 'Desconocido'}.`);
         return;
       }
 

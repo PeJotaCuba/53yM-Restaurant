@@ -8,6 +8,7 @@
  * @module
  */
 
+import type * as admin from "../admin.js";
 import type * as bitacora from "../bitacora.js";
 import type * as menuItems from "../menuItems.js";
 import type * as orders from "../orders.js";
@@ -22,6 +23,7 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  admin: typeof admin;
   bitacora: typeof bitacora;
   menuItems: typeof menuItems;
   orders: typeof orders;

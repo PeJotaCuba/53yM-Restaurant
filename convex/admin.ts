@@ -1,6 +1,18 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 
+export const getAllSettings = query({
+  args: {},
+  handler: async (ctx) => {
+    const settings = await ctx.db.query("settings").collect();
+    const result: Record<string, any> = {};
+    for (const s of settings) {
+      result[s.key] = s.value;
+    }
+    return result;
+  },
+});
+
 export const getSetting = query({
   args: { key: v.string() },
   handler: async (ctx, args) => {
@@ -37,13 +49,11 @@ export const resetWorkday = mutation({
     for (const o of orders) {
       await ctx.db.delete(o._id);
     }
-
     // 2. Delete all reservations
     const reservations = await ctx.db.query("reservations").collect();
     for (const r of reservations) {
       await ctx.db.delete(r._id);
     }
-
     // 3. Delete non-admin users (dependents, managers, kitchen)
     const users = await ctx.db.query("users").collect();
     for (const u of users) {
@@ -51,13 +61,11 @@ export const resetWorkday = mutation({
         await ctx.db.delete(u._id);
       }
     }
-
     // 4. Clear bitacora logs (since audit log was downloaded)
     const logs = await ctx.db.query("bitacora").collect();
     for (const l of logs) {
       await ctx.db.delete(l._id);
     }
-
     // Note: cashRegisterCloses (comprobantes de pago / recibos) are preserved
 
     await ctx.db.insert("bitacora", {
@@ -66,7 +74,6 @@ export const resetWorkday = mutation({
       username: "Administrador",
       timestamp: Date.now(),
     });
-
     return { success: true };
   },
 });

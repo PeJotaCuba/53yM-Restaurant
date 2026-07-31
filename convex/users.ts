@@ -190,53 +190,6 @@ export const removeUserByUsername = mutation({
   },
 });
 
-/**
- * Set authorized admin device IDs (up to 3 total)
- */
-export const setAdminAuthorizedIds = mutation({
-  args: {
-    authorizedAdminIds: v.array(v.string()),
-  },
-  handler: async (ctx, args) => {
-    const configRecord = await ctx.db
-      .query("users")
-      .filter((q) => q.eq(q.field("username"), "admin_config_doc"))
-      .first();
-
-    if (configRecord) {
-      await ctx.db.patch(configRecord._id, {
-        authorizedAdminIds: args.authorizedAdminIds,
-      });
-    } else {
-      await ctx.db.insert("users", {
-        username: "admin_config_doc",
-        name: "Configuración de Administrador",
-        role: "admin",
-        deviceId: "SYSTEM",
-        isActive: true,
-        loginTime: Date.now(),
-        authorizedAdminIds: args.authorizedAdminIds,
-      });
-    }
-    return { success: true };
-  },
-});
-
-/**
- * Get authorized admin device IDs
- */
-export const getAdminAuthorizedIds = query({
-  args: {},
-  handler: async (ctx) => {
-    const configRecord = await ctx.db
-      .query("users")
-      .filter((q) => q.eq(q.field("username"), "admin_config_doc"))
-      .first();
-
-    return configRecord?.authorizedAdminIds || [];
-  },
-});
-
 export const getLiveUserByUsername = query({
   args: { username: v.string() },
   handler: async (ctx, args) => {

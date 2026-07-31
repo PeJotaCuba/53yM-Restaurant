@@ -47,11 +47,23 @@ export const syncMenuItems = mutation({
   },
   handler: async (ctx, args) => {
     const existing = await ctx.db.query("menuItems").collect();
+    const existingMap = new Map(existing.map(e => [e.name.toLowerCase().trim(), e]));
+    const incomingNames = new Set(args.items.map(i => i.name.toLowerCase().trim()));
+
     for (const item of existing) {
-      await ctx.db.delete(item._id);
+      if (!incomingNames.has(item.name.toLowerCase().trim())) {
+        await ctx.db.delete(item._id);
+      }
     }
+
     for (const item of args.items) {
-      await ctx.db.insert("menuItems", item);
+      const key = item.name.toLowerCase().trim();
+      const found = existingMap.get(key);
+      if (found) {
+        await ctx.db.patch(found._id, item);
+      } else {
+        await ctx.db.insert("menuItems", item);
+      }
     }
     await ctx.db.insert("bitacora", {
       action: `Menú actualizado por ${args.username} (${args.items.length} platos)`,

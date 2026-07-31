@@ -7,9 +7,9 @@ export function FAQ() {
   const { t } = useLanguage();
 
   const faqs = [
-    { q: '¿Cómo puedo hacer una reserva?', a: 'Puedes realizar tu reserva a través del formulario de nuestra página, o más rápidamente, enviándonos un mensaje directo por WhatsApp o nuestras redes sociales (Facebook o Instagram).' },
-    { q: '¿Qué métodos de pago aceptan?', a: 'Aceptamos pagos en efectivo (CUP) y métodos electrónicos como Transfermóvil y EnZona. También aceptamos USD según disponibilidad.' },
-    { q: '¿Cuál es el horario de atención?', a: 'Nuestro horario de atención al público es de Lunes a Domingo de 12:00 pm a 11:00 pm. Te esperamos para almuerzos, cenas y noches de entretenimiento todos los días de la semana.' }
+    { q: '¿Cómo puedo hacer una reserva?', a: 'La única vía para garantizar tu reserva es a través del formulario de esta página web, donde podrás seleccionar fecha, hora y detalles de tu visita de manera rápida y segura.' },
+    { q: '¿Qué métodos de pago aceptan?', a: 'Aceptamos pagos en efectivo (CUP) y métodos electrónicos como Transfermóvil y EnZona. También aceptamos USD y Euros.' },
+    { q: '¿Existe parqueo para motos y bicicletas?', a: 'Sí, muy cerca del Restaurante se ofrece ese servicio desde las 12:00 PM hasta las 11:00 PM.' }
   ];
 
   const [openIdx, setOpenIdx] = useState<number | null>(0);
