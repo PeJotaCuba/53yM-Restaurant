@@ -72,12 +72,14 @@ export function useSafeQuery<T>(queryFunc: any, args: Record<string, any> = {}):
  */
 export function useSafeMutation(mutationFunc: any) {
   return async (args: Record<string, any>) => {
+    if (!mutationFunc) {
+      throw new Error("Mutation function is not defined");
+    }
     try {
-      if (!mutationFunc) return null;
       return await convex.mutation(mutationFunc, args);
     } catch (err: any) {
-      console.warn('[Convex Safe Mutation Notice]:', err.message || err);
-      return null;
+      console.error('[Convex Mutation Error]:', err.message || err);
+      throw err;
     }
   };
 }
