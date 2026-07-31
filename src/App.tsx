@@ -68,6 +68,11 @@ export default function App() {
   const liveExchangeRate = useQuery(api.admin.getSetting, { key: "exchangeRate" });
   const liveLandingConfig = useQuery(api.admin.getSetting, { key: "landingConfig" });
   const liveAdminConfig = useQuery(api.admin.getSetting, { key: "adminConfig" });
+  const liveComandas = useQuery(api.admin.getSetting, { key: "comandas" });
+  const liveOrderReports = useQuery(api.admin.getSetting, { key: "orderReports" });
+  const liveKitchenReports = useQuery(api.admin.getSetting, { key: "kitchenReports" });
+  const liveCashRegisterCloses = useQuery(api.admin.getSetting, { key: "cashRegisterCloses" });
+  const liveIsShiftActive = useQuery(api.admin.getSetting, { key: "isShiftActive" });
 
   const liveMenuItems = useQuery(api.menuItems.getLiveMenuItems);
   const convexUsers = useQuery(api.users.getAllUsers) || [];
@@ -178,11 +183,28 @@ export default function App() {
       users: convexUsers || [],
       auditLogs: mappedAuditLogs,
       adminConfig: liveAdminConfig || { username: 'gestion53ym', password: 'adminrestaurant.53yM', phone: '54413935' },
-      comandas: [],
-      isShiftActive: true,
+      comandas: liveComandas || [],
+      isShiftActive: liveIsShiftActive !== false,
+      orderReports: liveOrderReports || [],
+      kitchenReports: liveKitchenReports || [],
+      cashRegisterCloses: liveCashRegisterCloses || [],
       downloadsState: { adminAuditLog: false, managerZip: false }
     };
-  }, [liveExchangeRate, liveLandingConfig, liveMenuItems, mappedReservations, mappedOrders, convexUsers, liveLogs, liveAdminConfig]);
+  }, [
+    liveExchangeRate,
+    liveLandingConfig,
+    liveMenuItems,
+    mappedReservations,
+    mappedOrders,
+    convexUsers,
+    liveLogs,
+    liveAdminConfig,
+    liveComandas,
+    liveIsShiftActive,
+    liveOrderReports,
+    liveKitchenReports,
+    liveCashRegisterCloses
+  ]);
 
   const authorizeUserMutation = useMutation(api.users.authorizeUser);
   const deactivateUserMutation = useMutation(api.users.deactivateUser);
@@ -226,6 +248,24 @@ export default function App() {
     if (newData.landingConfig) {
       updateSettingMutation({ key: "landingConfig", value: newData.landingConfig }).catch(console.warn);
     }
+    if (newData.adminConfig) {
+      updateSettingMutation({ key: "adminConfig", value: newData.adminConfig }).catch(console.warn);
+    }
+    if (newData.comandas) {
+      updateSettingMutation({ key: "comandas", value: newData.comandas }).catch(console.warn);
+    }
+    if (newData.orderReports) {
+      updateSettingMutation({ key: "orderReports", value: newData.orderReports }).catch(console.warn);
+    }
+    if (newData.kitchenReports) {
+      updateSettingMutation({ key: "kitchenReports", value: newData.kitchenReports }).catch(console.warn);
+    }
+    if (newData.cashRegisterCloses) {
+      updateSettingMutation({ key: "cashRegisterCloses", value: newData.cashRegisterCloses }).catch(console.warn);
+    }
+    if (newData.isShiftActive !== undefined) {
+      updateSettingMutation({ key: "isShiftActive", value: newData.isShiftActive }).catch(console.warn);
+    }
     if (newData.menuItems) {
       syncMenuItemsMutation({ 
         items: newData.menuItems.map((item: any) => ({
@@ -250,6 +290,30 @@ export default function App() {
     }
     if (newData.orders && newData.orders.length > 0) {
       newData.orders.forEach((newOrder: any) => {
+        // Optimization: dirty check to only mutate orders that actually changed
+        const existingOrder = appData.orders.find((o: any) => o.id === newOrder.id);
+        if (existingOrder) {
+          const isSameStatus = existingOrder.status === newOrder.status;
+          const isSameTable = existingOrder.tableNumber === newOrder.tableNumber;
+          const isSameAssigned = existingOrder.assignedDependentId === newOrder.assignedDependentId;
+          const isSameItemsLength = (existingOrder.orderItems?.length || 0) === (newOrder.orderItems?.length || 0);
+
+          if (isSameStatus && isSameTable && isSameAssigned && isSameItemsLength) {
+            let itemsChanged = false;
+            for (let i = 0; i < (existingOrder.orderItems?.length || 0); i++) {
+              const oldIt = existingOrder.orderItems[i];
+              const newIt = newOrder.orderItems[i];
+              if (oldIt.name !== newIt?.name || oldIt.quantity !== newIt?.quantity || oldIt.priceCUP !== newIt?.priceCUP) {
+                itemsChanged = true;
+                break;
+              }
+            }
+            if (!itemsChanged) {
+              return; // Skip sync for unchanged order
+            }
+          }
+        }
+
         const formattedItems = (newOrder.orderItems || []).map((item: any, idx: number) => ({
           id: item.id || `item-${idx}`,
           name: item.name || '',
@@ -275,6 +339,22 @@ export default function App() {
         const totalCUP = formattedItems.reduce((acc: number, item: any) => acc + (item.priceCUP * item.quantity), 0);
         const totalUSD = totalCUP / (liveExchangeRate?.usdCUP || 320);
 
+        let currentUsername = undefined;
+        let currentUserRole = undefined;
+        if (adminLoggedIn) {
+          currentUsername = "Administrador";
+          currentUserRole = "admin";
+        } else if (activeManager) {
+          currentUsername = activeManager.name || activeManager.username || "Gerente";
+          currentUserRole = "manager";
+        } else if (activeDependent) {
+          currentUsername = activeDependent.name || activeDependent.username || "Dependiente";
+          currentUserRole = "dependent";
+        } else if (activeKitchen) {
+          currentUsername = activeKitchen.name || activeKitchen.username || "Cocina";
+          currentUserRole = "kitchen";
+        }
+
         syncOrUpdateOrderMutation({
           id: newOrder.id,
           tableNumber: newOrder.tableNumber || 'Mesa 1',
@@ -285,6 +365,8 @@ export default function App() {
           timestamp: newOrder.timestamp || Date.now(),
           assignedDependentId: newOrder.assignedDependentId || 'no_assigned',
           reservationId: newOrder.reservationId || undefined,
+          username: currentUsername,
+          userRole: currentUserRole,
         }).catch(err => console.warn('Convex syncOrder error:', err));
       });
     }

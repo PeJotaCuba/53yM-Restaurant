@@ -64,26 +64,66 @@ export const syncOrUpdateOrder = mutation({
         
         if (oldStatus !== args.status) {
           const userStr = args.username || "Dependiente";
-          let actionText = `Pedido de Mesa #${args.tableNumber} cambió de estado a '${args.status.toUpperCase()}'`;
+          const userRoleStr = args.userRole || "dependiente";
           
           if (args.status === 'in_kitchen' || args.status === 'pending') {
-            actionText = `El dependiente '${userStr}' envió la comanda (Mesa #${args.tableNumber}) a cocina`;
+            if (oldStatus === 'pending_dependent' || oldStatus === 'client_pending') {
+              // Waiter received/approved client comanda and sent to kitchen
+              await ctx.db.insert("bitacora", {
+                action: `PEDIDO RECIBIDO POR DEPENDIENTE: El dependiente '${userStr}' recibió/aceptó el pedido entrante de Mesa #${args.tableNumber}`,
+                userRole: userRoleStr,
+                username: userStr,
+                timestamp: Date.now(),
+              });
+            }
+            await ctx.db.insert("bitacora", {
+              action: `PEDIDO ENVIADO A COCINA: El dependiente '${userStr}' envió la comanda de Mesa #${args.tableNumber} a Cocina`,
+              userRole: userRoleStr,
+              username: userStr,
+              timestamp: Date.now(),
+            });
           } else if (args.status === 'kitchen_in_progress' || args.status === 'in_progress') {
-            actionText = `Cocina inició la elaboración del pedido de Mesa #${args.tableNumber}`;
+            await ctx.db.insert("bitacora", {
+              action: `PEDIDO EN ELABORACIÓN: Cocina inició la elaboración del pedido de Mesa #${args.tableNumber}`,
+              userRole: "kitchen",
+              username: userStr,
+              timestamp: Date.now(),
+            });
           } else if (args.status === 'kitchen_ready' || args.status === 'ready_to_serve') {
-            actionText = `Cocina marcó el pedido de Mesa #${args.tableNumber} como LISTO PARA SERVIR`;
+            await ctx.db.insert("bitacora", {
+              action: `PEDIDO LISTO: Cocina marcó el pedido de Mesa #${args.tableNumber} como LISTO`,
+              userRole: "kitchen",
+              username: userStr,
+              timestamp: Date.now(),
+            });
+            await ctx.db.insert("bitacora", {
+              action: `PEDIDO LISTO / AVISO A DEPENDIENTE: Se notificó al dependiente asignado para servir el pedido de Mesa #${args.tableNumber}`,
+              userRole: "kitchen",
+              username: userStr,
+              timestamp: Date.now(),
+            });
           } else if (args.status === 'delivered') {
-            actionText = `El dependiente '${userStr}' entregó el pedido a Mesa #${args.tableNumber}`;
+            await ctx.db.insert("bitacora", {
+              action: `PEDIDO ENTREGADO: El dependiente '${userStr}' entregó el pedido a Mesa #${args.tableNumber}`,
+              userRole: userRoleStr,
+              username: userStr,
+              timestamp: Date.now(),
+            });
           } else if (args.status === 'paid' || args.status === 'closed') {
-            actionText = `Pedido de Mesa #${args.tableNumber} cobrado y cerrado por ${userStr} ($${args.totalCUP} CUP)`;
+            await ctx.db.insert("bitacora", {
+              action: `PEDIDO COBRADO Y CERRADO: Pedido de Mesa #${args.tableNumber} cobrado y cerrado por ${userStr} ($${args.totalCUP} CUP)`,
+              userRole: userRoleStr,
+              username: userStr,
+              timestamp: Date.now(),
+            });
+          } else {
+            await ctx.db.insert("bitacora", {
+              action: `Pedido de Mesa #${args.tableNumber} cambió de estado a '${args.status.toUpperCase()}'`,
+              userRole: userRoleStr,
+              username: userStr,
+              timestamp: Date.now(),
+            });
           }
-
-          await ctx.db.insert("bitacora", {
-            action: actionText,
-            userRole: args.userRole || "dependiente",
-            username: userStr,
-            timestamp: Date.now(),
-          });
         }
         return existingDoc._id;
       }
@@ -94,7 +134,7 @@ export const syncOrUpdateOrder = mutation({
     const creator = args.username || "Cliente";
     
     await ctx.db.insert("bitacora", {
-      action: `Nuevo pedido creado en Mesa #${args.tableNumber} por ${creator} ($${args.totalCUP} CUP)`,
+      action: `PEDIDO CREADO: Nuevo pedido en Mesa #${args.tableNumber} por ${creator} ($${args.totalCUP} CUP)`,
       userRole: args.userRole || "cliente",
       username: creator,
       timestamp: Date.now(),
@@ -163,7 +203,7 @@ export const sendToKitchen = mutation({
 
     // Auto-insert audit log into Bitacora
     await ctx.db.insert("bitacora", {
-      action: `Pedido de Mesa #${order.tableNumber} enviado a Cocina por ${args.username}`,
+      action: `PEDIDO ENVIADO A COCINA: El dependiente '${args.username}' envió la comanda de Mesa #${order.tableNumber} a Cocina`,
       userRole: args.userRole,
       username: args.username,
       timestamp: now,
@@ -192,8 +232,15 @@ export const markAsReady = mutation({
 
     // Auto-insert audit log into Bitacora
     await ctx.db.insert("bitacora", {
-      action: `Pedido de Mesa #${order.tableNumber} marcado como LISTO PARA SERVIR en Cocina`,
-      userRole: "cocina",
+      action: `PEDIDO LISTO: Cocina marcó el pedido de Mesa #${order.tableNumber} como LISTO`,
+      userRole: "kitchen",
+      username: args.username || "Cocina",
+      timestamp: now,
+    });
+
+    await ctx.db.insert("bitacora", {
+      action: `PEDIDO LISTO / AVISO A DEPENDIENTE: Se notificó al dependiente asignado para servir el pedido de Mesa #${order.tableNumber}`,
+      userRole: "kitchen",
       username: args.username || "Cocina",
       timestamp: now,
     });
@@ -222,7 +269,7 @@ export const closeOrder = mutation({
 
     // Auto-insert audit log into Bitacora
     await ctx.db.insert("bitacora", {
-      action: `Pedido de Mesa #${order.tableNumber} COBRADO y cerrado por ${args.username} ($${order.totalCUP} CUP)`,
+      action: `PEDIDO COBRADO Y CERRADO: Pedido de Mesa #${order.tableNumber} cobrado y cerrado por ${args.username} ($${order.totalCUP} CUP)`,
       userRole: args.userRole,
       username: args.username,
       timestamp: now,
