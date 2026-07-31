@@ -10,13 +10,15 @@ export function FullMenu({
   pendingReservation, 
   menuItems, 
   exchangeRate,
-  onSubmitReservationAndOrder
+  onSubmitReservationAndOrder,
+  updateData
 }: { 
   onClose?: () => void, 
   pendingReservation?: any, 
   menuItems: MenuItem[], 
   exchangeRate?: ExchangeRateConfig,
-  onSubmitReservationAndOrder?: (reservation: any, cartItems: any[], totalPrice: number) => Promise<any>
+  onSubmitReservationAndOrder?: (reservation: any, cartItems: any[], totalPrice: number) => Promise<any>,
+  updateData?: (data: any) => void
 }) {
   const { t } = useLanguage();
   const [activeCategory, setActiveCategory] = useState('Todos');
@@ -80,47 +82,43 @@ export function FullMenu({
       try {
         await onSubmitReservationAndOrder(pendingReservation, cart, totalPrice);
         setCart([]); // Clear client cart state completely upon success
+        if (onClose) onClose();
+        return;
       } catch (err) {
         console.warn("Failed to submit reservation and order dynamically:", err);
         return;
       }
     }
-    
-    let orderText = "";
-    
-    if (pendingReservation) {
-      orderText += `*RESERVA Y PEDIDO ADELANTADO* 🍽️🍷\n\n`;
-      orderText += `👤 Nombre: ${pendingReservation.name}\n`;
-      orderText += `📅 Fecha: ${pendingReservation.date}\n`;
-      orderText += `⏰ Hora: ${pendingReservation.time}\n`;
-      orderText += `👥 Personas: ${pendingReservation.guests}\n`;
-      orderText += `🎉 Ocasión: ${pendingReservation.occasion}\n`;
-      orderText += `\n*PEDIDO ADELANTADO:*\n`;
-    } else {
-      orderText += `*NUEVO PEDIDO - Mesa ${tableNumber}* 🍽️\n\n`;
+
+    const cleanTable = tableNumber ? (tableNumber.toLowerCase().includes('mesa') ? tableNumber : `Mesa ${tableNumber.replace(/\D/g, '') || tableNumber}`) : 'Mesa 1';
+    const formattedItems = cart.map(c => `${c.quantity}x ${c.item.name}`);
+    const orderItemsList = cart.map(c => ({
+      name: c.item.name,
+      quantity: c.quantity,
+      priceCUP: c.item.priceCUP,
+      priceUSD: c.item.priceUSD || (c.item.priceCUP / usdCUP)
+    }));
+
+    const newOrder = {
+      id: `ORD-${Date.now()}`,
+      tableNumber: cleanTable,
+      items: formattedItems,
+      orderItems: orderItemsList,
+      totalAmountCUP: totalPrice,
+      totalAmountUSD: totalPrice / usdCUP,
+      status: 'client_pending',
+      timestamp: Date.now()
+    };
+
+    if (updateData) {
+      updateData({ orders: [newOrder] });
     }
 
-    cart.forEach(c => {
-      orderText += `▪️ ${c.quantity}x ${c.item.name} ($${c.item.priceCUP.toLocaleString()} CUP)\n`;
-    });
-    orderText += `\n💰 *Total del Pedido: ${totalPrice.toLocaleString()} CUP*`;
-
-    const encoded = encodeURIComponent(orderText);
-    
-    // Create an anchor tag and click it to avoid some popup blockers and iframe issues
-    const link = document.createElement('a');
-    link.href = `https://wa.me/5354413935?text=${encoded}`;
-    link.target = '_blank';
-    link.rel = 'noopener noreferrer';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-
-    // Redirect client to normal home view after submitting
-    if (pendingReservation && onClose) {
-      setTimeout(() => {
-        onClose();
-      }, 500);
+    alert(`✅ ¡Pedido enviado con éxito para ${cleanTable}!\n\nEl dependiente asignado a tu mesa ha recibido tu comanda en tiempo real.`);
+    setCart([]);
+    setIsCartOpen(false);
+    if (onClose) {
+      onClose();
     }
   };
 

@@ -78,7 +78,7 @@ export interface Order {
   tableNumber: string;
   items: string[]; // text descriptions or fallback
   orderItems?: OrderItem[]; // structured list with portion quantities & prices
-  status: 'client_pending' | 'pending' | 'kitchen_in_progress' | 'kitchen_ready' | 'delivered';
+  status: 'client_pending' | 'pending' | 'in_kitchen' | 'pending_dependent' | 'kitchen_in_progress' | 'in_progress' | 'kitchen_ready' | 'ready_to_serve' | 'delivered' | 'paid' | 'closed';
   timestamp: number;
 }
 

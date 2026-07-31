@@ -37,26 +37,37 @@ export const syncOrUpdateOrder = mutation({
       reservationId: args.reservationId,
     };
 
-    if (args.id && !args.id.startsWith("temp-") && args.id.length > 5) {
-      try {
-        const orderId = args.id as any;
-        const existing = await ctx.db.get(orderId) as any;
-        if (existing) {
-          const oldStatus = existing.status;
-          await ctx.db.patch(orderId, data);
-          
-          if (oldStatus !== args.status) {
-            await ctx.db.insert("bitacora", {
-              action: `Pedido de Mesa #${args.tableNumber} cambió de estado a '${args.status.toUpperCase()}'`,
-              userRole: "sistema",
-              username: "Sistema",
-              timestamp: Date.now(),
-            });
-          }
-          return orderId;
+    if (args.id) {
+      let existingDoc: any = null;
+      // 1. Try ctx.db.get if valid Convex ID format
+      if (!args.id.startsWith("ORD-") && !args.id.startsWith("temp-") && args.id.length > 5) {
+        try {
+          existingDoc = await ctx.db.get(args.id as any);
+        } catch (e) {
+          // Ignore invalid id error
         }
-      } catch (e) {
-        console.warn("Error patching order by ID:", e);
+      }
+      // 2. If not found by direct ID, search in orders collection
+      if (!existingDoc) {
+        const allOrders = await ctx.db.query("orders").collect();
+        existingDoc = allOrders.find(
+          o => o._id === args.id || (o as any).id === args.id || (o.tableNumber === args.tableNumber && Math.abs(o.timestamp - (args.timestamp || 0)) < 10000)
+        );
+      }
+
+      if (existingDoc) {
+        const oldStatus = existingDoc.status;
+        await ctx.db.patch(existingDoc._id, data);
+        
+        if (oldStatus !== args.status) {
+          await ctx.db.insert("bitacora", {
+            action: `Pedido de Mesa #${args.tableNumber} cambió de estado a '${args.status.toUpperCase()}'`,
+            userRole: "sistema",
+            username: "Sistema",
+            timestamp: Date.now(),
+          });
+        }
+        return existingDoc._id;
       }
     }
 

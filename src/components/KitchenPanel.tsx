@@ -30,10 +30,10 @@ export function KitchenPanel({ data, updateData, kitchenInfo }: KitchenPanelProp
 
   // Filter orders
   const filteredOrders = orders.filter(o => {
-    if (filter === 'pending') return o.status === 'pending';
-    if (filter === 'in_progress') return o.status === 'kitchen_in_progress';
-    if (filter === 'ready') return o.status === 'kitchen_ready';
-    return true;
+    if (filter === 'pending') return o.status === 'pending' || o.status === 'in_kitchen' || o.status === 'client_pending' || o.status === 'pending_dependent';
+    if (filter === 'in_progress') return o.status === 'kitchen_in_progress' || o.status === 'in_progress';
+    if (filter === 'ready') return o.status === 'kitchen_ready' || o.status === 'ready_to_serve';
+    return o.status !== 'paid' && o.status !== 'closed';
   });
 
   const isShiftActive = data.isShiftActive !== false;

@@ -64,10 +64,10 @@ export function DependentPanel({ data, updateData, dependentInfo }: DependentPan
   // Exchange rate & ready kitchen orders
   const usdCUP = data.exchangeRate?.usdCUP || 320;
   const eurCUP = data.exchangeRate?.eurCUP || 350;
-  const readyKitchenOrders = (data.orders || []).filter(o => o.status === 'kitchen_ready');
+  const readyKitchenOrders = (data.orders || []).filter(o => o.status === 'kitchen_ready' || o.status === 'ready_to_serve');
 
   // Filter incoming client pending orders for table
-  const clientPendingOrders = (data.orders || []).filter(o => o.status === 'client_pending' && o.tableNumber === activeTableNumber);
+  const clientPendingOrders = (data.orders || []).filter(o => (o.status === 'client_pending' || o.status === 'pending_dependent') && (o.tableNumber === activeTableNumber || o.tableNumber?.includes(activeTableNumber.replace(/\D/g, ''))));
 
   const isShiftActive = data.isShiftActive !== false;
 

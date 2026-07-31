@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { api } from '../convex/_generated/api';
 import { useQuery, useMutation } from 'convex/react';
 import { ConvexErrorBoundary } from './components/ConvexErrorBoundary';
@@ -29,6 +29,7 @@ import { useDeviceId } from './hooks/useDeviceId';
 import { DependentConfig, ManagerConfig, Reservation, AppData } from './types';
 import { ADMIN_DEVICE_IDS } from './utils/deviceUtils';
 import { useLanguage } from './context/LanguageContext';
+import { MENU_ITEMS } from './data';
 
 export default function App() {
   console.log('[App] Rendering...');
@@ -160,13 +161,29 @@ export default function App() {
     const currentExchangeRate = liveExchangeRate || data.exchangeRate;
     const currentLandingConfig = liveLandingConfig || data.landingConfig;
     const currentAdminConfig = liveAdminConfig || data.adminConfig;
-    const currentMenuItems = (liveMenuItems !== undefined) ? liveMenuItems : data.menuItems;
+    
+    const mappedMenuItems = (liveMenuItems && liveMenuItems.length > 0)
+      ? liveMenuItems.map((item: any) => ({
+          id: item._id || item.id,
+          name: item.name || '',
+          category: item.category || 'Otros',
+          priceCUP: item.priceCUP || 0,
+          priceUSD: item.priceUSD || 0,
+          isAvailable: item.isAvailable !== false,
+          shortDescription: item.description || item.shortDescription || '',
+          sensoryDescription: item.sensoryDescription || item.description || '',
+          story: item.story || '',
+          ingredients: item.ingredients || [],
+          imageUrl: item.image || item.imageUrl || '',
+          image: item.image || item.imageUrl || ''
+        }))
+      : (data.menuItems || []);
 
     return {
       ...data,
       exchangeRate: currentExchangeRate,
       landingConfig: currentLandingConfig,
-      menuItems: currentMenuItems,
+      menuItems: mappedMenuItems,
       reservations: mappedReservations,
       orders: mappedOrders,
       managers: dbManagers,
@@ -186,6 +203,29 @@ export default function App() {
   const syncOrUpdateOrderMutation = useMutation(api.orders.syncOrUpdateOrder);
   const updateSettingMutation = useMutation(api.admin.updateSetting);
   const syncMenuItemsMutation = useMutation(api.menuItems.syncMenuItems);
+
+  const hasSeededMenuRef = useRef(false);
+
+  // Auto-seed initial menu items to Convex if Convex menuItems is empty
+  useEffect(() => {
+    if (!hasSeededMenuRef.current && liveMenuItems !== undefined && liveMenuItems.length === 0 && MENU_ITEMS && MENU_ITEMS.length > 0) {
+      hasSeededMenuRef.current = true;
+      syncMenuItemsMutation({
+        items: MENU_ITEMS.map((item: any) => ({
+          name: item.name || '',
+          category: item.category || 'Otros',
+          priceCUP: item.priceCUP || 0,
+          priceUSD: item.priceUSD || 0,
+          isAvailable: item.isAvailable !== false,
+          image: item.imageUrl || item.image || '',
+        })),
+        username: 'Sistema'
+      }).catch(err => {
+        hasSeededMenuRef.current = false;
+        console.warn('Convex seed menu error:', err);
+      });
+    }
+  }, [liveMenuItems]);
 
   // Wrapper to intercept local UI state updates and synchronize them to Convex
   const updateData = (newData: Partial<AppData>) => {
@@ -708,10 +748,11 @@ export default function App() {
     switch (currentView) {
       case 'menu':
         return <FullMenu 
-          menuItems={data.menuItems || []}
-          exchangeRate={data.exchangeRate}
+          menuItems={mergedData.menuItems || []}
+          exchangeRate={mergedData.exchangeRate}
           pendingReservation={pendingReservation}
           onSubmitReservationAndOrder={handleSendReservationAndOrder}
+          updateData={updateData}
           onClose={() => {
             setCurrentView('home');
             window.scrollTo(0, 0);
