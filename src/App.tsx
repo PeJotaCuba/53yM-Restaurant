@@ -67,11 +67,53 @@ export default function App() {
   const liveLogs = useSafeQuery<any[]>(api.bitacora.getLiveLogs, { limit: 100 });
   const convexUsers = useSafeQuery<any[]>(api.users.getAllUsers) || [];
 
-  // Create a merged AppData object that combines local data with live Convex users!
+  const mappedReservations = useMemo(() => {
+    const raw = (liveReservations && liveReservations.length > 0) ? liveReservations : (data.reservations || []);
+    return raw.map((lr: any) => ({
+      id: lr._id || lr.id,
+      name: lr.customerName || lr.name || 'Cliente',
+      date: lr.date,
+      time: lr.timeSlot || lr.time || '12:00',
+      guests: lr.guests || 2,
+      occasion: lr.occasion || lr.area || 'Cena casual',
+      phone: lr.phone || '',
+      email: lr.email || '',
+      dishReference: lr.dishReference || '',
+      dishes: lr.dishes || [],
+      status: lr.status || 'pending',
+      createdAt: lr.createdAt || Date.now(),
+    }));
+  }, [liveReservations, data.reservations]);
+
+  const mappedOrders = useMemo(() => {
+    const raw = (liveOrders && liveOrders.length > 0) ? liveOrders : (data.orders || []);
+    return raw.map((lo: any) => {
+      const itemsList = lo.items ? lo.items.map((i: any) => typeof i === 'string' ? i : `${i.quantity}x ${i.name}`) : [];
+      return {
+        id: lo._id || lo.id,
+        tableNumber: lo.tableNumber || 'Mesa',
+        items: itemsList,
+        orderItems: (lo.items || []).map((item: any) => ({
+          id: item.id || 'item-' + Math.random(),
+          name: item.name,
+          quantity: item.quantity,
+          priceCUP: item.priceCUP || 0,
+          priceUSD: item.priceUSD || 0,
+          notes: item.notes || '',
+        })),
+        totalCUP: lo.totalCUP || 0,
+        totalUSD: lo.totalUSD || 0,
+        status: lo.status || 'pending_dependent',
+        timestamp: lo.timestamp || Date.now(),
+        assignedDependentId: lo.assignedDependentId || 'no_assigned',
+        reservationId: lo.reservationId,
+      };
+    });
+  }, [liveOrders, data.orders]);
+
+  // Create a merged AppData object that combines local data with live Convex users, reservations, and orders!
   const mergedData = useMemo(() => {
-    if (!convexUsers || convexUsers.length === 0) return data;
-    
-    const dbManagers = convexUsers
+    const dbManagers = (convexUsers || [])
       .filter((u: any) => u.role === 'manager')
       .map((u: any) => ({
         id: u._id,
@@ -83,7 +125,7 @@ export default function App() {
         isActive: u.isActive !== false
       }));
 
-    const dbDependents = convexUsers
+    const dbDependents = (convexUsers || [])
       .filter((u: any) => u.role === 'dependent')
       .map((u: any) => ({
         id: u._id,
@@ -96,12 +138,13 @@ export default function App() {
         isActive: u.isActive !== false
       }));
 
-    // Also get the authorizedAdminIds if present
-    const configRecord = convexUsers.find((u: any) => u.username === 'admin_config_doc');
+    const configRecord = (convexUsers || []).find((u: any) => u.username === 'admin_config_doc');
     const authorizedAdminIds = configRecord?.authorizedAdminIds || ['DVC-39D3R'];
 
     return {
       ...data,
+      reservations: mappedReservations,
+      orders: mappedOrders,
       managers: dbManagers,
       dependents: dbDependents,
       adminConfig: {
@@ -109,7 +152,7 @@ export default function App() {
         authorizedAdminIds
       }
     };
-  }, [data, convexUsers]);
+  }, [data, convexUsers, mappedReservations, mappedOrders]);
 
   const authorizeUserMutation = useSafeMutation(api.users.authorizeUser);
   const deactivateUserMutation = useSafeMutation(api.users.deactivateUser);
@@ -374,160 +417,23 @@ export default function App() {
     }
   }, []);
 
-  // Real-Time Reservations Sync from Convex to Local State
-  useEffect(() => {
-    if (liveReservations && liveReservations.length > 0) {
-      const mapped = liveReservations.map((lr: any) => ({
-        id: lr._id,
-        name: lr.customerName || 'Cliente',
-        date: lr.date,
-        time: lr.timeSlot || '12:00',
-        guests: lr.guests || 2,
-        occasion: lr.occasion || lr.area || 'Cena casual',
-        phone: lr.phone || '',
-        email: lr.email || '',
-        dishReference: lr.dishReference || '',
-        dishes: lr.dishes || [],
-        status: lr.status || 'pending',
-        createdAt: lr.createdAt || Date.now(),
-      }));
-
-      const currentLocals = data.reservations || [];
-      let changed = false;
-      const merged = [...currentLocals];
-
-      mapped.forEach((lr: any) => {
-        const existingIdx = merged.findIndex(r => r.id === lr.id);
-        if (existingIdx >= 0) {
-          const existing = merged[existingIdx];
-          if (
-            existing.status !== lr.status ||
-            existing.name !== lr.name ||
-            existing.date !== lr.date ||
-            existing.time !== lr.time ||
-            existing.guests !== lr.guests ||
-            existing.phone !== lr.phone
-          ) {
-            merged[existingIdx] = { ...existing, ...lr };
-            changed = true;
-          }
-        } else {
-          merged.unshift(lr);
-          changed = true;
-        }
-      });
-
-      if (changed) {
-        rawUpdateData({ reservations: merged });
-      }
-    }
-  }, [liveReservations]);
-
-  // Real-Time Orders Sync from Convex to Local State
-  useEffect(() => {
-    if (liveOrders && liveOrders.length > 0) {
-      const mapped = liveOrders.map((lo: any) => {
-        // Build items list as text descriptions for backward compatibility
-        const itemsList = lo.items ? lo.items.map((i: any) => `${i.quantity}x ${i.name}`) : [];
-        return {
-          id: lo._id,
-          tableNumber: lo.tableNumber || 'Mesa',
-          items: itemsList,
-          orderItems: (lo.items || []).map((item: any) => ({
-            id: item.id,
-            name: item.name,
-            quantity: item.quantity,
-            priceCUP: item.priceCUP || 0,
-            priceUSD: item.priceUSD || 0,
-            notes: item.notes || '',
-          })),
-          totalCUP: lo.totalCUP || 0,
-          totalUSD: lo.totalUSD || 0,
-          status: lo.status || 'pending_dependent',
-          timestamp: lo.timestamp || Date.now(),
-          assignedDependentId: lo.assignedDependentId || 'no_assigned',
-          reservationId: lo.reservationId,
-        };
-      });
-
-      const currentLocals = data.orders || [];
-      let changed = false;
-      const merged = [...currentLocals];
-
-      mapped.forEach((lo: any) => {
-        const existingIdx = merged.findIndex(o => o.id === lo.id);
-        if (existingIdx >= 0) {
-          const existing = merged[existingIdx];
-          if (
-            existing.status !== lo.status ||
-            existing.tableNumber !== lo.tableNumber ||
-            existing.totalCUP !== lo.totalCUP ||
-            existing.assignedDependentId !== lo.assignedDependentId ||
-            JSON.stringify(existing.orderItems) !== JSON.stringify(lo.orderItems)
-          ) {
-            merged[existingIdx] = { ...existing, ...lo };
-            changed = true;
-          }
-        } else {
-          merged.unshift(lo);
-          changed = true;
-        }
-      });
-
-      if (changed) {
-        rawUpdateData({ orders: merged });
-      }
-    }
-  }, [liveOrders]);
-
-  // Real-Time Bitacora Sync from Convex to Local State
-  useEffect(() => {
-    if (liveLogs && liveLogs.length > 0) {
-      const mapped = liveLogs.map((ll: any) => ({
-        id: ll._id,
-        timestamp: ll.timestamp || Date.now(),
-        timeStr: new Date(ll.timestamp).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }),
-        dateStr: new Date(ll.timestamp).toLocaleDateString('es-ES'),
-        role: (ll.userRole === 'admin' ? 'Administrador' :
-               ll.userRole === 'manager' ? 'Gerente' :
-               ll.userRole === 'dependent' ? 'Dependiente' :
-               ll.userRole === 'kitchen' ? 'Cocina' :
-               ll.userRole === 'sistema' ? 'Sistema' : 'Cliente') as any,
-        userOrDevice: ll.username || 'Cliente',
-        action: ll.action || '',
-        details: ll.action || '',
-      }));
-
-      const currentLocals = data.auditLogs || [];
-      let changed = false;
-      const merged = [...currentLocals];
-
-      mapped.forEach((ll: any) => {
-        const existingIdx = merged.findIndex(log => log.id === ll.id);
-        if (existingIdx >= 0) {
-          const existing = merged[existingIdx];
-          if (
-            existing.action !== ll.action ||
-            existing.role !== ll.role ||
-            existing.userOrDevice !== ll.userOrDevice
-          ) {
-            merged[existingIdx] = { ...existing, ...ll };
-            changed = true;
-          }
-        } else {
-          merged.push(ll);
-          changed = true;
-        }
-      });
-
-      // Sort merged logs descending by timestamp
-      merged.sort((a, b) => b.timestamp - a.timestamp);
-
-      if (changed) {
-        rawUpdateData({ auditLogs: merged });
-      }
-    }
-  }, [liveLogs]);
+  const mappedLogs = useMemo(() => {
+    const raw = (liveLogs && liveLogs.length > 0) ? liveLogs : (data.auditLogs || []);
+    return raw.map((ll: any) => ({
+      id: ll._id || ll.id,
+      timestamp: ll.timestamp || Date.now(),
+      timeStr: new Date(ll.timestamp || Date.now()).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }),
+      dateStr: new Date(ll.timestamp || Date.now()).toLocaleDateString('es-ES'),
+      role: (ll.userRole === 'admin' ? 'Administrador' :
+             ll.userRole === 'manager' ? 'Gerente' :
+             ll.userRole === 'dependent' ? 'Dependiente' :
+             ll.userRole === 'kitchen' ? 'Cocina' :
+             ll.userRole === 'sistema' ? 'Sistema' : 'Cliente') as any,
+      userOrDevice: ll.username || ll.userOrDevice || 'Cliente',
+      action: ll.action || ll.details || '',
+      details: ll.action || ll.details || '',
+    })).sort((a: any, b: any) => b.timestamp - a.timestamp);
+  }, [liveLogs, data.auditLogs]);
 
   const [pendingReservation, setPendingReservation] = useState<any>(null);
 
