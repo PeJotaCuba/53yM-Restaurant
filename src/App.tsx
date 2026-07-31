@@ -36,6 +36,26 @@ export default function App() {
   const [currentView, setCurrentView] = useState('home');
   const [selectedDishForReservation, setSelectedDishForReservation] = useState<string | undefined>(undefined);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
+  const [showFirstTimeModal, setShowFirstTimeModal] = useState(false);
+  const [firstTimeName, setFirstTimeName] = useState('');
+
+  useEffect(() => {
+    const savedName = localStorage.getItem('clientUserName');
+    if (!savedName) {
+      setShowFirstTimeModal(true);
+    }
+  }, []);
+
+  const handleSaveFirstTimeName = (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmed = firstTimeName.trim();
+    if (trimmed) {
+      localStorage.setItem('clientUserName', trimmed);
+      setShowFirstTimeModal(false);
+    } else {
+      alert('Por favor ingresa tu nombre.');
+    }
+  };
 
   const deviceId = useDeviceId();
   const { data, loading, updateData: rawUpdateData, syncExcelencia } = useDataSync();
@@ -535,8 +555,12 @@ export default function App() {
         totalUSD: totalPrice / (data.exchangeRate?.usdCUP || 320),
       });
 
-      const resId = result?.reservationId || 'temp-res-' + Math.random().toString(36).substr(2, 9);
-      const ordId = result?.orderId || 'temp-ord-' + Math.random().toString(36).substr(2, 9);
+      if (!result || !result.reservationId || !result.orderId) {
+        throw new Error("Respuesta inválida de Convex al crear reserva y pedido");
+      }
+
+      const resId = result.reservationId;
+      const ordId = result.orderId;
 
       const newReservation = {
         id: resId,
@@ -582,9 +606,9 @@ export default function App() {
       setCurrentView('dashboard');
       window.scrollTo(0, 0);
       return result;
-    } catch (err) {
+    } catch (err: any) {
       console.error("Error creating reservation and order:", err);
-      alert("Hubo un problema al enviar su pedido. Por favor intente nuevamente.");
+      alert("Hubo un problema al enviar su reserva y pedido al servidor Convex. Por favor intente nuevamente.");
       throw err;
     }
   };
@@ -605,9 +629,8 @@ export default function App() {
       return;
     }
 
-    let convexId: any = null;
     try {
-      convexId = await createReservationMutation({
+      const convexId = await createReservationMutation({
         customerName: sanitizeString(cleanData.name || cleanData.customerName || 'Cliente'),
         date: cleanData.date || new Date().toISOString().split('T')[0],
         timeSlot: cleanData.time || cleanData.timeSlot || '12:00',
@@ -618,33 +641,38 @@ export default function App() {
         occasion: cleanData.occasion || 'Cena casual',
         dishReference: cleanData.dishReference || '',
       });
-    } catch (e) {
-      console.warn('Convex reservation write error:', e);
-    }
 
-    const newReservation = {
-      id: convexId || 'temp-' + Math.random().toString(36).substr(2, 9),
-      name: cleanData.name || 'Cliente',
-      phone: cleanData.phone || '',
-      email: cleanData.email || '',
-      date: cleanData.date || '',
-      time: cleanData.time || '',
-      guests: Number(cleanData.guests) || 2,
-      occasion: cleanData.occasion || 'Cena casual',
-      dishReference: cleanData.dishReference || '',
-      status: 'pending' as const,
-      createdAt: Date.now()
-    };
-    
-    const updatedReservations = [newReservation, ...(data.reservations || [])];
-    updateData({ reservations: updatedReservations });
-    
-    setSelectedDishForReservation(undefined);
-    
-    alert("¡Tu reservación ha sido enviada con éxito! Queda pendiente de confirmación por el Administrador.");
-    
-    setCurrentView('dashboard');
-    window.scrollTo(0, 0);
+      if (!convexId) {
+        throw new Error("No se pudo obtener ID de Convex para la reserva");
+      }
+
+      const newReservation = {
+        id: convexId,
+        name: cleanData.name || 'Cliente',
+        phone: cleanData.phone || '',
+        email: cleanData.email || '',
+        date: cleanData.date || '',
+        time: cleanData.time || '',
+        guests: Number(cleanData.guests) || 2,
+        occasion: cleanData.occasion || 'Cena casual',
+        dishReference: cleanData.dishReference || '',
+        status: 'pending' as const,
+        createdAt: Date.now()
+      };
+      
+      const updatedReservations = [newReservation, ...(data.reservations || [])];
+      updateData({ reservations: updatedReservations });
+      
+      setSelectedDishForReservation(undefined);
+      
+      alert("¡Tu reservación ha sido enviada con éxito! Queda pendiente de confirmación por el Administrador.");
+      
+      setCurrentView('dashboard');
+      window.scrollTo(0, 0);
+    } catch (e: any) {
+      console.error('Convex reservation write error:', e);
+      alert("Error al enviar la reservación al servidor Convex. Por favor, verifique los datos e intente nuevamente.");
+    }
   };
 
   if (loading) {
@@ -974,6 +1002,39 @@ export default function App() {
       />
 
       <PWAInstallBanner />
+
+      {showFirstTimeModal && userRole === 'none' && (
+        <div className="fixed inset-0 bg-stone-950/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-white rounded-3xl max-w-md w-full p-8 shadow-2xl border border-stone-200">
+            <div className="text-center mb-6">
+              <div className="w-16 h-16 bg-dark-green/10 text-dark-green rounded-full flex items-center justify-center mx-auto mb-4 text-2xl">
+                👋
+              </div>
+              <h3 className="text-2xl font-serif text-dark-green mb-2">¡Bienvenido a 53&M!</h3>
+              <p className="text-sm text-stone-600">
+                Para mejorar tu experiencia en el restaurante y terraza, por favor ingresa tu nombre:
+              </p>
+            </div>
+            <form onSubmit={handleSaveFirstTimeName} className="space-y-4">
+              <input
+                type="text"
+                placeholder="Tu nombre (ej. Carlos Pérez)"
+                value={firstTimeName}
+                onChange={(e) => setFirstTimeName(e.target.value)}
+                autoFocus
+                className="w-full p-4 bg-stone-50 border border-stone-200 rounded-xl focus:ring-2 focus:ring-gold outline-none text-stone-800 font-medium text-center text-lg"
+              />
+              <button
+                type="submit"
+                disabled={!firstTimeName.trim()}
+                className="w-full bg-dark-green text-white py-4 rounded-xl font-bold uppercase tracking-wider hover:bg-stone-800 transition-colors shadow-md disabled:opacity-50 cursor-pointer"
+              >
+                Comenzar Experiencia
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
