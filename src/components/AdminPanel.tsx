@@ -23,6 +23,7 @@ export function AdminPanel({ data, updateData, updateStatus }: AdminPanelProps) 
   const upsertUserMutation = useSafeMutation(api.users.upsertUser);
   const removeUserByUsernameMutation = useSafeMutation(api.users.removeUserByUsername);
   const setAdminAuthorizedIdsMutation = useSafeMutation(api.users.setAdminAuthorizedIds);
+  const resetWorkdayMutation = useSafeMutation((api as any).admin.resetWorkday);
   
   // Exchange Rate state
   const [usdRate, setUsdRate] = useState<number>(data.exchangeRate?.usdCUP || 320);
@@ -402,6 +403,29 @@ export function AdminPanel({ data, updateData, updateStatus }: AdminPanelProps) 
                 <span className="relative inline-flex rounded-full h-3 w-3 bg-blue-500"></span>
               </span>
             )}
+          </button>
+
+          <button
+            onClick={() => {
+              if (!data.downloadsState?.adminAuditLog) {
+                alert('⚠️ ACCIÓN DENEGADA: Debe descargar la bitácora operativa antes de reiniciar la jornada.');
+                return;
+              }
+              const confirmed = window.confirm('⚠️ ADVERTENCIA CRÍTICA: ¿Está seguro de reiniciar la jornada?\n\nEsto eliminará los datos operativos de la jornada actual (dependientes, gerentes, cocina y comandas antiguas).\n\nSe CONSERVARÁN los comprobantes de pago y recibos de caja.\n\nEsta acción no se puede deshacer.');
+              if (confirmed) {
+                resetWorkdayMutation({}).then(() => {
+                  alert('¡Jornada reiniciada exitosamente!');
+                  updateData({
+                    downloadsState: { adminAuditLog: false, managerZip: false }
+                  });
+                }).catch((err: any) => {
+                  alert('Error al reiniciar jornada: ' + (err.message || err));
+                });
+              }
+            }}
+            className="bg-amber-800 hover:bg-amber-700 text-white border border-amber-600 px-4 py-3 rounded-2xl font-bold text-xs transition-all flex items-center gap-2 shadow-sm"
+          >
+            <RefreshCw size={16} /> Reiniciar jornada
           </button>
         </div>
       </div>

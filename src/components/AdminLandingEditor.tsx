@@ -361,11 +361,11 @@ export function AdminLandingEditor({ config, onSave }: AdminLandingEditorProps) 
         <div className="space-y-4">
           <div>
             <label className="block text-sm font-bold text-stone-700 mb-1">Párrafo 1</label>
-            <textarea value={formData.aboutText1} onChange={e => handleChange('aboutText1', e.target.value)} className="w-full border-stone-200 rounded-xl h-24" />
+            <textarea value={formData.aboutText1 || ''} onChange={e => handleChange('aboutText1', e.target.value)} className="w-full border-stone-200 rounded-xl h-24" />
           </div>
           <div>
             <label className="block text-sm font-bold text-stone-700 mb-1">Párrafo 2</label>
-            <textarea value={formData.aboutText2} onChange={e => handleChange('aboutText2', e.target.value)} className="w-full border-stone-200 rounded-xl h-24" />
+            <textarea value={formData.aboutText2 || ''} onChange={e => handleChange('aboutText2', e.target.value)} className="w-full border-stone-200 rounded-xl h-24" />
           </div>
 
           {/* Tags */}

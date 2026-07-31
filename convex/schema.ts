@@ -86,4 +86,9 @@ export default defineSchema({
     username: v.string(),
     timestamp: v.number(),
   }).index("by_timestamp", ["timestamp"]),
+
+  settings: defineTable({
+    key: v.string(),
+    value: v.any(),
+  }).index("by_key", ["key"]),
 });

@@ -30,3 +30,36 @@ export const toggleMenuItemAvailability = mutation({
     return { success: true };
   },
 });
+
+export const syncMenuItems = mutation({
+  args: {
+    items: v.array(
+      v.object({
+        name: v.string(),
+        category: v.string(),
+        priceCUP: v.number(),
+        priceUSD: v.number(),
+        isAvailable: v.boolean(),
+        image: v.optional(v.string()),
+      })
+    ),
+    username: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const existing = await ctx.db.query("menuItems").collect();
+    for (const item of existing) {
+      await ctx.db.delete(item._id);
+    }
+    for (const item of args.items) {
+      await ctx.db.insert("menuItems", item);
+    }
+    await ctx.db.insert("bitacora", {
+      action: `Menú actualizado por ${args.username} (${args.items.length} platos)`,
+      userRole: "admin/gerente",
+      username: args.username,
+      timestamp: Date.now(),
+    });
+    return { success: true };
+  },
+});
+

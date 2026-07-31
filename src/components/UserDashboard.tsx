@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { useDeviceId } from '../hooks/useDeviceId';
 import { useLanguage } from '../context/LanguageContext';
 import { isDeviceRegistered } from '../utils/deviceUtils';
+import { jsPDF } from 'jspdf';
 
 interface UserDashboardProps {
   reservations: Reservation[];
@@ -255,7 +256,6 @@ export function UserDashboard({ reservations, data, updateData, onUpdateReservat
   // Generate PDF receipt for a closed comanda (Client Side)
   const generateComandaPDF = (com: any) => {
     try {
-      const { jsPDF } = require('jspdf');
       const doc = new jsPDF();
       const totalCUP = com.totalAmountCUP || 0;
       const exRates = com.exchangeRateUsed || { usdCUP, eurCUP };
@@ -941,7 +941,7 @@ export function UserDashboard({ reservations, data, updateData, onUpdateReservat
                     <input
                       type="date"
                       required
-                      value={editingRes.date}
+                      value={editingRes.date || ''}
                       onChange={e => setEditingRes({ ...editingRes, date: e.target.value })}
                       className="w-full border-stone-200 rounded-xl text-sm py-2 px-3 focus:border-dark-green outline-none"
                     />
@@ -951,7 +951,7 @@ export function UserDashboard({ reservations, data, updateData, onUpdateReservat
                     <input
                       type="time"
                       required
-                      value={editingRes.time}
+                      value={editingRes.time || ''}
                       onChange={e => setEditingRes({ ...editingRes, time: e.target.value })}
                       className="w-full border-stone-200 rounded-xl text-sm py-2 px-3 focus:border-dark-green outline-none"
                     />
@@ -966,7 +966,7 @@ export function UserDashboard({ reservations, data, updateData, onUpdateReservat
                       min={1}
                       max={30}
                       required
-                      value={editingRes.guests}
+                      value={editingRes.guests || 1}
                       onChange={e => setEditingRes({ ...editingRes, guests: Number(e.target.value) })}
                       className="w-full border-stone-200 rounded-xl text-sm py-2 px-3 focus:border-dark-green outline-none"
                     />
@@ -974,7 +974,7 @@ export function UserDashboard({ reservations, data, updateData, onUpdateReservat
                   <div>
                     <label className="block text-xs font-bold text-stone-700 mb-1">Ocasión</label>
                     <select
-                      value={editingRes.occasion}
+                      value={editingRes.occasion || 'Cena casual'}
                       onChange={e => setEditingRes({ ...editingRes, occasion: e.target.value })}
                       className="w-full border-stone-200 rounded-xl text-sm py-2 px-3 focus:border-dark-green outline-none"
                     >
@@ -992,7 +992,7 @@ export function UserDashboard({ reservations, data, updateData, onUpdateReservat
                   <input
                     type="text"
                     required
-                    value={editingRes.name}
+                    value={editingRes.name || ''}
                     onChange={e => setEditingRes({ ...editingRes, name: e.target.value })}
                     className="w-full border-stone-200 rounded-xl text-sm py-2 px-3 focus:border-dark-green outline-none"
                   />
@@ -1004,7 +1004,7 @@ export function UserDashboard({ reservations, data, updateData, onUpdateReservat
                     <input
                       type="text"
                       required
-                      value={editingRes.phone}
+                      value={editingRes.phone || ''}
                       onChange={e => setEditingRes({ ...editingRes, phone: e.target.value })}
                       className="w-full border-stone-200 rounded-xl text-sm py-2 px-3 focus:border-dark-green outline-none"
                     />
