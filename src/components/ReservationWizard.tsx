@@ -19,11 +19,14 @@ export function ReservationWizard({ initialDish, onComplete, onCancel }: Reserva
     time: '',
     guests: 2,
     occasion: 'Cena casual',
-    name: '',
+    name: localStorage.getItem('clientUserName') || '',
     email: '',
-    phone: '',
+    phone: localStorage.getItem('clientPhone') || '',
     dishReference: initialDish || '',
   });
+
+  const cleanPhone = formData.phone.replace(/\D/g, '');
+  const isPhoneValid = cleanPhone.length === 8;
 
   const updateForm = (key: string, value: any) => {
     setFormData(prev => ({ ...prev, [key]: value }));
@@ -38,6 +41,16 @@ export function ReservationWizard({ initialDish, onComplete, onCancel }: Reserva
   };
 
   const handleSubmit = (advanceOrder: boolean) => {
+    if (!isPhoneValid) {
+      alert('El número de teléfono debe tener exactamente 8 dígitos.');
+      return;
+    }
+    if (formData.name.trim()) {
+      localStorage.setItem('clientUserName', formData.name.trim());
+    }
+    if (formData.phone.trim()) {
+      localStorage.setItem('clientPhone', formData.phone.trim());
+    }
     onComplete({
       ...formData,
     }, advanceOrder);
@@ -274,16 +287,23 @@ export function ReservationWizard({ initialDish, onComplete, onCancel }: Reserva
                     />
                     <input 
                       type="tel" 
-                      placeholder={t('Teléfono')}
+                      placeholder={t('Teléfono (8 dígitos)')}
                       value={formData.phone}
                       onChange={(e) => updateForm('phone', e.target.value)}
                       className="w-full p-4 bg-stone-50 border border-stone-200 rounded-xl focus:ring-2 focus:ring-gold outline-none"
                     />
+                    <div className="text-[11px] px-1">
+                      {formData.phone && !isPhoneValid ? (
+                        <span className="text-red-500 font-medium">⚠️ El teléfono debe tener exactamente 8 dígitos (actual: {cleanPhone.length})</span>
+                      ) : (
+                        <span className="text-stone-500">Obligatorio: exactamente 8 dígitos (ej. 54413935)</span>
+                      )}
+                    </div>
                     
                     <div className="pt-6 border-t border-stone-100 flex flex-col gap-3 mt-6">
                       <button 
                         type="button"
-                        disabled={!formData.name.trim() || !formData.phone.trim()}
+                        disabled={!formData.name.trim() || !isPhoneValid}
                         onClick={() => handleSubmit(true)}
                         className="w-full bg-gold text-stone-900 py-4 rounded-xl font-bold uppercase tracking-wider disabled:opacity-50 transition-colors hover:bg-gold-light flex items-center justify-center shadow-md cursor-pointer disabled:cursor-not-allowed"
                       >
@@ -291,7 +311,7 @@ export function ReservationWizard({ initialDish, onComplete, onCancel }: Reserva
                       </button>
                       <button 
                         type="button"
-                        disabled={!formData.name.trim() || !formData.phone.trim()}
+                        disabled={!formData.name.trim() || !isPhoneValid}
                         onClick={() => handleSubmit(false)}
                         className="w-full bg-dark-green text-white py-4 rounded-xl font-bold uppercase tracking-wider disabled:opacity-50 transition-colors hover:bg-stone-800 flex items-center justify-center cursor-pointer disabled:cursor-not-allowed"
                       >

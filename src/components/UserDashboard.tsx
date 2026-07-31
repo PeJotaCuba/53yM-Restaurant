@@ -467,7 +467,7 @@ export function UserDashboard({ reservations, data, updateData, onUpdateReservat
             activeTab === 'reservations' ? 'bg-dark-green text-white shadow-xs' : 'text-stone-600 hover:text-stone-900'
           }`}
         >
-          <Calendar size={16} /> {t('Mi perfil')} ({activeReservations.length})
+          <Calendar size={16} /> {t('Mis Reservas')} ({activeReservations.length})
         </button>
         <button
           onClick={() => setActiveTab('order')}
