@@ -3,9 +3,22 @@ import { api } from '../../convex/_generated/api';
 import { useQuery } from 'convex/react';
 import { Activity, ShieldCheck, Clock, Terminal } from 'lucide-react';
 
-export function BitacoraStream() {
-  // Real-time reactive Convex query streaming audit logs
-  const logs = useQuery(api.bitacora.getLiveLogs, { limit: 50 });
+interface BitacoraStreamProps {
+  requesterRole?: string;
+}
+
+export function BitacoraStream({ requesterRole }: BitacoraStreamProps) {
+  const isAuthorized = requesterRole === 'admin' || requesterRole === 'manager';
+
+  // Real-time reactive Convex query streaming audit logs, skipped if not authorized
+  const logs = useQuery(
+    api.bitacora.getLiveLogs,
+    isAuthorized ? { limit: 50, requesterRole } : "skip"
+  );
+
+  if (!isAuthorized) {
+    return null;
+  }
 
   if (!logs) {
     return (

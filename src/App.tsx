@@ -60,11 +60,24 @@ export default function App() {
 
   const deviceId = useDeviceId();
 
+  // Active Sessions state (Declared early for query security)
+  const [adminLoggedIn, setAdminLoggedIn] = useState(false);
+  const [activeDependent, setActiveDependent] = useState<DependentConfig | null>(null);
+  const [activeManager, setActiveManager] = useState<ManagerConfig | null>(null);
+  const [activeKitchen, setActiveKitchen] = useState<any>(null);
+
+  const requesterRole = adminLoggedIn ? 'admin' : (activeManager ? 'manager' : (activeDependent ? 'dependent' : (activeKitchen ? 'kitchen' : 'none')));
+
   // Convex Reactive Queries & Mutations (Safe Mode)
   const liveUser = useQuery(api.users.getLiveUserByDeviceId, { deviceId });
   const liveOrders = useQuery(api.orders.getLiveOrders);
   const liveReservations = useQuery(api.reservations.getLiveReservations);
-  const liveLogs = useQuery(api.bitacora.getLiveLogs, { limit: 100 });
+  const liveLogs = useQuery(
+    api.bitacora.getLiveLogs,
+    requesterRole === 'admin' || requesterRole === 'manager'
+      ? { limit: 100, requesterRole }
+      : 'skip'
+  );
   const liveExchangeRate = useQuery(api.admin.getSetting, { key: "exchangeRate" });
   const liveLandingConfig = useQuery(api.admin.getSetting, { key: "landingConfig" });
   const liveAdminConfig = useQuery(api.admin.getSetting, { key: "adminConfig" });
@@ -73,6 +86,12 @@ export default function App() {
   const liveKitchenReports = useQuery(api.admin.getSetting, { key: "kitchenReports" });
   const liveCashRegisterCloses = useQuery(api.admin.getSetting, { key: "cashRegisterCloses" });
   const liveIsShiftActive = useQuery(api.admin.getSetting, { key: "isShiftActive" });
+  const liveHistory = useQuery(
+    api.admin.getHistory,
+    requesterRole === 'admin' || requesterRole === 'manager'
+      ? { requesterRole }
+      : 'skip'
+  );
 
   const liveMenuItems = useQuery(api.menuItems.getLiveMenuItems);
   const convexUsers = useQuery(api.users.getAllUsers) || [];
@@ -188,6 +207,7 @@ export default function App() {
       orderReports: liveOrderReports || [],
       kitchenReports: liveKitchenReports || [],
       cashRegisterCloses: liveCashRegisterCloses || [],
+      history: liveHistory || [],
       downloadsState: { adminAuditLog: false, managerZip: false }
     };
   }, [
@@ -203,7 +223,8 @@ export default function App() {
     liveIsShiftActive,
     liveOrderReports,
     liveKitchenReports,
-    liveCashRegisterCloses
+    liveCashRegisterCloses,
+    liveHistory
   ]);
 
   const authorizeUserMutation = useMutation(api.users.authorizeUser);
@@ -280,13 +301,43 @@ export default function App() {
       }).catch(console.warn);
     }
     if (newData.auditLogs && newData.auditLogs.length > 0) {
-      newData.auditLogs.forEach((log: any) => {
-        addLogMutation({
-          action: log.action || log.details || '',
-          userRole: log.role || log.userRole || 'cliente',
-          username: log.userOrDevice || log.username || 'Cliente',
-        }).catch(err => console.warn('Convex addLog error:', err));
-      });
+      const latestLog = newData.auditLogs[0];
+      if (latestLog) {
+        const actionUpper = (latestLog.action || latestLog.details || '').toUpperCase();
+        const isAutoLogged = 
+          actionUpper.includes("PEDIDO") || 
+          actionUpper.includes("RESERVA") || 
+          actionUpper.includes("JORNADA") || 
+          actionUpper.includes("INFORME ENVIADO") || 
+          actionUpper.includes("PERFIL DE COCINA") ||
+          actionUpper.includes("COCINA:") ||
+          actionUpper.includes("APROBACIÓN") ||
+          actionUpper.includes("SESIÓN AUTORIZADA") ||
+          actionUpper.includes("CIERRE DE SESIÓN") ||
+          actionUpper.includes("USUARIO '") ||
+          actionUpper.includes("PLATO '") ||
+          actionUpper.includes("MENÚ ACTUALIZADO");
+
+        if (!isAutoLogged) {
+          const getConvexRole = (spanishRole: string): string => {
+            switch (spanishRole) {
+              case 'Administrador': return 'admin';
+              case 'Gerente': return 'manager';
+              case 'Dependiente': return 'dependent';
+              case 'Cocina': return 'kitchen';
+              case 'Cliente': return 'client';
+              case 'Sistema': return 'system';
+              default: return spanishRole?.toLowerCase() || 'client';
+            }
+          };
+
+          addLogMutation({
+            action: latestLog.action || latestLog.details || '',
+            userRole: getConvexRole(latestLog.role),
+            username: latestLog.userOrDevice || 'Cliente',
+          }).catch(err => console.warn('Convex addLog error:', err));
+        }
+      }
     }
     if (newData.orders && newData.orders.length > 0) {
       newData.orders.forEach((newOrder: any) => {
@@ -371,12 +422,6 @@ export default function App() {
       });
     }
   };
-
-  // Active Sessions state
-  const [adminLoggedIn, setAdminLoggedIn] = useState(false);
-  const [activeDependent, setActiveDependent] = useState<DependentConfig | null>(null);
-  const [activeManager, setActiveManager] = useState<ManagerConfig | null>(null);
-  const [activeKitchen, setActiveKitchen] = useState<any>(null);
 
   // Real-Time Session Verification via Convex
   useEffect(() => {
@@ -734,7 +779,7 @@ export default function App() {
           <AdminPanel data={appData} updateData={updateData} updateStatus={updateReservationStatus} />
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <ConvexErrorBoundary fallbackTitle="Bitácora Operacional (Admin)">
-              <BitacoraStream />
+              <BitacoraStream requesterRole={userRole} />
             </ConvexErrorBoundary>
           </div>
         </div>
@@ -757,7 +802,7 @@ export default function App() {
           />
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <ConvexErrorBoundary fallbackTitle="Bitácora Operacional (Gerencia)">
-              <BitacoraStream />
+              <BitacoraStream requesterRole={userRole} />
             </ConvexErrorBoundary>
           </div>
         </div>
@@ -773,11 +818,6 @@ export default function App() {
       return (
         <div className="space-y-6">
           <DependentPanel data={appData} updateData={updateData} dependentInfo={activeDependent!} />
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <ConvexErrorBoundary fallbackTitle="Bitácora Operacional (Dependientes)">
-              <BitacoraStream />
-            </ConvexErrorBoundary>
-          </div>
         </div>
       );
     }
@@ -795,11 +835,6 @@ export default function App() {
             updateData={updateData} 
             kitchenInfo={activeKitchen || { name: 'Cocina Principal', username: 'cocina_53m', password: '' }} 
           />
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <ConvexErrorBoundary fallbackTitle="Bitácora Operacional (Cocina)">
-              <BitacoraStream />
-            </ConvexErrorBoundary>
-          </div>
         </div>
       );
     }

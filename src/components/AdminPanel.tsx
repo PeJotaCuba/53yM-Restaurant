@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { AppData, Reservation, DependentConfig, AdminConfig, ManagerConfig } from '../types';
-import { Users, DollarSign, CalendarCheck, Check, X, Download, Plus, Settings, FileText, Send, Shield, Key, User, Phone, Trash2, Utensils, ShieldCheck, Tv, Play, Power, RefreshCw, AlertCircle, ChefHat } from 'lucide-react';
+import { Users, DollarSign, CalendarCheck, Check, X, Download, Plus, Settings, FileText, Send, Shield, Key, User, Phone, Trash2, Utensils, ShieldCheck, Tv, Play, Power, RefreshCw, AlertCircle, ChefHat, Database } from 'lucide-react';
 import jsPDF from 'jspdf';
 import { AdminLandingEditor } from './AdminLandingEditor';
 import { AdminMenuEditor } from './AdminMenuEditor';
 import { AdminSimulator } from './AdminSimulator';
+import { HistoryViewer } from './HistoryViewer';
 import { useLanguage } from '../context/LanguageContext';
 import { useMutation, useQuery } from 'convex/react';
 import { api } from '../../convex/_generated/api';
@@ -17,14 +18,14 @@ interface AdminPanelProps {
 
 export function AdminPanel({ data, updateData, updateStatus }: AdminPanelProps) {
   const { t } = useLanguage();
-  const [activeTab, setActiveTab] = useState<'reservations' | 'landing' | 'menu' | 'dependents' | 'managers' | 'kitchen' | 'exchange' | 'security' | 'simulator'>('reservations');
+  const [activeTab, setActiveTab] = useState<'reservations' | 'landing' | 'menu' | 'dependents' | 'managers' | 'kitchen' | 'exchange' | 'security' | 'simulator' | 'history'>('reservations');
   
   // Convex mutations & queries for real-time synchronization
   const upsertUserMutation = useMutation(api.users.upsertUser);
   const upsertKitchenUserMutation = useMutation(api.users.upsertKitchenUser);
   const activeKitchenUser = useQuery(api.users.getActiveKitchenUser);
   const removeUserByUsernameMutation = useMutation(api.users.removeUserByUsername);
-  const resetWorkdayMutation = useMutation(api.admin.resetWorkday);
+  const closeWorkdayAndArchiveMutation = useMutation(api.admin.closeWorkdayAndArchive);
   
   // Exchange Rate state
   const [usdRate, setUsdRate] = useState<number>(data.exchangeRate?.usdCUP || 320);
@@ -422,6 +423,21 @@ export function AdminPanel({ data, updateData, updateStatus }: AdminPanelProps) 
 
         <div className="flex flex-wrap items-center gap-3">
           <button
+            onClick={() => {
+              const nextStatus = !isShiftActive;
+              updateData({ isShiftActive: nextStatus });
+            }}
+            className={`px-4 py-3 rounded-2xl font-bold text-xs transition-all shadow-sm flex items-center gap-2 ${
+              isShiftActive 
+                ? 'bg-red-600 hover:bg-red-700 text-white' 
+                : 'bg-emerald-500 hover:bg-emerald-400 text-stone-950 font-black'
+            }`}
+          >
+            <Power size={16} />
+            {isShiftActive ? 'Cerrar / Pausar Jornada' : '🚀 Iniciar / Abrir Jornada'}
+          </button>
+
+          <button
             onClick={handleDownloadAuditLog}
             className="relative bg-blue-900 hover:bg-blue-800 text-white border border-blue-700 px-4 py-3 rounded-2xl font-bold text-xs transition-all flex items-center gap-2"
           >
@@ -437,36 +453,30 @@ export function AdminPanel({ data, updateData, updateStatus }: AdminPanelProps) 
           <button
             onClick={() => {
               if (!data.downloadsState?.adminAuditLog) {
-                alert('⚠️ ACCIÓN DENEGADA: Debe descargar la bitácora operativa antes de reiniciar la jornada.');
+                alert('⚠️ ACCIÓN DENEGADA: Debe descargar la bitácora operativa antes de cerrar y archivar la jornada.');
                 return;
               }
-              const confirmed = window.confirm(`⚠️ ADVERTENCIA CRÍTICA: ¿Está seguro de reiniciar la jornada?\n
-TABLA/DATO                    ELIMINAR    CONSERVAR
-----------------------------------------------------
-Dependientes                  SÍ          NO
-Gerente                       SÍ          NO
-Cocina                        SÍ          NO
-Comandas (órdenes)            SÍ          NO
-Reservaciones                 SÍ          NO
-Comprobantes de pago          NO          SÍ
-Recibos de caja               NO          SÍ
-Bitácora operativa            SÍ          NO
-Ajustes (Tasa, Menú, etc)     NO          SÍ\n
+              const confirmed = window.confirm(`⚠️ ADVERTENCIA DE SEGURIDAD: ¿Está seguro de cerrar y archivar la jornada actual?\n
+Todos los datos operativos (comandas, reservaciones, informes de turno de dependientes y cocina) se consolidarán y ARCHIVARÁN de forma segura en Convex.\n
+La jornada activa se restablecerá y limpiará para el próximo turno operacional.\n
 Esta acción no se puede deshacer.`);
               if (confirmed) {
-                resetWorkdayMutation({}).then(() => {
-                  alert('¡Jornada reiniciada exitosamente!');
+                closeWorkdayAndArchiveMutation({
+                  requesterRole: "admin",
+                  username: data.adminConfig?.username || "Administrador",
+                }).then(() => {
+                  alert('¡Jornada cerrada, archivada y reiniciada de forma segura!');
                   updateData({
                     downloadsState: { adminAuditLog: false, managerZip: false }
                   });
                 }).catch((err: any) => {
-                  alert('Error al reiniciar jornada: ' + (err.message || err));
+                  alert('Error al cerrar y archivar jornada: ' + (err.message || err));
                 });
               }
             }}
             className="bg-amber-800 hover:bg-amber-700 text-white border border-amber-600 px-4 py-3 rounded-2xl font-bold text-xs transition-all flex items-center gap-2 shadow-sm"
           >
-            <RefreshCw size={16} /> Reiniciar jornada
+            <RefreshCw size={16} /> Cerrar y archivar jornada
           </button>
         </div>
       </div>
@@ -522,6 +532,12 @@ Esta acción no se puede deshacer.`);
           <Shield size={18} /> Cuenta Admin
         </button>
         <button 
+          onClick={() => setActiveTab('history')}
+          className={`flex items-center gap-2 px-6 py-3 rounded-full text-sm font-bold whitespace-nowrap transition-colors ${activeTab === 'history' ? 'bg-dark-green text-white' : 'bg-white text-stone-600 border border-stone-200 hover:bg-stone-50'}`}
+        >
+          <Database size={18} /> {t('Historial')}
+        </button>
+        <button 
           onClick={() => setActiveTab('simulator')}
           className={`flex items-center gap-2 px-6 py-3 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm ${activeTab === 'simulator' ? 'bg-amber-600 text-white ring-2 ring-amber-500 ring-offset-2' : 'bg-amber-50 text-amber-900 border border-amber-200 hover:bg-amber-100'}`}
         >
@@ -531,6 +547,10 @@ Esta acción no se puede deshacer.`);
 
       {activeTab === 'simulator' && (
         <AdminSimulator data={data} updateData={updateData} updateStatus={updateStatus} />
+      )}
+
+      {activeTab === 'history' && (
+        <HistoryViewer data={data} userRole="admin" />
       )}
 
       {activeTab === 'landing' && (

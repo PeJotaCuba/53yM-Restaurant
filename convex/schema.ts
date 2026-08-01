@@ -91,4 +91,19 @@ export default defineSchema({
     key: v.string(),
     value: v.any(),
   }).index("by_key", ["key"]),
+
+  history: defineTable({
+    jornadaId: v.string(),
+    dateStr: v.string(),
+    year: v.number(),
+    month: v.number(),
+    day: v.number(),
+    orders: v.array(v.any()),
+    reservations: v.array(v.any()),
+    orderReports: v.array(v.any()),
+    kitchenReports: v.array(v.any()),
+    cashRegisterCloses: v.array(v.any()),
+    bitacora: v.array(v.any()),
+    timestamp: v.number(),
+  }).index("by_date", ["year", "month", "day"]),
 });

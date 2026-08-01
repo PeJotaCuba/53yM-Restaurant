@@ -13,9 +13,11 @@ import {
   FileCheck, 
   RefreshCw, 
   Layers,
-  AlertCircle
+  AlertCircle,
+  Database
 } from 'lucide-react';
 import jsPDF from 'jspdf';
+import { HistoryViewer } from './HistoryViewer';
 
 interface KitchenPanelProps {
   data: AppData;
@@ -27,6 +29,7 @@ export function KitchenPanel({ data, updateData, kitchenInfo }: KitchenPanelProp
   const { t } = useLanguage();
   const [filter, setFilter] = useState<'all' | 'pending' | 'in_progress' | 'ready'>('all');
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
 
   // Live Convex kitchen user query & order mutation
   const activeKitchenUser = useQuery(api.users.getActiveKitchenUser);
@@ -323,6 +326,13 @@ export function KitchenPanel({ data, updateData, kitchenInfo }: KitchenPanelProp
 
           <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
             <button
+              onClick={() => setShowHistoryModal(true)}
+              className="w-full md:w-auto bg-stone-850 hover:bg-stone-800 text-white font-bold px-5 py-3 rounded-2xl text-xs md:text-sm transition-all shadow-md flex items-center justify-center gap-2 border border-stone-700 h-fit"
+            >
+              <Database size={16} /> {t('Ver Historial')}
+            </button>
+
+            <button
               onClick={() => setIsReportModalOpen(true)}
               className="w-full md:w-auto bg-amber-500 hover:bg-amber-400 text-stone-950 font-bold px-5 py-3 rounded-2xl text-xs md:text-sm transition-all shadow-md flex items-center justify-center gap-2"
             >
@@ -539,6 +549,21 @@ export function KitchenPanel({ data, updateData, kitchenInfo }: KitchenPanelProp
                 <Send size={15} /> {t('Confirmar & Enviar a Gerente')}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* HISTORY MODAL OVERLAY */}
+      {showHistoryModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-stone-900/60 backdrop-blur-xs p-4">
+          <div className="bg-white rounded-3xl max-w-5xl w-full shadow-2xl max-h-[90vh] overflow-y-auto relative p-6">
+            <button
+              onClick={() => setShowHistoryModal(false)}
+              className="absolute top-6 right-6 text-stone-400 hover:text-stone-700 font-bold text-lg p-2 bg-stone-100 hover:bg-stone-200 rounded-full transition-all z-10"
+            >
+              ✕
+            </button>
+            <HistoryViewer data={data} userRole="kitchen" />
           </div>
         </div>
       )}

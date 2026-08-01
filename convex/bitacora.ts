@@ -5,12 +5,19 @@ import { v } from "convex/values";
  * Reactive query streaming live operational logs for Manager and Admin
  */
 export const getLiveLogs = query({
-  args: { limit: v.optional(v.number()) },
+  args: { 
+    limit: v.optional(v.number()),
+    requesterRole: v.optional(v.string())
+  },
   handler: async (ctx, args) => {
+    // Backend security: Only admin and manager can retrieve the full operational log stream
+    if (args.requesterRole !== "admin" && args.requesterRole !== "manager") {
+      return [];
+    }
+
     const limit = args.limit ?? 50;
     const logs = await ctx.db
       .query("bitacora")
-      .withIndex("by_timestamp")
       .order("desc")
       .take(limit);
 

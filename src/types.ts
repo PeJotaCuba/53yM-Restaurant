@@ -257,4 +257,5 @@ export interface AppData {
   downloadsState?: { adminAuditLog: boolean; managerZip: boolean };
   exchangeRate?: ExchangeRateConfig;
   notifications?: AppNotification[];
+  history?: any[];
 }

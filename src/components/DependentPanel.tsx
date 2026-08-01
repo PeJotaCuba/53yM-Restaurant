@@ -15,9 +15,11 @@ import {
   Layers, 
   Trash2, 
   CheckCircle2, 
-  AlertCircle 
+  AlertCircle,
+  Database
 } from 'lucide-react';
 import jsPDF from 'jspdf';
+import { HistoryViewer } from './HistoryViewer';
 
 interface DependentPanelProps {
   key?: string;
@@ -29,6 +31,7 @@ interface DependentPanelProps {
 export function DependentPanel({ data, updateData, dependentInfo }: DependentPanelProps) {
   const { t } = useLanguage();
   const [reportGenerated, setReportGenerated] = useState(false);
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [lastDownloadedPdf, setLastDownloadedPdf] = useState<string | null>(null);
   const [draftItems, setDraftItems] = useState<OrderItem[]>([]);
 
@@ -942,11 +945,21 @@ export function DependentPanel({ data, updateData, dependentInfo }: DependentPan
           </p>
         </div>
 
-        <div className="text-right bg-stone-50 border border-stone-200 px-4 py-2 rounded-2xl">
-          <div className="text-[11px] font-mono text-stone-400 uppercase">{t('ID Dispositivo')}</div>
-          <div className="font-mono font-bold text-stone-800 text-sm">{dependentInfo.deviceId}</div>
-          <div className="text-[10px] text-amber-600 font-medium flex items-center gap-1 mt-1">
-            <Clock size={10} /> {t('Sesión activa por 24h')}
+        <div className="flex flex-col sm:flex-row items-center gap-3">
+          <button
+            onClick={() => setShowHistoryModal(true)}
+            className="flex items-center gap-2 bg-stone-900 hover:bg-stone-800 text-white px-5 py-3 rounded-2xl font-bold text-xs shadow-sm transition-all border border-stone-800 h-fit"
+          >
+            <Database size={16} />
+            {t('Historial de Jornadas')}
+          </button>
+
+          <div className="text-right bg-stone-50 border border-stone-200 px-4 py-2 rounded-2xl">
+            <div className="text-[11px] font-mono text-stone-400 uppercase">{t('ID Dispositivo')}</div>
+            <div className="font-mono font-bold text-stone-800 text-sm">{dependentInfo.deviceId}</div>
+            <div className="text-[10px] text-amber-600 font-medium flex items-center gap-1 mt-1">
+              <Clock size={10} /> {t('Sesión activa por 24h')}
+            </div>
           </div>
         </div>
       </div>
@@ -1684,6 +1697,21 @@ export function DependentPanel({ data, updateData, dependentInfo }: DependentPan
                 Cerrar
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* HISTORY MODAL OVERLAY */}
+      {showHistoryModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-stone-900/60 backdrop-blur-xs p-4">
+          <div className="bg-white rounded-3xl max-w-5xl w-full shadow-2xl max-h-[90vh] overflow-y-auto relative p-6">
+            <button
+              onClick={() => setShowHistoryModal(false)}
+              className="absolute top-6 right-6 text-stone-400 hover:text-stone-700 font-bold text-lg p-2 bg-stone-100 hover:bg-stone-200 rounded-full transition-all z-10"
+            >
+              ✕
+            </button>
+            <HistoryViewer data={data} userRole="dependent" />
           </div>
         </div>
       )}

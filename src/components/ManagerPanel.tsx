@@ -20,10 +20,12 @@ import {
   Lock,
   Power,
   RefreshCw, 
-  Printer 
+  Printer,
+  Database
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import JSZip from 'jszip';
+import { HistoryViewer } from './HistoryViewer';
 
 interface ManagerPanelProps {
   data: AppData;
@@ -34,7 +36,7 @@ interface ManagerPanelProps {
 
 export function ManagerPanel({ data, updateData, managerInfo, updateStatus }: ManagerPanelProps) {
   const { t } = useLanguage();
-  const [activeTab, setActiveTab] = useState<'reports' | 'comparative' | 'cierre_caja' | 'audit_log' | 'reservations'>('reports');
+  const [activeTab, setActiveTab] = useState<'reports' | 'comparative' | 'cierre_caja' | 'audit_log' | 'reservations' | 'history'>('reports');
   const [selectedReport, setSelectedReport] = useState<OrderReport | null>(null);
 
   // Cierre de caja wizard state
@@ -592,7 +594,7 @@ export function ManagerPanel({ data, updateData, managerInfo, updateStatus }: Ma
         </div>
       )}
 
-      {/* Shift Status and Controls */}
+      {/* Shift Status (Read-Only for Manager) */}
       <div className={`p-6 rounded-3xl mb-8 border shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-6 ${isShiftActive ? 'bg-emerald-950 text-white border-emerald-800' : 'bg-red-950 text-white border-red-800'}`}>
         <div>
           <div className="flex items-center gap-3 mb-1">
@@ -601,34 +603,13 @@ export function ManagerPanel({ data, updateData, managerInfo, updateStatus }: Ma
             </span>
           </div>
           <h3 className="text-xl font-serif font-bold mt-2">
-            {isShiftActive ? 'Sistema de Atención y Comandas en Marcha' : 'Jornada Detenida por el Gerente'}
+            {isShiftActive ? 'Sistema de Atención y Comandas en Marcha' : 'Jornada Detenida por Administrador'}
           </h3>
           <p className="text-xs opacity-80 mt-1 max-w-lg">
             {isShiftActive 
               ? 'Los dependientes pueden abrir comandas, mandar a cocina y cobrar mesas normalmente.' 
-              : 'El sistema está bloqueado para dependientes y cocina. Inicie la jornada para habilitar operaciones.'}
+              : 'El sistema está bloqueado para dependientes y cocina. Solicite al Administrador iniciar la jornada operacional.'}
           </p>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-3">
-          <button
-            onClick={handleToggleShift}
-            className={`px-5 py-3 rounded-2xl font-bold text-xs transition-all shadow-md flex items-center gap-2 ${
-              isShiftActive 
-                ? 'bg-red-600 hover:bg-red-700 text-white' 
-                : 'bg-emerald-500 hover:bg-emerald-400 text-stone-950 font-black'
-            }`}
-          >
-            <Power size={18} />
-            {isShiftActive ? 'Cerrar / Finalizar Jornada' : '🚀 Iniciar Jornada Oficial'}
-          </button>
-
-          <button
-            onClick={handleResetShiftClick}
-            className="bg-stone-800 hover:bg-stone-700 text-gold border border-stone-700 px-4 py-3 rounded-2xl font-bold text-xs transition-all flex items-center gap-2"
-          >
-            <RefreshCw size={16} /> Reiniciar Jornada
-          </button>
         </div>
       </div>
 
@@ -677,6 +658,15 @@ export function ManagerPanel({ data, updateData, managerInfo, updateStatus }: Ma
           }`}
         >
           <CalendarCheck size={16} /> {t('Reservas (Solo Lectura)')}
+        </button>
+
+        <button
+          onClick={() => setActiveTab('history')}
+          className={`flex items-center gap-2 px-5 py-3 rounded-2xl text-xs md:text-sm font-bold whitespace-nowrap transition-all ${
+            activeTab === 'history' ? 'bg-dark-green text-white shadow-md' : 'bg-white text-stone-600 border border-stone-200 hover:bg-stone-100'
+          }`}
+        >
+          <Database size={16} /> {t('Historial')}
         </button>
       </div>
 
@@ -1179,6 +1169,11 @@ export function ManagerPanel({ data, updateData, managerInfo, updateStatus }: Ma
             ))}
           </div>
         </div>
+      )}
+
+      {/* TAB 6: HISTORIAL DE JORNADAS */}
+      {activeTab === 'history' && (
+        <HistoryViewer data={data} userRole="manager" />
       )}
 
       {/* REPORT DETAIL MODAL */}

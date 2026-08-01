@@ -166,6 +166,7 @@ export const upsertUser = mutation({
       .first();
 
     const now = Date.now();
+    let actText = "";
     if (existing) {
       await ctx.db.patch(existing._id, {
         name: args.name,
@@ -176,6 +177,7 @@ export const upsertUser = mutation({
         phone: args.phone,
         tableNumber: args.tableNumber,
       });
+      actText = `Usuario '${args.username}' (Rol: ${args.role.toUpperCase()}) MODIFICADO / ${args.isActive ? 'ACTIVADO' : 'DESACTIVADO'}`;
     } else {
       await ctx.db.insert("users", {
         username: args.username,
@@ -188,7 +190,16 @@ export const upsertUser = mutation({
         phone: args.phone,
         tableNumber: args.tableNumber,
       });
+      actText = `Usuario '${args.username}' (Rol: ${args.role.toUpperCase()}) CREADO y ${args.isActive ? 'ACTIVADO' : 'DESACTIVADO'}`;
     }
+
+    await ctx.db.insert("bitacora", {
+      action: actText,
+      userRole: "admin",
+      username: "Administrador",
+      timestamp: now,
+    });
+
     return { success: true };
   },
 });
@@ -296,6 +307,12 @@ export const removeUserByUsername = mutation({
 
     if (user) {
       await ctx.db.delete(user._id);
+      await ctx.db.insert("bitacora", {
+        action: `Usuario '${args.username}' (Rol: ${args.role.toUpperCase()}) ELIMINADO`,
+        userRole: "admin",
+        username: "Administrador",
+        timestamp: Date.now(),
+      });
     }
     return { success: true };
   },
