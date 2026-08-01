@@ -121,15 +121,23 @@ export default function App() {
         id: lo.id || lo._id,
         tableNumber: lo.tableNumber || 'Mesa',
         items: itemsList,
-        orderItems: (lo.items || []).map((item: any) => ({
-          id: item.id || 'item-' + Math.random(),
-          name: item.name,
-          quantity: item.quantity,
-          priceCUP: item.priceCUP || 0,
-          priceUSD: item.priceUSD || 0,
-          notes: item.notes || '',
-        })),
-        totalCUP: lo.totalCUP || 0,
+        orderItems: (lo.items || []).map((item: any) => {
+          const cleanName = (item.name || '').replace(/^(\d+)\s*x\s*/i, '').trim();
+          let itemPrice = Number(item.priceCUP || 0);
+          if (itemPrice <= 0 && cleanName && liveMenuItems) {
+            const found = liveMenuItems.find((m: any) => m.name.trim().toLowerCase() === cleanName.toLowerCase());
+            if (found) itemPrice = found.priceCUP;
+          }
+          return {
+            id: item.id || 'item-' + Math.random(),
+            name: cleanName,
+            quantity: Number(item.quantity) || 1,
+            priceCUP: itemPrice,
+            priceUSD: item.priceUSD || 0,
+            notes: item.notes || '',
+          };
+        }),
+        totalCUP: lo.totalCUP || (lo.items || []).reduce((acc: number, it: any) => acc + ((it.priceCUP || 0) * (it.quantity || 1)), 0),
         totalUSD: lo.totalUSD || 0,
         status: lo.status || 'pending_dependent',
         customerName: lo.customerName,
@@ -370,23 +378,35 @@ export default function App() {
           }
         }
 
-        const formattedItems = (newOrder.orderItems || []).map((item: any, idx: number) => ({
-          id: item.id || `item-${idx}`,
-          name: item.name || '',
-          quantity: Number(item.quantity) || 1,
-          priceCUP: Number(item.priceCUP || item.price || 0),
-          priceUSD: Number(item.priceUSD || 0),
-          notes: item.notes || '',
-        }));
+        const formattedItems = (newOrder.orderItems || []).map((item: any, idx: number) => {
+          const cleanName = (item.name || '').replace(/^(\d+)\s*x\s*/i, '').trim();
+          let priceCUP = Number(item.priceCUP || item.price || 0);
+          if (priceCUP <= 0 && cleanName) {
+            const found = liveMenuItems?.find((m: any) => m.name.trim().toLowerCase() === cleanName.toLowerCase());
+            if (found) priceCUP = found.priceCUP;
+          }
+          return {
+            id: item.id || `item-${idx}`,
+            name: cleanName,
+            quantity: Number(item.quantity) || 1,
+            priceCUP,
+            priceUSD: Number(item.priceUSD || 0),
+            notes: item.notes || '',
+          };
+        });
 
         if (formattedItems.length === 0 && newOrder.items && newOrder.items.length > 0) {
           newOrder.items.forEach((itemText: string, idx: number) => {
+            const match = itemText.match(/^(\d+)\s*x\s*(.+)$/i);
+            const qty = match ? parseInt(match[1], 10) : 1;
+            const cleanName = match ? match[2].trim() : itemText.trim();
+            const menuItem = liveMenuItems?.find((m: any) => m.name.trim().toLowerCase() === cleanName.toLowerCase());
             formattedItems.push({
               id: `item-${idx}`,
-              name: itemText,
-              quantity: 1,
-              priceCUP: 0,
-              priceUSD: 0,
+              name: cleanName,
+              quantity: qty,
+              priceCUP: menuItem?.priceCUP || 0,
+              priceUSD: menuItem?.priceUSD || 0,
               notes: '',
             });
           });

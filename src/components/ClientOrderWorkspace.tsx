@@ -290,11 +290,14 @@ export function ClientOrderWorkspace({ data, updateData, onBack }: ClientOrderWo
 
     const rawItemsList = cartItems.map(c => `${c.quantity}x ${c.dishName}`);
 
+    const totalCUP = calculateCartTotal();
+
     const newOrder: Order = {
       id: `ORD-${Date.now()}`,
       tableNumber: clientTable,
       items: rawItemsList,
       orderItems: orderItemsList,
+      totalCUP,
       status: 'client_pending',
       customerName: clientName.trim() || undefined,
       timestamp: Date.now()
@@ -764,27 +767,27 @@ export function ClientOrderWorkspace({ data, updateData, onBack }: ClientOrderWo
                         const currentStep = getOrderStepIndex(order.status);
                         
                         // Parse list of dishes in the order
-                        const dishes = order.orderItems && order.orderItems.length > 0 
-                          ? order.orderItems.map(d => ({
-                              name: d.name,
-                              quantity: d.quantity,
-                              priceCUP: d.priceCUP || data?.menuItems?.find(m => m.name.toLowerCase() === d.name.toLowerCase())?.priceCUP || 0,
-                              imageUrl: data?.menuItems?.find(m => m.name.toLowerCase() === d.name.toLowerCase())?.imageUrl || ''
-                            }))
+                        const dishes = (order.orderItems && order.orderItems.length > 0 
+                          ? order.orderItems
                           : (order.items || []).map(itemStr => {
-                              const match = itemStr.match(/(.*?)\s*x\s*(\d+)$/i);
-                              const name = match ? match[1].trim() : itemStr.trim();
-                              const quantity = match ? parseInt(match[2], 10) : 1;
-                              const menuItem = data?.menuItems?.find(m => m.name.toLowerCase() === name.toLowerCase());
-                              return {
-                                name,
-                                quantity,
-                                priceCUP: menuItem?.priceCUP || 0,
-                                imageUrl: menuItem?.imageUrl || ''
-                              };
-                            });
+                              const match = itemStr.match(/^(\d+)\s*x\s*(.+)$/i);
+                              const quantity = match ? parseInt(match[1], 10) : 1;
+                              const name = match ? match[2].trim() : itemStr.trim();
+                              return { name, quantity, priceCUP: 0 };
+                            })
+                        ).map(d => {
+                          const cleanName = (d.name || '').replace(/^(\d+)\s*x\s*/i, '').trim();
+                          const menuItem = data?.menuItems?.find(m => m.name.trim().toLowerCase() === cleanName.toLowerCase());
+                          const priceCUP = (d.priceCUP && d.priceCUP > 0) ? d.priceCUP : (menuItem?.priceCUP || 0);
+                          return {
+                            name: cleanName,
+                            quantity: Number(d.quantity) || 1,
+                            priceCUP,
+                            imageUrl: menuItem?.imageUrl || ''
+                          };
+                        });
 
-                        const orderTotal = order.totalCUP || dishes.reduce((sum, item) => sum + (item.priceCUP * item.quantity), 0);
+                        const orderTotal = (order.totalCUP && order.totalCUP > 0) ? order.totalCUP : dishes.reduce((sum, item) => sum + (item.priceCUP * item.quantity), 0);
 
                         const stepDetails = [
                           { label: t('Recibido'), icon: Clock, desc: t('Hemos recibido tu solicitud y estamos esperando la confirmación de nuestro equipo.') },

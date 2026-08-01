@@ -167,21 +167,42 @@ export function KitchenPanel({ data, updateData, kitchenInfo }: KitchenPanelProp
     // Sync directly to Convex for real-time reactivity and automatic bitacora entry
     const activeUsername = activeKitchenUser?.username || kitchenInfo.username || 'cocina_53m';
     const formattedItems = (targetOrder.orderItems && targetOrder.orderItems.length > 0)
-      ? targetOrder.orderItems.map((it: any, idx: number) => ({
-          id: it.id || `it-${idx}`,
-          name: it.name,
-          quantity: it.quantity,
-          priceCUP: it.priceCUP || 0,
-          priceUSD: it.priceUSD || 0,
-          notes: it.notes || ''
-        }))
-      : targetOrder.items.map((it: string, idx: number) => ({ id: `it-${idx}`, name: it, quantity: 1, priceCUP: 0, priceUSD: 0, notes: '' }));
+      ? targetOrder.orderItems.map((it: any, idx: number) => {
+          const cleanName = (it.name || '').replace(/^(\d+)\s*x\s*/i, '').trim();
+          const menuItem = data.menuItems?.find(m => m.name.trim().toLowerCase() === cleanName.toLowerCase());
+          const priceCUP = (it.priceCUP && Number(it.priceCUP) > 0) ? Number(it.priceCUP) : (menuItem?.priceCUP || 0);
+          return {
+            id: it.id || `it-${idx}`,
+            name: cleanName,
+            quantity: Number(it.quantity) || 1,
+            priceCUP,
+            priceUSD: it.priceUSD || 0,
+            notes: it.notes || ''
+          };
+        })
+      : targetOrder.items.map((it: string, idx: number) => {
+          const match = it.match(/^(\d+)\s*x\s*(.+)$/i);
+          const qty = match ? parseInt(match[1], 10) : 1;
+          const cleanName = match ? match[2].trim() : it.trim();
+          const menuItem = data.menuItems?.find(m => m.name.trim().toLowerCase() === cleanName.toLowerCase());
+          return {
+            id: `it-${idx}`,
+            name: cleanName,
+            quantity: qty,
+            priceCUP: menuItem?.priceCUP || 0,
+            priceUSD: 0,
+            notes: ''
+          };
+        });
+
+    const computedTotalCUP = formattedItems.reduce((acc: number, it: any) => acc + (it.priceCUP * it.quantity), 0);
+    const totalCUP = (targetOrder.totalCUP && targetOrder.totalCUP > 0) ? targetOrder.totalCUP : computedTotalCUP;
 
     syncOrUpdateOrderMutation({
       id: targetOrder.id,
       tableNumber: targetOrder.tableNumber,
       items: formattedItems,
-      totalCUP: targetOrder.totalCUP || 0,
+      totalCUP: totalCUP,
       totalUSD: targetOrder.totalUSD || 0,
       status: status,
       timestamp: targetOrder.timestamp || Date.now(),

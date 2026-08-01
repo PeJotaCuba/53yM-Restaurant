@@ -229,21 +229,37 @@ export function DependentPanel({ data, updateData, dependentInfo }: DependentPan
       }
     }
 
-    const itemsList: OrderItem[] = clientOrder.orderItems && clientOrder.orderItems.length > 0
+    const itemsList: OrderItem[] = (clientOrder.orderItems && clientOrder.orderItems.length > 0
       ? clientOrder.orderItems
-      : clientOrder.items.map(raw => {
-          const match = raw.match(/^(\d+)x\s+(.+)$/);
-          const qty = match ? parseInt(match[1]) : 1;
-          const name = match ? match[2] : raw;
-          const found = data.menuItems.find(m => m.name === name);
-          return { name, quantity: qty, priceCUP: found ? found.priceCUP : 100 };
-        });
+      : (clientOrder.items || []).map(raw => {
+          const match = raw.match(/^(\d+)\s*x\s*(.+)$/i);
+          const qty = match ? parseInt(match[1], 10) : 1;
+          const name = match ? match[2].trim() : raw.trim();
+          return { name, quantity: qty, priceCUP: 0 };
+        })
+    ).map(it => {
+      const cleanName = (it.name || '').replace(/^(\d+)\s*x\s*/i, '').trim();
+      let priceCUP = Number(it.priceCUP || 0);
+      if (priceCUP <= 0 && cleanName) {
+        const found = data.menuItems.find(m => m.name.trim().toLowerCase() === cleanName.toLowerCase());
+        if (found) priceCUP = found.priceCUP;
+      }
+      return {
+        ...it,
+        name: cleanName,
+        quantity: Number(it.quantity) || 1,
+        priceCUP
+      };
+    });
+
+    const approvedTotalCUP = itemsList.reduce((acc, i) => acc + (i.priceCUP * i.quantity), 0);
 
     const updatedOrder: Order = {
       ...clientOrder,
       comandaId: currentOpen.id,
       status: 'pending', // Now sent to kitchen!
       orderItems: itemsList,
+      totalCUP: (clientOrder.totalCUP && clientOrder.totalCUP > 0) ? clientOrder.totalCUP : approvedTotalCUP,
       customerName: clientOrder.customerName || currentOpen.customerName,
       assignedDependentId: dependentInfo.id
     };
