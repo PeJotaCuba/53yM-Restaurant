@@ -206,12 +206,18 @@ export function DependentPanel({ data, updateData, dependentInfo }: DependentPan
         tableNumber: clientOrder.tableNumber,
         dependentId: dependentInfo.id,
         dependentName: dependentInfo.name || `Dependiente ${clientOrder.tableNumber}`,
-        customerName: t('Cliente Comensal'),
+        customerName: clientOrder.customerName || t('Cliente Comensal'),
         status: 'open',
         openedAt: Date.now(),
         orders: []
       };
       allComandas = [currentOpen, ...allComandas];
+    } else {
+      // If there's already an open comanda and it has default or empty name, update to actual client name
+      if ((currentOpen.customerName === t('Cliente Comensal') || !currentOpen.customerName) && clientOrder.customerName) {
+        currentOpen.customerName = clientOrder.customerName;
+        allComandas = allComandas.map(c => c.id === currentOpen?.id ? { ...c, customerName: clientOrder.customerName } : c);
+      }
     }
 
     const itemsList: OrderItem[] = clientOrder.orderItems && clientOrder.orderItems.length > 0

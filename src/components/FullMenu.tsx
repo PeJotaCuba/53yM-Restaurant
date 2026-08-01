@@ -119,6 +119,7 @@ export function FullMenu({
       totalAmountCUP: totalPrice,
       totalAmountUSD: totalPrice / usdCUP,
       status: 'client_pending',
+      customerName: prefilledName?.trim() || undefined,
       timestamp: Date.now()
     };
 

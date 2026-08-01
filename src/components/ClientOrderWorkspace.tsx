@@ -3,7 +3,8 @@ import { AppData, Order, OrderItem } from '../types';
 import { 
   Utensils, Plus, Trash2, Send, ShoppingBag, Download, ArrowLeft, 
   MessageCircle, X, QrCode, Camera, CheckCircle2, Image as ImageIcon, 
-  AlertTriangle, RotateCcw, Sparkles, BookOpen, Clock, ChevronRight
+  AlertTriangle, RotateCcw, Sparkles, BookOpen, Clock, ChevronRight,
+  ChefHat, Bell
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useDeviceId } from '../hooks/useDeviceId';
@@ -295,6 +296,7 @@ export function ClientOrderWorkspace({ data, updateData, onBack }: ClientOrderWo
       items: rawItemsList,
       orderItems: orderItemsList,
       status: 'client_pending',
+      customerName: clientName.trim() || undefined,
       timestamp: Date.now()
     };
 
@@ -706,69 +708,234 @@ export function ClientOrderWorkspace({ data, updateData, onBack }: ClientOrderWo
               </div>
 
               {/* Active Orders Track list */}
-              <div className="bg-white rounded-3xl p-6 md:p-8 border border-stone-100 shadow-sm space-y-4">
-                <div className="flex items-center gap-2 border-b border-stone-100 pb-3 mb-2">
+              <div className="space-y-6">
+                <div className="flex items-center gap-2 mb-2 px-2">
                   <Clock size={18} className="text-dark-green" />
-                  <h4 className="font-bold text-stone-800 text-base">{t('Seguimiento de tu Mesa en Tiempo Real')}</h4>
+                  <h4 className="font-serif font-bold text-stone-800 text-lg">{t('Seguimiento de tu Pedido')}</h4>
                 </div>
 
                 {/* Fetch current active orders for this table */}
                 {(() => {
                   const tableOrders = (data?.orders || [])
-                    .filter(o => o.tableNumber === clientTable)
+                    .filter(o => o.tableNumber === clientTable && o.status !== 'closed' && o.status !== 'paid')
                     .sort((a, b) => b.timestamp - a.timestamp);
 
                   if (tableOrders.length === 0) {
                     return (
-                      <div className="text-center py-8 text-stone-400 text-xs">
-                        {t('No has realizado pedidos para esta mesa en la sesión actual.')}
+                      <div className="bg-white rounded-3xl p-8 border border-stone-100 shadow-sm text-center py-10 text-stone-400 text-xs flex flex-col items-center gap-3">
+                        <div className="w-12 h-12 rounded-full bg-stone-50 flex items-center justify-center text-stone-300">
+                          <Clock size={22} />
+                        </div>
+                        <span>{t('Aún no has realizado pedidos para esta mesa en la sesión actual.')}</span>
                       </div>
                     );
                   }
 
-                  const getStatusLabelAndColor = (status: string) => {
+                  const getOrderStepIndex = (status: string): number => {
                     switch (status) {
                       case 'client_pending':
-                        return { label: t('Enviado, esperando camarero'), color: 'bg-amber-50 text-amber-700 border-amber-200' };
+                        return 0;
                       case 'pending_dependent':
                       case 'confirmed':
-                        return { label: t('Confirmado por Camarero'), color: 'bg-sky-50 text-sky-700 border-sky-200' };
+                      case 'pending':
+                      case 'in_progress':
+                        return 1;
                       case 'kitchen_pending':
                       case 'kitchen_cooking':
-                        return { label: t('En preparación en Cocina 🍳'), color: 'bg-orange-50 text-orange-700 border-orange-200' };
+                      case 'in_kitchen':
+                      case 'kitchen_in_progress':
+                        return 2;
                       case 'kitchen_ready':
-                        return { label: t('¡Listo para Servir! 🔔'), color: 'bg-emerald-500 text-white border-emerald-400 animate-pulse font-bold' };
+                      case 'ready_to_serve':
+                        return 3;
                       case 'delivered':
                       case 'served':
-                        return { label: t('Servido en Mesa'), color: 'bg-green-50 text-green-700 border-green-200' };
                       case 'closed':
                       case 'paid':
-                        return { label: t('Pagado / Finalizado'), color: 'bg-stone-100 text-stone-600 border-stone-200' };
+                        return 4;
                       default:
-                        return { label: status, color: 'bg-stone-50 text-stone-700 border-stone-200' };
+                        return 0;
                     }
                   };
 
                   return (
-                    <div className="space-y-4">
+                    <div className="space-y-6">
                       {tableOrders.map(order => {
-                        const statusInfo = getStatusLabelAndColor(order.status);
+                        const currentStep = getOrderStepIndex(order.status);
+                        
+                        // Parse list of dishes in the order
+                        const dishes = order.orderItems && order.orderItems.length > 0 
+                          ? order.orderItems.map(d => ({
+                              name: d.name,
+                              quantity: d.quantity,
+                              priceCUP: d.priceCUP || data?.menuItems?.find(m => m.name.toLowerCase() === d.name.toLowerCase())?.priceCUP || 0,
+                              imageUrl: data?.menuItems?.find(m => m.name.toLowerCase() === d.name.toLowerCase())?.imageUrl || ''
+                            }))
+                          : (order.items || []).map(itemStr => {
+                              const match = itemStr.match(/(.*?)\s*x\s*(\d+)$/i);
+                              const name = match ? match[1].trim() : itemStr.trim();
+                              const quantity = match ? parseInt(match[2], 10) : 1;
+                              const menuItem = data?.menuItems?.find(m => m.name.toLowerCase() === name.toLowerCase());
+                              return {
+                                name,
+                                quantity,
+                                priceCUP: menuItem?.priceCUP || 0,
+                                imageUrl: menuItem?.imageUrl || ''
+                              };
+                            });
+
+                        const orderTotal = order.totalCUP || dishes.reduce((sum, item) => sum + (item.priceCUP * item.quantity), 0);
+
+                        const stepDetails = [
+                          { label: t('Recibido'), icon: Clock, desc: t('Hemos recibido tu solicitud y estamos esperando la confirmación de nuestro equipo.') },
+                          { label: t('Confirmado'), icon: CheckCircle2, desc: t('El camarero ha confirmado tu pedido y lo ha enviado al sistema de la cocina.') },
+                          { label: t('Preparando'), icon: ChefHat, desc: t('¡El chef y su equipo están preparando tus platos en la cocina!') },
+                          { label: t('Listo'), icon: Bell, desc: t('¡Tu pedido está listo! El camarero lo llevará a tu mesa de inmediato.') },
+                          { label: t('Servido'), icon: Sparkles, desc: t('¡Buen provecho! Tus platos han sido entregados con éxito en la mesa.') }
+                        ];
+
+                        const activeStepDetail = stepDetails[currentStep];
+
+                        // Set banner style based on active step
+                        let bannerBg = 'bg-stone-50 border-stone-200 text-stone-700';
+                        if (currentStep === 0) bannerBg = 'bg-amber-50/70 border-amber-200 text-amber-800 border-l-4 border-l-amber-500';
+                        else if (currentStep === 1) bannerBg = 'bg-sky-50/70 border-sky-200 text-sky-800 border-l-4 border-l-sky-500';
+                        else if (currentStep === 2) bannerBg = 'bg-orange-50/70 border-orange-200 text-orange-800 border-l-4 border-l-orange-500';
+                        else if (currentStep === 3) bannerBg = 'bg-emerald-500 text-white font-bold animate-pulse shadow-sm';
+                        else if (currentStep === 4) bannerBg = 'bg-green-50/70 border-green-200 text-green-800 border-l-4 border-l-green-500';
+
                         return (
-                          <div key={order.id} className="p-4 bg-stone-50 rounded-2xl border border-stone-200/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-colors">
-                            <div className="space-y-1">
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <span className="font-bold text-stone-800 text-xs uppercase tracking-wider font-mono">#{order.id.slice(-6)}</span>
-                                <span className="text-[10px] text-stone-500 font-medium">
-                                  {new Date(order.timestamp).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}
+                          <div key={order.id} className="bg-white rounded-3xl border border-stone-200/80 shadow-xs hover:shadow-sm transition-all duration-300 overflow-hidden">
+                            {/* Card Header */}
+                            <div className="px-5 py-4 bg-stone-50/40 border-b border-stone-100 flex justify-between items-center flex-wrap gap-2">
+                              <div className="flex items-center gap-2">
+                                <span className="bg-dark-green text-white text-[11px] font-bold font-mono px-2.5 py-1 rounded-lg shadow-2xs">
+                                  #{order.id.slice(-6).toUpperCase()}
+                                </span>
+                                <span className="text-[10px] font-semibold text-stone-400 flex items-center gap-1">
+                                  <Clock size={11} /> {new Date(order.timestamp).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}
                                 </span>
                               </div>
-                              <p className="text-xs text-stone-600 font-medium leading-relaxed">
-                                {order.items.join(', ')}
-                              </p>
+                              <span className="text-[10px] font-bold text-stone-500 bg-stone-100 px-2 py-0.5 rounded-md font-mono">
+                                {clientTable}
+                              </span>
                             </div>
-                            <span className={`text-[11px] font-bold px-3 py-1.5 rounded-xl border text-center whitespace-nowrap self-start sm:self-center ${statusInfo.color}`}>
-                              {statusInfo.label}
-                            </span>
+
+                            {/* Active Status Banner */}
+                            <div className={`px-5 py-3.5 border-b border-stone-100 flex items-start gap-2.5 text-xs leading-relaxed ${bannerBg}`}>
+                              <span className="text-base shrink-0 select-none">
+                                {currentStep === 0 && '⏳'}
+                                {currentStep === 1 && '✅'}
+                                {currentStep === 2 && '🍳'}
+                                {currentStep === 3 && '🔔'}
+                                {currentStep === 4 && '🍽️'}
+                              </span>
+                              <div>
+                                <strong className={`block text-xs uppercase tracking-wider mb-0.5 ${currentStep === 3 ? 'text-white' : 'text-stone-800'}`}>{activeStepDetail.label}</strong>
+                                <span className={currentStep === 3 ? 'text-emerald-50' : 'text-stone-600 font-medium'}>{activeStepDetail.desc}</span>
+                              </div>
+                            </div>
+
+                            {/* Responsive Interactive Stepper */}
+                            <div className="relative px-5 py-7 bg-stone-50/10 border-b border-stone-100">
+                              {/* Background Connecting Line */}
+                              <div className="absolute left-8 right-8 top-[42px] h-0.5 bg-stone-100 -z-0" />
+                              {/* Active Progress Connecting Line */}
+                              <div 
+                                className="absolute left-8 right-8 top-[42px] h-0.5 bg-dark-green z-0 transition-all duration-500 origin-left"
+                                style={{ width: `${(currentStep / 4) * 100}%` }}
+                              />
+
+                              {/* Step Nodes */}
+                              <div className="flex justify-between items-center relative z-10">
+                                {stepDetails.map((step, idx) => {
+                                  const StepIcon = step.icon;
+                                  const isCompleted = idx < currentStep;
+                                  const isActive = idx === currentStep;
+                                  const isPending = idx > currentStep;
+
+                                  return (
+                                    <div key={idx} className="flex flex-col items-center flex-1">
+                                      <div 
+                                        className={`w-8 h-8 rounded-full flex items-center justify-center transition-all duration-300 border ${
+                                          isCompleted 
+                                            ? 'bg-dark-green border-dark-green text-white shadow-2xs' 
+                                            : isActive 
+                                              ? 'bg-gold border-gold text-dark-green font-bold shadow-xs scale-110 ring-4 ring-gold/20' 
+                                              : 'bg-white border-stone-200 text-stone-400'
+                                        }`}
+                                      >
+                                        {isCompleted ? (
+                                          <CheckCircle2 className="w-5 h-5 text-white" />
+                                        ) : (
+                                          <StepIcon className={`w-4 h-4 ${isActive ? 'animate-pulse' : ''}`} />
+                                        )}
+                                      </div>
+                                      <span className={`text-[9px] font-bold mt-2 text-center select-none ${
+                                        isActive ? 'text-dark-green font-black' : isCompleted ? 'text-stone-700 font-semibold' : 'text-stone-400 font-medium'
+                                      }`}>
+                                        {step.label}
+                                      </span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+
+                            {/* Ordered Dishes Section */}
+                            <div className="p-5 space-y-3 bg-stone-50/10">
+                              <span className="text-[10px] font-bold text-stone-400 uppercase tracking-widest block mb-1">
+                                {t('Detalle del Pedido')}
+                              </span>
+                              <div className="divide-y divide-stone-100">
+                                {dishes.map((dish, dIdx) => (
+                                  <div key={dIdx} className="py-2.5 flex items-center justify-between gap-3 first:pt-0 last:pb-0">
+                                    <div className="flex items-center gap-3">
+                                      {dish.imageUrl ? (
+                                        <img 
+                                          src={dish.imageUrl} 
+                                          alt={dish.name} 
+                                          referrerPolicy="no-referrer"
+                                          className="w-10 h-10 rounded-lg object-cover bg-stone-50 border border-stone-200/50 shrink-0"
+                                        />
+                                      ) : (
+                                        <div className="w-10 h-10 rounded-lg bg-stone-50 border border-stone-200/40 flex items-center justify-center text-stone-400 shrink-0">
+                                          <Utensils size={14} />
+                                        </div>
+                                      )}
+                                      <div>
+                                        <div className="text-xs font-bold text-stone-800">
+                                          {t(dish.name)}
+                                        </div>
+                                        <span className="text-[10px] text-stone-400 font-medium">
+                                          {dish.priceCUP > 0 ? `${dish.priceCUP.toLocaleString()} CUP ${t('c/u')}` : t('Precio del día')}
+                                        </span>
+                                      </div>
+                                    </div>
+                                    <div className="text-right">
+                                      <span className="text-xs font-bold text-stone-900 block">
+                                        x{dish.quantity}
+                                      </span>
+                                      {dish.priceCUP > 0 && (
+                                        <span className="text-[10px] text-stone-500 font-semibold block">
+                                          ${(dish.priceCUP * dish.quantity).toLocaleString()} CUP
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+
+                              {/* Summary / Total */}
+                              {orderTotal > 0 && (
+                                <div className="border-t border-stone-100 pt-3 flex justify-between items-center">
+                                  <span className="text-xs font-bold text-stone-500">{t('Total de este Pedido:')}</span>
+                                  <span className="font-serif font-bold text-sm text-dark-green bg-stone-50 px-3 py-1 rounded-lg border border-stone-200/40">
+                                    ${orderTotal.toLocaleString()} CUP
+                                  </span>
+                                </div>
+                              )}
+                            </div>
                           </div>
                         );
                       })}

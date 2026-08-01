@@ -87,6 +87,7 @@ export interface Order {
   totalUSD?: number;
   assignedDependentId?: string;
   reservationId?: string;
+  customerName?: string;
 }
 
 export interface Comanda {

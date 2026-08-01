@@ -22,6 +22,7 @@ export default defineSchema({
   }).index("by_deviceId", ["deviceId"]),
 
   orders: defineTable({
+    id: v.optional(v.string()),
     tableNumber: v.string(),
     items: v.array(
       v.object({
@@ -39,6 +40,7 @@ export default defineSchema({
     timestamp: v.number(),
     assignedDependentId: v.string(),
     reservationId: v.optional(v.string()),
+    customerName: v.optional(v.string()),
   }).index("by_status", ["status"]),
 
   reservations: defineTable({

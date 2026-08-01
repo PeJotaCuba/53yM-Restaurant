@@ -118,7 +118,7 @@ export default function App() {
     return (liveOrders || []).map((lo: any) => {
       const itemsList = lo.items ? lo.items.map((i: any) => typeof i === 'string' ? i : `${i.quantity}x ${i.name}`) : [];
       return {
-        id: lo._id || lo.id,
+        id: lo.id || lo._id,
         tableNumber: lo.tableNumber || 'Mesa',
         items: itemsList,
         orderItems: (lo.items || []).map((item: any) => ({
@@ -132,6 +132,7 @@ export default function App() {
         totalCUP: lo.totalCUP || 0,
         totalUSD: lo.totalUSD || 0,
         status: lo.status || 'pending_dependent',
+        customerName: lo.customerName,
         timestamp: lo.timestamp || Date.now(),
         assignedDependentId: lo.assignedDependentId || 'no_assigned',
         reservationId: lo.reservationId,
@@ -417,6 +418,7 @@ export default function App() {
           timestamp: newOrder.timestamp || Date.now(),
           assignedDependentId: newOrder.assignedDependentId || 'no_assigned',
           reservationId: newOrder.reservationId || undefined,
+          customerName: newOrder.customerName || undefined,
           username: currentUsername,
           userRole: currentUserRole,
         }).catch(err => console.warn('Convex syncOrder error:', err));

@@ -23,6 +23,7 @@ export const syncOrUpdateOrder = mutation({
     status: v.string(),
     assignedDependentId: v.string(),
     reservationId: v.optional(v.string()),
+    customerName: v.optional(v.string()),
     timestamp: v.optional(v.number()),
     username: v.optional(v.string()),
     userRole: v.optional(v.string()),
@@ -30,6 +31,7 @@ export const syncOrUpdateOrder = mutation({
   },
   handler: async (ctx, args) => {
     const data = {
+      id: args.id,
       tableNumber: args.tableNumber,
       items: args.items,
       totalCUP: args.totalCUP,
@@ -38,6 +40,7 @@ export const syncOrUpdateOrder = mutation({
       timestamp: args.timestamp || Date.now(),
       assignedDependentId: args.assignedDependentId,
       reservationId: args.reservationId,
+      customerName: args.customerName,
     };
 
     if (args.id) {
