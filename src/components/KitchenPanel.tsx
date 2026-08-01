@@ -186,6 +186,8 @@ export function KitchenPanel({ data, updateData, kitchenInfo }: KitchenPanelProp
       timestamp: targetOrder.timestamp || Date.now(),
       assignedDependentId: targetOrder.assignedDependentId,
       reservationId: targetOrder.reservationId,
+      customerName: targetOrder.customerName,
+      comandaId: targetOrder.comandaId,
       username: activeUsername,
       userRole: 'kitchen'
     }).catch(err => console.warn('Kitchen syncOrUpdateOrder error:', err));
