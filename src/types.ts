@@ -107,6 +107,7 @@ export interface Comanda {
   currencyBreakdown?: { CUP?: number; USD?: number; EUR?: number };
   paymentSummaryStr?: string;
   exchangeRateUsed?: { usdCUP: number; eurCUP: number };
+  paymentRequested?: boolean;
 }
 
 export interface ComandaReportItem {

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Reservation, AppData, Order, OrderItem } from '../types';
-import { Clock, CheckCircle2, XCircle, Edit2, Calendar, User, Phone, X, Save, AlertTriangle, MessageCircle, Utensils, Plus, Trash2, Send, ShoppingBag, ShieldAlert, Download } from 'lucide-react';
+import { Reservation, AppData, Order, OrderItem, AppNotification } from '../types';
+import { Clock, CheckCircle2, XCircle, Edit2, Calendar, User, Phone, X, Save, AlertTriangle, MessageCircle, Utensils, Plus, Trash2, Send, ShoppingBag, ShieldAlert, Download, Check } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useDeviceId } from '../hooks/useDeviceId';
 import { useLanguage } from '../context/LanguageContext';
@@ -746,9 +746,155 @@ export function UserDashboard({ reservations, data, updateData, onUpdateReservat
             );
           })()}
 
+          {/* ACTIVE CLIENT ACCOUNT (OPEN COMANDA) */}
+          {!showMesaSelection && !isReviewingOrder && (() => {
+            const openComanda = (data?.comandas || []).find(c => c.tableNumber === clientTable && c.status === 'open');
+            if (!openComanda) return null;
+
+            // Get live status of orders in the comanda from data.orders
+            const comandaOrders = (openComanda.orders || []).map(o => {
+              const liveO = (data?.orders || []).find(ord => ord.id === o.id);
+              return liveO ? { ...o, status: liveO.status } : o;
+            });
+
+            const totalCUP = comandaOrders.reduce((sum, ord) => {
+              const ordTotal = ord.orderItems?.reduce((acc, i) => acc + (i.priceCUP * i.quantity), 0) || 0;
+              return sum + ordTotal;
+            }, 0);
+
+            const totalUSD = totalCUP / usdCUP;
+            const totalEUR = totalCUP / eurCUP;
+
+            return (
+              <div className="bg-stone-50 border border-stone-200 p-6 rounded-3xl shadow-sm space-y-4">
+                <div className="flex justify-between items-center border-b border-stone-200 pb-3">
+                  <div className="flex items-center gap-2">
+                    <Utensils className="text-dark-green" size={20} />
+                    <h3 className="font-serif font-bold text-lg text-stone-900">
+                      Consumo Activo en {clientTable}
+                    </h3>
+                  </div>
+                  {openComanda.paymentRequested ? (
+                    <span className="bg-amber-100 text-amber-800 px-3 py-1 rounded-full text-[10px] font-bold uppercase animate-pulse">
+                      ⏳ Cuenta Confirmada / Solicitando Cobro
+                    </span>
+                  ) : (
+                    <span className="bg-emerald-100 text-emerald-800 px-3 py-1 rounded-full text-[10px] font-bold uppercase">
+                      ● Cuenta Abierta
+                    </span>
+                  )}
+                </div>
+
+                <div className="space-y-3 max-h-48 overflow-y-auto pr-1">
+                  {comandaOrders.map(ord => {
+                    return (
+                      <div key={ord.id} className="bg-white p-3.5 rounded-2xl border border-stone-100 space-y-2">
+                        <div className="flex justify-between items-center text-xs">
+                          <span className="font-bold text-stone-700">Pedido #{ord.id.split('-')[1] || ord.id}</span>
+                          <span className={`px-2 py-0.5 rounded-full font-bold text-[9px] uppercase ${
+                            ord.status === 'delivered' ? 'bg-green-100 text-green-800' :
+                            ord.status === 'kitchen_ready' ? 'bg-emerald-100 text-emerald-800 animate-pulse' :
+                            ord.status === 'kitchen_in_progress' ? 'bg-amber-100 text-amber-800' :
+                            'bg-stone-100 text-stone-600'
+                          }`}>
+                            {ord.status === 'delivered' ? '✓ Servido en Mesa' :
+                             ord.status === 'kitchen_ready' ? '🔔 ¡Listo para Servir!' :
+                             ord.status === 'kitchen_in_progress' ? '🍳 En Preparación' : '⏳ Pendiente'}
+                          </span>
+                        </div>
+                        <div className="space-y-1 pl-1 text-xs">
+                          {ord.orderItems?.map((it, idx) => (
+                            <div key={idx} className="flex justify-between text-stone-600">
+                              <span><strong>{it.quantity}x</strong> {it.name}</span>
+                              <span className="font-mono">${(it.priceCUP * it.quantity).toLocaleString()} CUP</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="pt-3 border-t border-stone-200 flex flex-wrap justify-between items-center gap-4">
+                  <div>
+                    <span className="text-[10px] uppercase text-stone-400 font-bold">Total Parcial</span>
+                    <div className="text-xl font-serif font-bold text-dark-green">
+                      ${totalCUP.toLocaleString()} CUP
+                    </div>
+                    <div className="text-[11px] text-stone-500 font-mono">
+                      ${totalUSD.toFixed(2)} USD • €{totalEUR.toFixed(2)} EUR
+                    </div>
+                  </div>
+
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => {
+                        document.getElementById('menu-section')?.scrollIntoView({ behavior: 'smooth' });
+                      }}
+                      className="bg-stone-100 hover:bg-stone-200 text-stone-700 font-bold px-3 py-2 rounded-xl text-xs transition-colors flex items-center gap-1 border border-stone-300"
+                    >
+                      <Plus size={14} /> Pedir Otro Plato
+                    </button>
+
+                    {!openComanda.paymentRequested && (
+                      <button
+                        onClick={() => {
+                          if (!confirm('¿Deseas confirmar tu cuenta y solicitar el cobro al dependiente?')) return;
+                          
+                          // Mark as requested in comanda
+                          const updatedComandas = (data?.comandas || []).map(c => {
+                            if (c.id === openComanda.id) {
+                              return { ...c, paymentRequested: true };
+                            }
+                            return c;
+                          });
+
+                          // Create log
+                          const log = {
+                            id: `LOG-${Date.now()}`,
+                            timestamp: Date.now(),
+                            timeStr: new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }),
+                            dateStr: new Date().toLocaleDateString('es-ES'),
+                            role: 'Cliente' as const,
+                            userOrDevice: clientName.trim() || 'Cliente',
+                            action: 'Confirmó Cuenta & Solicitó Cobro',
+                            details: `Cliente de ${clientTable} confirmó su cuenta de $${totalCUP.toLocaleString()} CUP y solicitó el pago.`
+                          };
+
+                          // Add a notification for the waiter
+                          const notif: AppNotification = {
+                            id: `NOTIF-PAY-${Date.now()}`,
+                            timestamp: Date.now(),
+                            orderId: openComanda.id,
+                            tableNumber: clientTable,
+                            targetRole: 'dependent',
+                            title: '💵 ¡Solicitud de Cuenta!',
+                            message: `Mesa ${clientTable} solicita la cuenta. Total: $${totalCUP.toLocaleString()} CUP.`
+                          };
+
+                          if (updateData) {
+                            updateData({
+                              comandas: updatedComandas,
+                              notifications: [notif, ...(data?.notifications || [])],
+                              auditLogs: [log, ...(data?.auditLogs || [])]
+                            });
+                          }
+                          alert('✓ Solicitud de pago enviada. El dependiente acudirá a tu mesa con el comprobante.');
+                        }}
+                        className="bg-emerald-700 hover:bg-emerald-850 text-white font-bold px-4 py-2 rounded-xl text-xs transition-colors flex items-center gap-1 shadow-md"
+                      >
+                        <Check size={14} /> Confirmar Cuenta
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+
           {/* DISH SELECTION UI */}
           {!showMesaSelection && !isReviewingOrder && (
-            <div className="bg-white p-6 md:p-8 rounded-3xl border border-stone-200 shadow-sm space-y-6">
+            <div id="menu-section" className="bg-white p-6 md:p-8 rounded-3xl border border-stone-200 shadow-sm space-y-6">
               <div className="flex items-center justify-between border-b border-stone-100 pb-4">
                 <div>
                   <h3 className="text-xl font-serif font-bold text-dark-green">Conformar Pedido</h3>

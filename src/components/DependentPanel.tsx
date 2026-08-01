@@ -628,6 +628,13 @@ export function DependentPanel({ data, updateData, dependentInfo }: DependentPan
       return c;
     });
 
+    const updatedOrders = (data.orders || []).map(o => {
+      if (o.comandaId === closingComanda.id) {
+        return { ...o, status: 'closed' as const };
+      }
+      return o;
+    });
+
     // Audit log
     const log = {
       id: `LOG-${Date.now()}`,
@@ -642,6 +649,7 @@ export function DependentPanel({ data, updateData, dependentInfo }: DependentPan
 
     updateData({
       comandas: updatedComandas,
+      orders: updatedOrders,
       auditLogs: [log, ...(data.auditLogs || [])]
     });
 
@@ -1138,9 +1146,16 @@ export function DependentPanel({ data, updateData, dependentInfo }: DependentPan
               </div>
 
               {openComanda && (
-                <span className="bg-amber-100 text-amber-800 px-3 py-1 rounded-full text-xs font-bold font-mono">
-                  ● {t('Comanda Abierta')} #{openComanda.id}
-                </span>
+                <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                  {openComanda.paymentRequested && (
+                    <span className="bg-red-600 text-white px-3 py-1 rounded-full text-xs font-bold animate-pulse shadow-sm">
+                      ⚠️ {t('SOLICITÓ CUENTA')}
+                    </span>
+                  )}
+                  <span className="bg-amber-100 text-amber-800 px-3 py-1 rounded-full text-xs font-bold font-mono">
+                    ● {t('Comanda Abierta')} #{openComanda.id}
+                  </span>
+                </div>
               )}
             </div>
 
@@ -1277,43 +1292,56 @@ export function DependentPanel({ data, updateData, dependentInfo }: DependentPan
                   </h5>
 
                   <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
-                    {openComanda.orders.map(order => (
-                      <div key={order.id} className="p-3 bg-white border border-stone-200 rounded-xl flex items-center justify-between text-xs">
-                        <div>
-                          <div className="font-bold text-stone-900">
-                            {order.orderItems 
-                              ? order.orderItems.map(i => `${i.name} (x${i.quantity})`).join(', ')
-                              : order.items.join(', ')}
+                    {openComanda.orders.map(order => {
+                      const liveOrder = (data.orders || []).find(o => o.id === order.id);
+                      const currentStatus = liveOrder ? liveOrder.status : order.status;
+                      return (
+                        <div key={order.id} className="p-3 bg-white border border-stone-200 rounded-xl flex items-center justify-between text-xs">
+                          <div>
+                            <div className="font-bold text-stone-900">
+                              {order.orderItems 
+                                ? order.orderItems.map(i => `${i.name} (x${i.quantity})`).join(', ')
+                                : order.items.join(', ')}
+                            </div>
+                            <div className="text-[10px] text-stone-400 font-mono">
+                              #{order.id} • {new Date(order.timestamp).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}
+                            </div>
                           </div>
-                          <div className="text-[10px] text-stone-400 font-mono">
-                            #{order.id} • {new Date(order.timestamp).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}
+
+                          <div className="flex items-center gap-2">
+                            <span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase ${
+                              currentStatus === 'delivered' ? 'bg-green-100 text-green-700' :
+                              currentStatus === 'kitchen_ready' ? 'bg-emerald-600 text-white animate-pulse' :
+                              'bg-amber-100 text-amber-800'
+                            }`}>
+                              {currentStatus === 'delivered' ? t('Servido') :
+                               currentStatus === 'kitchen_ready' ? '🔔 ¡LISTO EN COCINA!' : t('En Marcha')}
+                            </span>
+
+                            {currentStatus === 'kitchen_ready' && (
+                              <button
+                                onClick={() => {
+                                  const updatedOrders = (data.orders || []).map(o => o.id === order.id ? { ...o, status: 'delivered' as const } : o);
+                                  const updatedComandas = (data.comandas || []).map(c => {
+                                    if (c.id === openComanda.id) {
+                                      return {
+                                        ...c,
+                                        orders: c.orders.map(o => o.id === order.id ? { ...o, status: 'delivered' as const } : o)
+                                      };
+                                    }
+                                    return c;
+                                  });
+                                  updateData({ orders: updatedOrders, comandas: updatedComandas });
+                                }}
+                                className="bg-emerald-800 hover:bg-stone-900 text-white px-2 py-1 rounded text-[10px] font-bold transition-colors"
+                              >
+                                Marcar Servido
+                              </button>
+                            )}
                           </div>
                         </div>
-
-                        <div className="flex items-center gap-2">
-                          <span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase ${
-                            order.status === 'delivered' ? 'bg-green-100 text-green-700' :
-                            order.status === 'kitchen_ready' ? 'bg-emerald-600 text-white animate-pulse' :
-                            'bg-amber-100 text-amber-800'
-                          }`}>
-                            {order.status === 'delivered' ? t('Servido') :
-                             order.status === 'kitchen_ready' ? '🔔 ¡LISTO EN COCINA!' : t('En Marcha')}
-                          </span>
-
-                          {order.status === 'kitchen_ready' && (
-                            <button
-                              onClick={() => {
-                                const updatedOrders = (data.orders || []).map(o => o.id === order.id ? { ...o, status: 'delivered' as const } : o);
-                                updateData({ orders: updatedOrders });
-                              }}
-                              className="bg-emerald-800 hover:bg-stone-900 text-white px-2 py-1 rounded text-[10px] font-bold transition-colors"
-                            >
-                              Marcar Servido
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
 
                     {openComanda.orders.length === 0 && (
                       <div className="text-stone-400 text-xs text-center py-6 border border-dashed border-stone-200 rounded-xl">
@@ -1675,7 +1703,16 @@ export function DependentPanel({ data, updateData, dependentInfo }: DependentPan
                         <button
                           onClick={() => {
                             const updatedOrders = (data.orders || []).map(o => o.id === ord.id ? { ...o, status: 'delivered' as const } : o);
-                            updateData({ orders: updatedOrders });
+                            const updatedComandas = (data.comandas || []).map(c => {
+                              if (c.id === ord.comandaId) {
+                                return {
+                                  ...c,
+                                  orders: c.orders.map(o => o.id === ord.id ? { ...o, status: 'delivered' as const } : o)
+                                };
+                              }
+                              return c;
+                            });
+                            updateData({ orders: updatedOrders, comandas: updatedComandas });
                             if (readyKitchenOrders.length <= 1) setShowReadyModal(false);
                           }}
                           className="bg-emerald-700 hover:bg-stone-900 text-white font-bold text-xs px-4 py-2 rounded-xl transition-all shadow-md flex items-center gap-1.5"
