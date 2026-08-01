@@ -1,0 +1,844 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { AppData, Order, OrderItem } from '../types';
+import { 
+  Utensils, Plus, Trash2, Send, ShoppingBag, Download, ArrowLeft, 
+  MessageCircle, X, QrCode, Camera, CheckCircle2, Image as ImageIcon, 
+  AlertTriangle, RotateCcw, Sparkles, BookOpen, Clock, ChevronRight
+} from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
+import { useDeviceId } from '../hooks/useDeviceId';
+import { useLanguage } from '../context/LanguageContext';
+import { jsPDF } from 'jspdf';
+import { Html5Qrcode } from 'html5-qrcode';
+import { FullMenu } from './FullMenu';
+
+interface ClientOrderWorkspaceProps {
+  data?: AppData;
+  updateData?: (data: Partial<AppData>) => void;
+  onBack: () => void;
+}
+
+export function ClientOrderWorkspace({ data, updateData, onBack }: ClientOrderWorkspaceProps) {
+  const { t } = useLanguage();
+  const deviceId = useDeviceId();
+
+  const [clientTable, setClientTable] = useState('');
+  const [clientName, setClientName] = useState('');
+  
+  // Selection Flow States
+  const [showMesaSelection, setShowMesaSelection] = useState(true);
+  const [selectionMode, setSelectionMode] = useState<'options' | 'qr' | 'manual' | 'qr_success'>('options');
+  const [scannedTable, setScannedTable] = useState('');
+  const [qrError, setQrError] = useState('');
+  const [isCameraActive, setIsCameraActive] = useState(false);
+
+  // Cart & Order Review States
+  const [isReviewingOrder, setIsReviewingOrder] = useState(false);
+  const [selectedDishName, setSelectedDishName] = useState(data?.menuItems[0]?.name || '');
+  const [dishRations, setDishRations] = useState<number>(1);
+  const [cartItems, setCartItems] = useState<{ dishName: string; quantity: number; priceCUP: number }[]>([]);
+  const [showClosedComandas, setShowClosedComandas] = useState(false);
+  const [activeSubView, setActiveSubView] = useState<'welcome' | 'consult' | 'order'>('welcome');
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // 1. Restore previous session or parsed URL QR query parameters on load
+  useEffect(() => {
+    // Check if there was a URL parameter for table/mesa
+    const params = new URLSearchParams(window.location.search);
+    const tableParam = params.get('table') || params.get('mesa') || window.location.hash.replace('#', '').split('=')[1];
+    
+    let initialTable = '';
+    if (tableParam) {
+      let resolved = tableParam.trim();
+      if (!resolved.toLowerCase().startsWith('mesa')) {
+        const num = parseInt(resolved.replace(/\D/g, ''), 10);
+        if (!isNaN(num)) {
+          resolved = `Mesa ${num}`;
+        }
+      }
+      resolved = resolved.charAt(0).toUpperCase() + resolved.slice(1);
+      initialTable = resolved;
+      localStorage.setItem('scannedTable', resolved);
+    }
+
+    const savedTable = initialTable || localStorage.getItem('clientTable') || localStorage.getItem('scannedTable');
+    const savedName = localStorage.getItem('clientUserName') || '';
+
+    if (savedTable) {
+      setClientTable(savedTable);
+      setClientName(savedName);
+      setShowMesaSelection(false);
+    } else {
+      setShowMesaSelection(true);
+      setSelectionMode('options');
+    }
+  }, []);
+
+  // 2. Set default dish name when menuItems are loaded
+  useEffect(() => {
+    if (data?.menuItems && data.menuItems.length > 0 && !selectedDishName) {
+      setSelectedDishName(data.menuItems[0].name);
+    }
+  }, [data?.menuItems]);
+
+  // 3. Derive tables dynamically from Convex data.dependents with fallback
+  const configuredTables = Array.from(
+    new Set([
+      ...(data?.dependents || []).map(d => d.tableNumber),
+      'Mesa 1', 'Mesa 2', 'Mesa 3', 'Mesa 4', 'Mesa 5', 'Mesa 6'
+    ])
+  )
+    .filter(Boolean)
+    .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+
+  // Helper to query table configuration from Convex (source of truth)
+  const getTableConfig = (table: string) => {
+    const activeComanda = data?.comandas?.find(c => c.tableNumber === table && c.status === 'open');
+    const assignedDependent = data?.dependents?.find(d => d.tableNumber === table);
+    return {
+      activeComanda,
+      assignedDependent,
+      isShiftActive: data?.isShiftActive !== false,
+      customerName: activeComanda?.customerName || '',
+    };
+  };
+
+  const clientReadyOrders = (data?.orders || []).filter(o => o.status === 'kitchen_ready' && o.tableNumber === clientTable);
+  const clientClosedComandas = (data?.comandas || []).filter(c => c.tableNumber === clientTable && c.status === 'closed').sort((a, b) => (b.closedAt || 0) - (a.closedAt || 0));
+
+  // 4. In-App QR Scanning Camera Cycle
+  useEffect(() => {
+    if (selectionMode !== 'qr') return;
+
+    let html5Qrcode: Html5Qrcode | null = null;
+    const qrReaderId = 'qr-reader';
+    setQrError('');
+    setIsCameraActive(false);
+
+    const timer = setTimeout(() => {
+      try {
+        html5Qrcode = new Html5Qrcode(qrReaderId);
+        setIsCameraActive(true);
+        html5Qrcode.start(
+          { facingMode: 'environment' },
+          {
+            fps: 15,
+            qrbox: (width, height) => {
+              const size = Math.min(width, height) * 0.7;
+              return { width: size, height: size };
+            }
+          },
+          (decodedText) => {
+            handleQrCodeDecoded(decodedText);
+            if (html5Qrcode) {
+              html5Qrcode.stop().catch(console.warn);
+              setIsCameraActive(false);
+            }
+          },
+          () => {
+            // Passive scanner errors can be ignored safely
+          }
+        ).catch(err => {
+          console.warn('Camera start error:', err);
+          setQrError(t('No se pudo abrir la cámara. Asegúrate de otorgar permisos o utiliza la opción de subir una foto del código QR.'));
+          setIsCameraActive(false);
+        });
+      } catch (e) {
+        console.error('Html5Qrcode initialization failed', e);
+        setQrError(t('Error de inicialización del escáner.'));
+        setIsCameraActive(false);
+      }
+    }, 400);
+
+    return () => {
+      clearTimeout(timer);
+      if (html5Qrcode && html5Qrcode.isScanning) {
+        html5Qrcode.stop().catch(err => console.warn('Stopping scanner on unmount error:', err));
+      }
+    };
+  }, [selectionMode]);
+
+  // Decode QR content safely
+  const handleQrCodeDecoded = (decodedText: string) => {
+    let table = '';
+    try {
+      if (decodedText.startsWith('http://') || decodedText.startsWith('https://')) {
+        const url = new URL(decodedText);
+        const params = new URLSearchParams(url.search);
+        table = params.get('table') || params.get('mesa') || '';
+        if (!table && url.hash) {
+          const hashParams = new URLSearchParams(url.hash.replace('#', ''));
+          table = hashParams.get('table') || hashParams.get('mesa') || '';
+        }
+      } else {
+        table = decodedText;
+      }
+    } catch (e) {
+      table = decodedText;
+    }
+
+    table = table.trim();
+    if (table) {
+      if (!table.toLowerCase().startsWith('mesa')) {
+        const num = parseInt(table.replace(/\D/g, ''), 10);
+        if (!isNaN(num)) {
+          table = `Mesa ${num}`;
+        }
+      }
+      table = table.charAt(0).toUpperCase() + table.slice(1);
+      
+      setScannedTable(table);
+      
+      // Auto-fill client name if Convex already has an active comanda on this table
+      const config = getTableConfig(table);
+      if (config.customerName) {
+        setClientName(config.customerName);
+      }
+      
+      setSelectionMode('qr_success');
+    } else {
+      alert(t('El código QR escaneado no contiene una mesa válida del restaurante.'));
+    }
+  };
+
+  // Upload/Image Scan Fallback
+  const handleFileScan = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || e.target.files.length === 0) return;
+    const file = e.target.files[0];
+    
+    const dummyDiv = document.getElementById('qr-reader-dummy');
+    if (!dummyDiv) return;
+
+    const html5Qrcode = new Html5Qrcode('qr-reader-dummy');
+    html5Qrcode.scanFile(file, true)
+      .then(decodedText => {
+        handleQrCodeDecoded(decodedText);
+        html5Qrcode.clear();
+      })
+      .catch(err => {
+        console.warn('File scanning error:', err);
+        alert(t('No se pudo detectar ningún código QR en la imagen. Por favor toma una foto más nítida o ingresa la mesa manualmente.'));
+        html5Qrcode.clear();
+      });
+  };
+
+  const handleConfirmMesa = (table: string) => {
+    if (!table) {
+      alert(t('Por favor selecciona una mesa válida.'));
+      return;
+    }
+    
+    // Save to device localStorage
+    localStorage.setItem('clientTable', table);
+    if (clientName.trim()) {
+      localStorage.setItem('clientUserName', clientName.trim());
+    }
+    
+    setClientTable(table);
+    setShowMesaSelection(false);
+  };
+
+  const handleLogoutMesa = () => {
+    localStorage.removeItem('clientTable');
+    localStorage.removeItem('scannedTable');
+    setClientTable('');
+    setShowMesaSelection(true);
+    setSelectionMode('options');
+    setActiveSubView('welcome');
+  };
+
+  const handleAddToCart = () => {
+    const foundDish = data?.menuItems.find(m => m.name === selectedDishName);
+    const priceCUP = foundDish ? foundDish.priceCUP : 100;
+
+    const existingIndex = cartItems.findIndex(i => i.dishName === selectedDishName);
+    if (existingIndex >= 0) {
+      const updated = [...cartItems];
+      updated[existingIndex].quantity += dishRations;
+      setCartItems(updated);
+    } else {
+      setCartItems(prev => [...prev, { dishName: selectedDishName, quantity: dishRations, priceCUP }]);
+    }
+    setDishRations(1);
+  };
+
+  const handleRemoveFromCart = (index: number) => {
+    setCartItems(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const calculateCartTotal = () => {
+    return cartItems.reduce((acc, item) => acc + (item.priceCUP * item.quantity), 0);
+  };
+
+  const handleSubmitCartOrder = () => {
+    if (data?.isShiftActive === false) {
+      alert(t('⚠️ La jornada actual no ha sido iniciada por el Administrador.'));
+      return;
+    }
+    if (cartItems.length === 0) {
+      alert(t('Agrega al menos un plato a tu pedido antes de enviar.'));
+      return;
+    }
+
+    const orderItemsList: OrderItem[] = cartItems.map(c => ({
+      name: c.dishName,
+      quantity: c.quantity,
+      priceCUP: c.priceCUP
+    }));
+
+    const rawItemsList = cartItems.map(c => `${c.quantity}x ${c.dishName}`);
+
+    const newOrder: Order = {
+      id: `ORD-${Date.now()}`,
+      tableNumber: clientTable,
+      items: rawItemsList,
+      orderItems: orderItemsList,
+      status: 'client_pending',
+      timestamp: Date.now()
+    };
+
+    if (updateData && data) {
+      const updatedOrders = [...(data.orders || []), newOrder];
+      const log = {
+        id: `LOG-${Date.now()}`,
+        timestamp: Date.now(),
+        timeStr: new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }),
+        dateStr: new Date().toLocaleDateString('es-ES'),
+        role: 'Cliente' as const,
+        userOrDevice: clientName.trim() || 'Cliente',
+        action: 'Pedido Solicitado en Mesa',
+        details: `Cliente solicitó pedido de ${cartItems.length} plato(s) en ${clientTable} (Enviado a Dependiente).`
+      };
+      updateData({
+        orders: updatedOrders,
+        auditLogs: [log, ...(data.auditLogs || [])]
+      });
+    }
+
+    setCartItems([]);
+    setIsReviewingOrder(false);
+    alert(t('¡Tu pedido ha sido enviado al dependiente de tu mesa! El dependiente revisará tu pedido y lo mandará a cocina.'));
+  };
+
+  const generateComandaPDF = (com: any) => {
+    try {
+      const doc = new jsPDF();
+      const totalCUP = com.totalAmountCUP || 0;
+      const usdCUP = data?.exchangeRate?.usdCUP || 320;
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(18);
+      doc.text('53&M RESTAURANT', 105, 20, { align: 'center' });
+
+      doc.setFontSize(12);
+      doc.setFont('helvetica', 'normal');
+      doc.text('COMPROBANTE DE CONSUMO - CLIENTE', 105, 28, { align: 'center' });
+      doc.text('----------------------------------------------------', 105, 34, { align: 'center' });
+
+      doc.setFontSize(10);
+      doc.text(`Comanda ID: #${com.id}`, 20, 45);
+      doc.text(`Mesa: ${com.tableNumber}`, 20, 52);
+      doc.text(`Cliente: ${com.customerName || 'Cliente'}`, 20, 59);
+      doc.text(`Fecha y Hora: ${new Date(com.closedAt || Date.now()).toLocaleDateString('es-ES')} ${new Date(com.closedAt || Date.now()).toLocaleTimeString('es-ES')}`, 20, 66);
+
+      doc.setFont('helvetica', 'bold');
+      doc.text('DETALLE DE CONSUMO:', 20, 78);
+      doc.setFont('helvetica', 'normal');
+
+      let y = 86;
+      if (com.orders) {
+        com.orders.forEach((ord: any) => {
+          if (ord.orderItems) {
+            ord.orderItems.forEach((it: any) => {
+              doc.text(`${it.quantity}x ${it.name}`, 25, y);
+              doc.text(`$${(it.quantity * it.priceCUP).toLocaleString()} CUP`, 180, y, { align: 'right' });
+              y += 7;
+            });
+          }
+        });
+      }
+
+      doc.text('----------------------------------------------------', 105, y + 2, { align: 'center' });
+      y += 10;
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(11);
+      doc.text('TOTAL:', 20, y);
+      doc.text(`$${totalCUP.toLocaleString()} CUP`, 180, y, { align: 'right' });
+
+      y += 8;
+      doc.text('PAGO REALIZADO:', 20, y);
+      doc.text(`${com.paymentSummaryStr || `$${totalCUP} CUP`}`, 180, y, { align: 'right' });
+
+      y += 18;
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'italic');
+      doc.text('¡Gracias por su visita a 53&M Restaurant!', 105, y, { align: 'center' });
+
+      doc.save(`Recibo_53yM_Mesa_${com.tableNumber}_${com.id.slice(-5)}.pdf`);
+    } catch (err) {
+      console.error('Error al generar PDF:', err);
+      alert('Error al generar el PDF. Por favor intente de nuevo.');
+    }
+  };
+
+  return (
+    <div className="pt-28 pb-20 px-4 max-w-4xl mx-auto min-h-screen">
+      {/* Hidden container for HTML5 QR code scanning from image files */}
+      <div id="qr-reader-dummy" style={{ display: 'none' }}></div>
+
+      <div className="flex flex-col md:flex-row md:items-start justify-between gap-6 mb-8 border-b border-stone-200/60 pb-6">
+        <div>
+          <button onClick={onBack} className="mb-4 text-stone-500 hover:text-dark-green font-bold text-sm flex items-center gap-1 transition-colors cursor-pointer">
+            <ArrowLeft size={16} /> {t('Volver a Mi Perfil')}
+          </button>
+          <h2 className="text-4xl font-serif text-dark-green mb-2">{t('Hacer Pedido')}</h2>
+          <p className="text-stone-500 text-sm">{t('Realiza y sigue tu pedido directamente en el restaurante')}</p>
+        </div>
+      </div>
+
+      {clientReadyOrders.length > 0 && (
+        <div className="bg-emerald-900 text-white rounded-3xl p-6 mb-8 shadow-2xl border-2 border-emerald-400/80 flex items-center gap-4 animate-fade-in">
+          <div className="p-3 bg-emerald-800/80 rounded-2xl text-3xl shrink-0 animate-pulse border border-emerald-500/40">🔔</div>
+          <div>
+            <h4 className="font-serif font-bold text-lg text-white">¡Tu Pedido está listo en cocina!</h4>
+            <p className="text-xs text-emerald-100 mt-1">El dependiente te lo servirá en breve.</p>
+          </div>
+        </div>
+      )}
+
+      {showMesaSelection ? (
+        <div className="bg-white rounded-3xl p-6 md:p-8 border border-stone-100 shadow-sm max-w-lg mx-auto animate-fade-in">
+          {selectionMode === 'options' && (
+            <div className="text-center space-y-6">
+              <div className="bg-stone-50 w-20 h-20 rounded-3xl flex items-center justify-center mx-auto border border-stone-100">
+                <Utensils className="w-10 h-10 text-dark-green" />
+              </div>
+              <div>
+                <h3 className="text-2xl font-serif text-stone-800 mb-2">{t('Selecciona tu mesa')}</h3>
+                <p className="text-stone-500 text-sm">{t('Elige cómo deseas identificar la mesa en la que te encuentras para comenzar tu pedido.')}</p>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-4">
+                <button
+                  onClick={() => setSelectionMode('qr')}
+                  className="bg-dark-green hover:bg-stone-900 text-white p-6 rounded-3xl flex flex-col items-center justify-center gap-3 transition-all duration-300 shadow-md group border border-transparent cursor-pointer"
+                >
+                  <div className="bg-white/10 p-3 rounded-2xl group-hover:scale-110 transition-transform">
+                    <QrCode className="w-8 h-8 text-gold" />
+                  </div>
+                  <div className="text-center">
+                    <span className="font-serif font-bold block text-sm">{t('Escanear QR')}</span>
+                    <span className="text-[11px] text-stone-300 block mt-1">{t('Usa la cámara de tu móvil')}</span>
+                  </div>
+                </button>
+
+                <button
+                  onClick={() => setSelectionMode('manual')}
+                  className="bg-stone-50 hover:bg-stone-100 text-stone-800 p-6 rounded-3xl flex flex-col items-center justify-center gap-3 transition-all duration-300 border border-stone-200/60 group cursor-pointer"
+                >
+                  <div className="bg-white p-3 rounded-2xl shadow-xs group-hover:scale-110 transition-transform border border-stone-100">
+                    <Camera className="w-8 h-8 text-dark-green" />
+                  </div>
+                  <div className="text-center">
+                    <span className="font-serif font-bold block text-sm">{t('Ingreso Manual')}</span>
+                    <span className="text-[11px] text-stone-500 block mt-1">{t('Escribe los datos de la mesa')}</span>
+                  </div>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {selectionMode === 'qr' && (
+            <div className="space-y-6 text-center">
+              <div className="flex items-center justify-between border-b border-stone-100 pb-3">
+                <button
+                  onClick={() => setSelectionMode('options')}
+                  className="text-stone-500 hover:text-stone-950 font-bold text-xs flex items-center gap-1 transition-colors cursor-pointer"
+                >
+                  <ArrowLeft size={14} /> {t('Volver')}
+                </button>
+                <span className="text-xs font-bold text-stone-400 uppercase tracking-wider">{t('Escanear QR')}</span>
+                <div className="w-6"></div>
+              </div>
+
+              <div className="relative">
+                {/* Real-time HTML5 Camera scanning stage */}
+                <div id="qr-reader" className="w-full max-w-sm mx-auto overflow-hidden rounded-3xl border border-stone-200/80 bg-stone-950 aspect-square shadow-inner flex items-center justify-center relative">
+                  {!isCameraActive && !qrError && (
+                    <div className="text-center p-6 text-stone-400 flex flex-col items-center gap-3">
+                      <div className="animate-spin rounded-full h-8 w-8 border-2 border-gold border-t-transparent"></div>
+                      <span className="text-xs">{t('Iniciando cámara...')}</span>
+                    </div>
+                  )}
+                  {qrError && (
+                    <div className="p-6 text-stone-300 text-xs text-center flex flex-col items-center gap-3">
+                      <AlertTriangle className="w-8 h-8 text-amber-500" />
+                      <p>{qrError}</p>
+                    </div>
+                  )}
+                </div>
+
+                <div className="absolute inset-0 border-2 border-dashed border-gold/40 pointer-events-none rounded-3xl max-w-sm mx-auto aspect-square scale-90 flex items-center justify-center">
+                  <div className="w-48 h-48 border-2 border-gold rounded-2xl animate-pulse"></div>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <p className="text-xs text-stone-500">{t('Apunta la cámara de tu dispositivo hacia el código QR de la mesa para identificarla de forma segura.')}</p>
+                
+                <div className="flex items-center justify-center gap-2">
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handleFileScan}
+                  />
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    className="bg-stone-100 hover:bg-stone-200 text-stone-800 font-bold py-2.5 px-4 rounded-xl text-xs flex items-center gap-2 transition-all cursor-pointer border border-stone-200/40"
+                  >
+                    <ImageIcon size={14} /> {t('Subir foto de QR')}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {selectionMode === 'manual' && (
+            <div className="space-y-6">
+              <div className="flex items-center justify-between border-b border-stone-100 pb-3">
+                <button
+                  onClick={() => setSelectionMode('options')}
+                  className="text-stone-500 hover:text-stone-950 font-bold text-xs flex items-center gap-1 transition-colors cursor-pointer"
+                >
+                  <ArrowLeft size={14} /> {t('Volver')}
+                </button>
+                <span className="text-xs font-bold text-stone-400 uppercase tracking-wider">{t('Datos Manuales')}</span>
+                <div className="w-6"></div>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-xs font-bold text-stone-500 uppercase tracking-wider mb-2">{t('Tu Nombre (Opcional)')}</label>
+                  <input
+                    type="text"
+                    placeholder="Ej. Juan Pérez"
+                    value={clientName}
+                    onChange={e => setClientName(e.target.value)}
+                    className="w-full bg-stone-50 border border-stone-200 rounded-2xl px-4 py-3 focus:outline-none focus:border-dark-green transition-all"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-stone-500 uppercase tracking-wider mb-2">{t('Selecciona tu Mesa *')}</label>
+                  <select
+                    value={scannedTable}
+                    onChange={e => setScannedTable(e.target.value)}
+                    className="w-full bg-stone-50 border border-stone-200 rounded-2xl px-4 py-3 focus:outline-none focus:border-dark-green appearance-none"
+                  >
+                    <option value="">{t('Selecciona una mesa...')}</option>
+                    {configuredTables.map(tableOpt => (
+                      <option key={tableOpt} value={tableOpt}>{tableOpt}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <button
+                  onClick={() => handleConfirmMesa(scannedTable)}
+                  className="w-full bg-dark-green hover:bg-stone-900 text-white font-serif font-bold py-4 rounded-2xl transition-all shadow-md mt-4 cursor-pointer"
+                >
+                  {t('Comenzar a Pedir')}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {selectionMode === 'qr_success' && (
+            <div className="space-y-6 text-center">
+              <div className="bg-emerald-50 w-16 h-16 rounded-full flex items-center justify-center mx-auto border border-emerald-100">
+                <CheckCircle2 className="w-10 h-10 text-emerald-600 animate-bounce" />
+              </div>
+              
+              <div>
+                <h3 className="text-2xl font-serif text-stone-900">{t('¡Mesa Identificada!')}</h3>
+                <span className="inline-block bg-emerald-100 text-emerald-800 font-bold text-lg px-6 py-2 rounded-2xl mt-2 border border-emerald-200 shadow-xs font-mono">
+                  {scannedTable}
+                </span>
+              </div>
+
+              {/* Convex consultation details display */}
+              {scannedTable && (
+                <div className="bg-stone-50 p-4 rounded-2xl border border-stone-200/60 text-xs text-left space-y-2 max-w-sm mx-auto">
+                  <span className="font-bold text-stone-500 block uppercase tracking-wider text-[10px] border-b border-stone-100 pb-1.5 mb-1.5">{t('Estado del Sistema (Convex)')}</span>
+                  
+                  {getTableConfig(scannedTable).activeComanda ? (
+                    <div className="flex justify-between items-center text-stone-800">
+                      <span>{t('Comanda actual:')}</span>
+                      <span className="font-bold text-emerald-600 font-mono">#{getTableConfig(scannedTable).activeComanda?.id.slice(-6)} ({getTableConfig(scannedTable).activeComanda?.customerName || 'Abierta'})</span>
+                    </div>
+                  ) : (
+                    <div className="flex justify-between items-center text-stone-500 italic">
+                      <span>{t('Comanda actual:')}</span>
+                      <span>{t('Nueva sesión de mesa')}</span>
+                    </div>
+                  )}
+
+                  {getTableConfig(scannedTable).assignedDependent ? (
+                    <div className="flex justify-between items-center text-stone-800">
+                      <span>{t('Camarero asignado:')}</span>
+                      <span className="font-bold text-dark-green">{getTableConfig(scannedTable).assignedDependent?.name}</span>
+                    </div>
+                  ) : (
+                    <div className="flex justify-between items-center text-stone-500 italic">
+                      <span>{t('Camarero asignado:')}</span>
+                      <span>{t('Cualquier camarero')}</span>
+                    </div>
+                  )}
+
+                  <div className="flex justify-between items-center text-stone-800">
+                    <span>{t('Servicio del Restaurante:')}</span>
+                    {getTableConfig(scannedTable).isShiftActive ? (
+                      <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded font-bold text-[10px] uppercase">{t('Abierto')}</span>
+                    ) : (
+                      <span className="bg-red-100 text-red-700 px-2 py-0.5 rounded font-bold text-[10px] uppercase">{t('Cerrado')}</span>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              <div className="space-y-4 pt-2">
+                <div className="text-left">
+                  <label className="block text-xs font-bold text-stone-500 uppercase tracking-wider mb-2">{t('Confirma tu Nombre (Opcional)')}</label>
+                  <input
+                    type="text"
+                    placeholder="Ej. Juan Pérez"
+                    value={clientName}
+                    onChange={e => setClientName(e.target.value)}
+                    className="w-full bg-stone-50 border border-stone-200 rounded-2xl px-4 py-3 focus:outline-none focus:border-dark-green transition-all"
+                  />
+                </div>
+
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setSelectionMode('options')}
+                    className="bg-stone-100 hover:bg-stone-200 text-stone-600 font-bold py-3.5 px-4 rounded-2xl text-sm transition-all flex items-center justify-center gap-1 cursor-pointer border border-stone-200/40"
+                  >
+                    <RotateCcw size={16} />
+                  </button>
+                  <button
+                    onClick={() => handleConfirmMesa(scannedTable)}
+                    className="flex-1 bg-dark-green hover:bg-stone-900 text-white font-serif font-bold py-3.5 rounded-2xl transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <Sparkles size={16} className="text-gold fill-gold" /> {t('Confirmar y Comenzar')}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="animate-fade-in">
+          {activeSubView === 'welcome' ? (
+            <div className="space-y-8">
+              {/* Header Card */}
+              <div className="bg-gradient-to-br from-dark-green to-stone-900 rounded-3xl p-6 md:p-8 text-white shadow-md relative overflow-hidden">
+                <div className="absolute right-0 bottom-0 translate-x-10 translate-y-10 opacity-10">
+                  <Utensils size={200} />
+                </div>
+                <span className="text-xs font-bold text-gold uppercase tracking-widest block mb-2">{t('Mesa Confirmada')}</span>
+                <h3 className="text-3xl font-serif mb-2">¡Hola, {clientName.trim() || t('Cliente')}!</h3>
+                <p className="text-stone-300 text-sm max-w-md">
+                  Te damos la bienvenida a la <strong className="text-white">{clientTable}</strong>. Elige una de las opciones a continuación para interactuar con nuestro menú interactivo.
+                </p>
+                <div className="mt-6 flex flex-wrap gap-3">
+                  <span className="bg-white/10 backdrop-blur-xs px-3.5 py-1.5 rounded-xl text-xs font-bold border border-white/10 flex items-center gap-1.5">
+                    📍 {clientTable}
+                  </span>
+                  <button
+                    onClick={handleLogoutMesa}
+                    className="bg-white/10 hover:bg-white/20 backdrop-blur-xs text-xs font-bold px-3.5 py-1.5 rounded-xl transition-all border border-white/10 cursor-pointer"
+                  >
+                    🔄 Cambiar Mesa / Nombre
+                  </button>
+                </div>
+              </div>
+
+              {/* Action Cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                {/* Option 1: Consult Menu */}
+                <button
+                  onClick={() => setActiveSubView('consult')}
+                  className="bg-white hover:bg-stone-50 border border-stone-200/80 p-6 rounded-3xl text-left flex flex-col justify-between h-48 transition-all hover:shadow-lg group cursor-pointer"
+                >
+                  <div className="bg-stone-50 group-hover:bg-gold/10 p-4 rounded-2xl w-14 h-14 flex items-center justify-center border border-stone-100 transition-colors">
+                    <BookOpen className="w-7 h-7 text-dark-green group-hover:text-gold transition-colors" />
+                  </div>
+                  <div>
+                    <h4 className="font-serif font-bold text-lg text-stone-900 mb-1 flex items-center gap-2">
+                      {t('Consultar Menú')} <ChevronRight size={16} className="text-stone-400 group-hover:translate-x-1 transition-transform" />
+                    </h4>
+                    <p className="text-xs text-stone-500 leading-relaxed">
+                      Explora la carta visual, categorías de platos y precios actualizados del día en tiempo real.
+                    </p>
+                  </div>
+                </button>
+
+                {/* Option 2: Place Order */}
+                <button
+                  onClick={() => setActiveSubView('order')}
+                  className="bg-white hover:bg-stone-50 border border-stone-200/80 p-6 rounded-3xl text-left flex flex-col justify-between h-48 transition-all hover:shadow-lg group cursor-pointer"
+                >
+                  <div className="bg-stone-50 group-hover:bg-gold/10 p-4 rounded-2xl w-14 h-14 flex items-center justify-center border border-stone-100 transition-colors">
+                    <Sparkles className="w-7 h-7 text-gold fill-gold" />
+                  </div>
+                  <div>
+                    <h4 className="font-serif font-bold text-lg text-stone-900 mb-1 flex items-center gap-2">
+                      {t('Hacer Pedido')} <ChevronRight size={16} className="text-stone-400 group-hover:translate-x-1 transition-transform" />
+                    </h4>
+                    <p className="text-xs text-stone-500 leading-relaxed">
+                      Añade tus platos favoritos a tu pedido y envíalos instantáneamente al camarero asignado.
+                    </p>
+                  </div>
+                </button>
+              </div>
+
+              {/* Active Orders Track list */}
+              <div className="bg-white rounded-3xl p-6 md:p-8 border border-stone-100 shadow-sm space-y-4">
+                <div className="flex items-center gap-2 border-b border-stone-100 pb-3 mb-2">
+                  <Clock size={18} className="text-dark-green" />
+                  <h4 className="font-bold text-stone-800 text-base">{t('Seguimiento de tu Mesa en Tiempo Real')}</h4>
+                </div>
+
+                {/* Fetch current active orders for this table */}
+                {(() => {
+                  const tableOrders = (data?.orders || [])
+                    .filter(o => o.tableNumber === clientTable)
+                    .sort((a, b) => b.timestamp - a.timestamp);
+
+                  if (tableOrders.length === 0) {
+                    return (
+                      <div className="text-center py-8 text-stone-400 text-xs">
+                        {t('No has realizado pedidos para esta mesa en la sesión actual.')}
+                      </div>
+                    );
+                  }
+
+                  const getStatusLabelAndColor = (status: string) => {
+                    switch (status) {
+                      case 'client_pending':
+                        return { label: t('Enviado, esperando camarero'), color: 'bg-amber-50 text-amber-700 border-amber-200' };
+                      case 'pending_dependent':
+                      case 'confirmed':
+                        return { label: t('Confirmado por Camarero'), color: 'bg-sky-50 text-sky-700 border-sky-200' };
+                      case 'kitchen_pending':
+                      case 'kitchen_cooking':
+                        return { label: t('En preparación en Cocina 🍳'), color: 'bg-orange-50 text-orange-700 border-orange-200' };
+                      case 'kitchen_ready':
+                        return { label: t('¡Listo para Servir! 🔔'), color: 'bg-emerald-500 text-white border-emerald-400 animate-pulse font-bold' };
+                      case 'delivered':
+                      case 'served':
+                        return { label: t('Servido en Mesa'), color: 'bg-green-50 text-green-700 border-green-200' };
+                      case 'closed':
+                      case 'paid':
+                        return { label: t('Pagado / Finalizado'), color: 'bg-stone-100 text-stone-600 border-stone-200' };
+                      default:
+                        return { label: status, color: 'bg-stone-50 text-stone-700 border-stone-200' };
+                    }
+                  };
+
+                  return (
+                    <div className="space-y-4">
+                      {tableOrders.map(order => {
+                        const statusInfo = getStatusLabelAndColor(order.status);
+                        return (
+                          <div key={order.id} className="p-4 bg-stone-50 rounded-2xl border border-stone-200/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-colors">
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-bold text-stone-800 text-xs uppercase tracking-wider font-mono">#{order.id.slice(-6)}</span>
+                                <span className="text-[10px] text-stone-500 font-medium">
+                                  {new Date(order.timestamp).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}
+                                </span>
+                              </div>
+                              <p className="text-xs text-stone-600 font-medium leading-relaxed">
+                                {order.items.join(', ')}
+                              </p>
+                            </div>
+                            <span className={`text-[11px] font-bold px-3 py-1.5 rounded-xl border text-center whitespace-nowrap self-start sm:self-center ${statusInfo.color}`}>
+                              {statusInfo.label}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
+              </div>
+
+              {/* Receipts of Closed Comandas for this table */}
+              {clientClosedComandas.length > 0 && (
+                <div className="bg-stone-50 rounded-3xl p-6 border border-stone-200 shadow-sm">
+                  <div className="flex justify-between items-center mb-4 border-b border-stone-200/60 pb-3">
+                    <h4 className="font-bold text-stone-800 text-sm flex items-center gap-2">
+                      🧾 {t('Recibos de Comandas Cerradas')}
+                    </h4>
+                    <button 
+                      onClick={() => setShowClosedComandas(!showClosedComandas)} 
+                      className="text-xs font-bold text-dark-green hover:underline cursor-pointer"
+                    >
+                      {showClosedComandas ? t('Ocultar') : t('Ver')}
+                    </button>
+                  </div>
+                  {showClosedComandas && (
+                    <div className="space-y-3">
+                      {clientClosedComandas.map(c => (
+                        <div key={c.id} className="bg-white p-4 rounded-2xl border border-stone-100 shadow-xs flex justify-between items-center transition-all hover:border-stone-300">
+                          <div>
+                            <div className="text-xs font-bold text-stone-900">Comanda #{c.id.slice(-6)}</div>
+                            <div className="text-[10px] text-stone-500">{new Date(c.closedAt || 0).toLocaleString()}</div>
+                          </div>
+                          <button 
+                            onClick={() => generateComandaPDF(c)} 
+                            className="bg-stone-50 hover:bg-stone-200 text-stone-700 px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer border border-stone-200"
+                          >
+                            <Download size={14} /> PDF
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          ) : activeSubView === 'consult' ? (
+            <div className="animate-fade-in -mx-4 md:-mx-8">
+              <FullMenu 
+                menuItems={data?.menuItems || []}
+                exchangeRate={data?.exchangeRate}
+                prefilledTable={clientTable}
+                prefilledName={clientName}
+                isOrderMode={false}
+                updateData={updateData}
+                onClose={() => setActiveSubView('welcome')}
+              />
+            </div>
+          ) : (
+            <div className="animate-fade-in -mx-4 md:-mx-8">
+              <FullMenu 
+                menuItems={data?.menuItems || []}
+                exchangeRate={data?.exchangeRate}
+                prefilledTable={clientTable}
+                prefilledName={clientName}
+                isOrderMode={true}
+                updateData={updateData}
+                onClose={() => setActiveSubView('welcome')}
+              />
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}

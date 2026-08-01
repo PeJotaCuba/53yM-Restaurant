@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { MenuItem, ExchangeRateConfig } from '../types';
 import { ShoppingCart, Plus, Minus, Trash2, Send, ChevronRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -11,21 +11,33 @@ export function FullMenu({
   menuItems, 
   exchangeRate,
   onSubmitReservationAndOrder,
-  updateData
+  updateData,
+  prefilledTable,
+  prefilledName,
+  isOrderMode = true
 }: { 
   onClose?: () => void, 
   pendingReservation?: any, 
   menuItems: MenuItem[], 
   exchangeRate?: ExchangeRateConfig,
   onSubmitReservationAndOrder?: (reservation: any, cartItems: any[], totalPrice: number) => Promise<any>,
-  updateData?: (data: any) => void
+  updateData?: (data: any) => void,
+  prefilledTable?: string,
+  prefilledName?: string,
+  isOrderMode?: boolean
 }) {
   const { t } = useLanguage();
   const [activeCategory, setActiveCategory] = useState('Todos');
   const [searchQuery, setSearchQuery] = useState('');
   const [cart, setCart] = useState<{item: MenuItem, quantity: number}[]>([]);
-  const [tableNumber, setTableNumber] = useState('');
+  const [tableNumber, setTableNumber] = useState(prefilledTable || '');
   const [isCartOpen, setIsCartOpen] = useState(false);
+
+  useEffect(() => {
+    if (prefilledTable) {
+      setTableNumber(prefilledTable);
+    }
+  }, [prefilledTable]);
 
   const usdCUP = exchangeRate?.usdCUP || 320;
   const eurCUP = exchangeRate?.eurCUP || 350;
@@ -111,7 +123,20 @@ export function FullMenu({
     };
 
     if (updateData) {
-      updateData({ orders: [newOrder] });
+      const log = {
+        id: `LOG-${Date.now()}`,
+        timestamp: Date.now(),
+        timeStr: new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }),
+        dateStr: new Date().toLocaleDateString('es-ES'),
+        role: 'Cliente' as const,
+        userOrDevice: prefilledName?.trim() || 'Cliente',
+        action: 'Pedido Solicitado en Mesa',
+        details: `Cliente solicitó pedido de ${cart.length} plato(s) en ${cleanTable} (Enviado a Dependiente desde Menú Visual).`
+      };
+      updateData({ 
+        orders: [newOrder],
+        auditLogs: [log]
+      });
     }
 
     alert(`✅ ¡Pedido enviado con éxito para ${cleanTable}!\n\nEl dependiente asignado a tu mesa ha recibido tu comanda en tiempo real.`);
@@ -140,31 +165,35 @@ export function FullMenu({
               {t('Menú')} <Logo variant="svg" className="h-10 ml-4 inline-block" />
             </h1>
           </div>
-          <button 
-            onClick={() => setIsCartOpen(true)}
-            className="hidden md:flex bg-dark-green text-white px-6 py-3 rounded-full items-center gap-3 hover:bg-stone-800 transition-colors shadow-lg"
-          >
-            <ShoppingCart size={20} />
-            <span className="font-bold">{t('Revisar Pedido')}</span>
-            {totalItems > 0 && (
-              <div className="flex items-center gap-2 border-l border-white/20 pl-3">
-                <span className="bg-gold text-dark-green text-xs font-bold px-2 py-0.5 rounded-full">{totalItems}</span>
-                <span>{totalPrice.toLocaleString()} CUP</span>
-              </div>
-            )}
-          </button>
-          
-          <button 
-            onClick={() => setIsCartOpen(true)}
-            className="md:hidden bg-dark-green text-white p-3 rounded-full flex items-center justify-center hover:bg-stone-800 transition-colors shadow-lg relative"
-          >
-            <ShoppingCart size={20} />
-            {totalItems > 0 && (
-              <span className="absolute -top-1 -right-1 bg-gold text-dark-green text-xs font-bold w-5 h-5 flex items-center justify-center rounded-full">
-                {totalItems}
-              </span>
-            )}
-          </button>
+          {isOrderMode && (
+            <>
+              <button 
+                onClick={() => setIsCartOpen(true)}
+                className="hidden md:flex bg-dark-green text-white px-6 py-3 rounded-full items-center gap-3 hover:bg-stone-800 transition-colors shadow-lg"
+              >
+                <ShoppingCart size={20} />
+                <span className="font-bold">{t('Revisar Pedido')}</span>
+                {totalItems > 0 && (
+                  <div className="flex items-center gap-2 border-l border-white/20 pl-3">
+                    <span className="bg-gold text-dark-green text-xs font-bold px-2 py-0.5 rounded-full">{totalItems}</span>
+                    <span>{totalPrice.toLocaleString()} CUP</span>
+                  </div>
+                )}
+              </button>
+              
+              <button 
+                onClick={() => setIsCartOpen(true)}
+                className="md:hidden bg-dark-green text-white p-3 rounded-full flex items-center justify-center hover:bg-stone-800 transition-colors shadow-lg relative"
+              >
+                <ShoppingCart size={20} />
+                {totalItems > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-gold text-dark-green text-xs font-bold w-5 h-5 flex items-center justify-center rounded-full">
+                    {totalItems}
+                  </span>
+                )}
+              </button>
+            </>
+          )}
         </div>
 
         {/* Categories */}
@@ -228,29 +257,35 @@ export function FullMenu({
                 <h4 className="text-lg font-serif text-dark-green mb-2 leading-tight">{t(item.name)}</h4>
                 <p className="text-stone-500 text-sm line-clamp-2 mb-4 flex-grow">{t(item.shortDescription)}</p>
                 <div className="mt-auto">
-                  {getQuantity(item.id) > 0 ? (
-                    <div className="flex items-center justify-between bg-stone-100 rounded-xl p-1">
+                  {isOrderMode ? (
+                    getQuantity(item.id) > 0 ? (
+                      <div className="flex items-center justify-between bg-stone-100 rounded-xl p-1">
+                        <button 
+                          onClick={() => updateQuantity(item.id, -1)}
+                          className="p-2 text-stone-600 hover:text-dark-green hover:bg-stone-200 rounded-lg transition-colors"
+                        >
+                          <Minus size={18} />
+                        </button>
+                        <span className="font-bold text-dark-green">{getQuantity(item.id)}</span>
+                        <button 
+                          onClick={() => updateQuantity(item.id, 1)}
+                          className="p-2 text-stone-600 hover:text-dark-green hover:bg-stone-200 rounded-lg transition-colors"
+                        >
+                          <Plus size={18} />
+                        </button>
+                      </div>
+                    ) : (
                       <button 
-                        onClick={() => updateQuantity(item.id, -1)}
-                        className="p-2 text-stone-600 hover:text-dark-green hover:bg-stone-200 rounded-lg transition-colors"
+                        onClick={() => addToCart(item)}
+                        className="w-full bg-stone-100 hover:bg-gold hover:text-white text-dark-green font-bold py-2 rounded-xl transition-colors flex items-center justify-center gap-2"
                       >
-                        <Minus size={18} />
+                        <Plus size={16} /> {prefilledTable ? t('Añadir al Pedido') : t('Añadir a mi Reserva')}
                       </button>
-                      <span className="font-bold text-dark-green">{getQuantity(item.id)}</span>
-                      <button 
-                        onClick={() => updateQuantity(item.id, 1)}
-                        className="p-2 text-stone-600 hover:text-dark-green hover:bg-stone-200 rounded-lg transition-colors"
-                      >
-                        <Plus size={18} />
-                      </button>
-                    </div>
+                    )
                   ) : (
-                    <button 
-                      onClick={() => addToCart(item)}
-                      className="w-full bg-stone-100 hover:bg-gold hover:text-white text-dark-green font-bold py-2 rounded-xl transition-colors flex items-center justify-center gap-2"
-                    >
-                      <Plus size={16} /> {t('Añadir a mi Reserva')}
-                    </button>
+                    <div className="text-center py-2 text-xs font-semibold text-emerald-600 bg-emerald-50 rounded-xl border border-emerald-100">
+                      ✨ {t('Disponible')}
+                    </div>
                   )}
                 </div>
               </div>
@@ -328,7 +363,7 @@ export function FullMenu({
                   </div>
                   
                   <div>
-                    {!pendingReservation && (
+                    {!pendingReservation && !prefilledTable && (
                       <div className="mb-4">
                         <label htmlFor="tableNumber" className="block text-sm font-medium text-stone-700 mb-1">
                           Número de Mesa <span className="text-red-500">*</span>
@@ -344,15 +379,22 @@ export function FullMenu({
                       </div>
                     )}
                     
+                    {prefilledTable && (
+                      <div className="mb-4 bg-stone-50 p-3.5 rounded-xl border border-stone-200/60 flex justify-between items-center">
+                        <span className="text-xs font-bold text-stone-500 uppercase tracking-wider">{t('Mesa Asociada')}:</span>
+                        <span className="bg-dark-green text-white font-mono font-bold text-sm px-3 py-1 rounded-lg shadow-xs">{prefilledTable}</span>
+                      </div>
+                    )}
+                    
                     <button 
                       type="button"
                       onClick={handleSendOrder}
                       className="w-full bg-dark-green hover:bg-stone-800 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 uppercase tracking-wider transition-colors shadow-lg"
                     >
-                      <Send size={18} /> {pendingReservation ? 'Enviar Reserva y Pedido' : 'Enviar Pedido'}
+                      <Send size={18} /> {pendingReservation ? t('Enviar Reserva y Pedido') : t('Enviar Pedido')}
                     </button>
                     <p className="text-xs text-center text-stone-400 mt-4">
-                      Serás redirigido a WhatsApp para confirmar tu pedido.
+                      {prefilledTable ? t('Tu comanda se enviará en tiempo real al camarero de tu mesa.') : t('Serás redirigido a WhatsApp para confirmar tu pedido.')}
                     </p>
                   </div>
                 </div>
@@ -363,7 +405,7 @@ export function FullMenu({
       </AnimatePresence>
 
       {/* Mobile Sticky Bottom Bar for Cart */}
-      {!isCartOpen && totalItems > 0 && (
+      {isOrderMode && !isCartOpen && totalItems > 0 && (
         <div className="md:hidden fixed bottom-0 left-0 w-full p-4 bg-white border-t border-stone-200 shadow-[0_-10px_20px_-10px_rgba(0,0,0,0.1)] z-50">
           <button 
             onClick={() => setIsCartOpen(true)}

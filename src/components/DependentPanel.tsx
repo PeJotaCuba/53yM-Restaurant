@@ -224,12 +224,8 @@ export function DependentPanel({ data, updateData, dependentInfo }: DependentPan
           return { name, quantity: qty, priceCUP: found ? found.priceCUP : 100 };
         });
 
-    const orderSequence = currentOpen.orders.length + 1;
-    const newOrderId = `${currentOpen.id}-P${orderSequence}`;
-
     const updatedOrder: Order = {
       ...clientOrder,
-      id: newOrderId,
       comandaId: currentOpen.id,
       status: 'pending', // Now sent to kitchen!
       orderItems: itemsList
@@ -1208,12 +1204,17 @@ export function DependentPanel({ data, updateData, dependentInfo }: DependentPan
                       </div>
                     </div>
 
-                    <button
-                      onClick={() => setClosingComanda(openComanda)}
-                      className="bg-green-600 hover:bg-green-700 text-white font-bold px-4 py-2.5 rounded-xl text-xs transition-colors shadow-md flex items-center gap-1.5"
-                    >
-                      <DollarSign size={16} /> {t('Cerrar & Cobrar Comanda')}
-                    </button>
+                    {openComanda.orders.length > 0 && openComanda.orders.every(o => {
+                      const liveOrder = (data.orders || []).find(lo => lo.id === o.id);
+                      return (liveOrder ? liveOrder.status : o.status) === 'delivered';
+                    }) && (
+                      <button
+                        onClick={() => handleOpenCloseModal(openComanda)}
+                        className="bg-green-600 hover:bg-green-700 text-white font-bold px-4 py-2.5 rounded-xl text-xs transition-colors shadow-md flex items-center gap-1.5 animate-fade-in"
+                      >
+                        <DollarSign size={16} /> {t('Cerrar & Cobrar Comanda')}
+                      </button>
+                    )}
                   </div>
                 </div>
 

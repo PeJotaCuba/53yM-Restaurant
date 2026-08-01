@@ -8,7 +8,8 @@ import { Hero } from './components/Hero';
 import { MenuViewer } from './components/MenuViewer';
 import { FullMenu } from './components/FullMenu';
 import { ReservationWizard } from './components/ReservationWizard';
-import { UserDashboard } from './components/UserDashboard';
+import { UserDashboard } from "./components/UserDashboard";
+import { ClientOrderWorkspace } from './components/ClientOrderWorkspace';
 import { AdminPanel } from './components/AdminPanel';
 import { DependentPanel } from './components/DependentPanel';
 import { ManagerPanel } from './components/ManagerPanel';
@@ -543,6 +544,13 @@ export default function App() {
     userRole = 'kitchen';
   }
 
+  // Auto-route authenticated users to their workspace
+  useEffect(() => {
+    if (userRole !== 'none' && (currentView === 'home' || currentView === 'dashboard')) {
+      setCurrentView(userRole);
+    }
+  }, [userRole, currentView]);
+
   // Handle Logout & Deactivate Session in Convex
   const handleLogout = async () => {
     try {
@@ -695,7 +703,7 @@ export default function App() {
 
       alert("¡Tu reservación y pedido han sido enviados con éxito! Queda pendiente de confirmación por el Administrador.");
       setPendingReservation(null);
-      setCurrentView('dashboard');
+      setCurrentView('order_workspace');
       window.scrollTo(0, 0);
       return result;
     } catch (err: any) {
@@ -759,7 +767,7 @@ export default function App() {
       
       alert("¡Tu reservación ha sido enviada con éxito! Queda pendiente de confirmación por el Administrador.");
       
-      setCurrentView('dashboard');
+      setCurrentView('order_workspace');
       window.scrollTo(0, 0);
     } catch (e: any) {
       console.error('Convex reservation write error:', e);
@@ -872,6 +880,21 @@ export default function App() {
             onUpdateReservation={handleUpdateReservation}
             onCancelReservation={handleCancelReservation}
             onOpenLogin={() => setIsLoginModalOpen(true)}
+            onOrderWorkspace={() => {
+              setCurrentView('order_workspace');
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
+          />
+        );
+      case 'order_workspace':
+        return (
+          <ClientOrderWorkspace
+            data={appData}
+            updateData={updateData}
+            onBack={() => {
+              setCurrentView('dashboard');
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
           />
         );
       case 'home':
@@ -880,6 +903,18 @@ export default function App() {
           <>
             <Hero 
               config={appData.landingConfig}
+              showQuestionnaire={showFirstTimeModal && userRole === 'none'}
+              onCompleteQuestionnaire={(name, goToMenu) => {
+                const trimmed = name.trim();
+                if (trimmed) {
+                  localStorage.setItem('clientUserName', trimmed);
+                  setShowFirstTimeModal(false);
+                  if (goToMenu) {
+                    setCurrentView('order_workspace');
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                  }
+                }
+              }}
               onReserve={() => {
                 if (userRole !== 'none') {
                   alert(t('Las cuentas de Administrador, Dependiente y Cocina no realizan reservas.'));
@@ -1026,6 +1061,10 @@ export default function App() {
             setCurrentView('reservation');
             window.scrollTo({ top: 0, behavior: 'smooth' });
           }} 
+          onOrder={() => {
+            setCurrentView('order_workspace');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }}
         />
       )}
 
@@ -1105,39 +1144,6 @@ export default function App() {
       />
 
       <PWAInstallBanner />
-
-      {showFirstTimeModal && userRole === 'none' && (
-        <div className="fixed inset-0 bg-stone-950/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in">
-          <div className="bg-white rounded-3xl max-w-md w-full p-8 shadow-2xl border border-stone-200">
-            <div className="text-center mb-6">
-              <div className="w-16 h-16 bg-dark-green/10 text-dark-green rounded-full flex items-center justify-center mx-auto mb-4 text-2xl">
-                👋
-              </div>
-              <h3 className="text-2xl font-serif text-dark-green mb-2">¡Bienvenido a 53&M!</h3>
-              <p className="text-sm text-stone-600">
-                Para mejorar tu experiencia en el restaurante y terraza, por favor ingresa tu nombre:
-              </p>
-            </div>
-            <form onSubmit={handleSaveFirstTimeName} className="space-y-4">
-              <input
-                type="text"
-                placeholder="Tu nombre (ej. Carlos Pérez)"
-                value={firstTimeName}
-                onChange={(e) => setFirstTimeName(e.target.value)}
-                autoFocus
-                className="w-full p-4 bg-stone-50 border border-stone-200 rounded-xl focus:ring-2 focus:ring-gold outline-none text-stone-800 font-medium text-center text-lg"
-              />
-              <button
-                type="submit"
-                disabled={!firstTimeName.trim()}
-                className="w-full bg-dark-green text-white py-4 rounded-xl font-bold uppercase tracking-wider hover:bg-stone-800 transition-colors shadow-md disabled:opacity-50 cursor-pointer"
-              >
-                Comenzar Experiencia
-              </button>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
