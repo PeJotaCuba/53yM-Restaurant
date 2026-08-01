@@ -738,11 +738,11 @@ export function ClientOrderWorkspace({ data, updateData, onBack }: ClientOrderWo
                       case 'pending_dependent':
                       case 'confirmed':
                       case 'pending':
-                      case 'in_progress':
                         return 1;
                       case 'kitchen_pending':
                       case 'kitchen_cooking':
                       case 'in_kitchen':
+                      case 'in_progress':
                       case 'kitchen_in_progress':
                         return 2;
                       case 'kitchen_ready':

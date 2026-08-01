@@ -37,15 +37,26 @@ export function KitchenPanel({ data, updateData, kitchenInfo }: KitchenPanelProp
 
   const orders = data.orders || [];
 
-  // Filter orders
-  const filteredOrders = orders.filter(o => {
-    // Only show orders that have been explicitly sent to kitchen
-    if (o.status === 'client_pending' || o.status === 'pending_dependent') return false;
-    
+  // Active operational kitchen orders (exclude client_pending, pending_dependent, delivered, paid, closed)
+  const activeKitchenOrders = orders.filter(o => 
+    o.status === 'pending' || 
+    o.status === 'in_kitchen' || 
+    o.status === 'kitchen_in_progress' || 
+    o.status === 'in_progress' || 
+    o.status === 'kitchen_ready' || 
+    o.status === 'ready_to_serve'
+  );
+
+  const pendingCount = activeKitchenOrders.filter(o => o.status === 'pending' || o.status === 'in_kitchen').length;
+  const inProgressCount = activeKitchenOrders.filter(o => o.status === 'kitchen_in_progress' || o.status === 'in_progress').length;
+  const readyCount = activeKitchenOrders.filter(o => o.status === 'kitchen_ready' || o.status === 'ready_to_serve').length;
+
+  // Filter orders according to tab selection
+  const filteredOrders = activeKitchenOrders.filter(o => {
     if (filter === 'pending') return o.status === 'pending' || o.status === 'in_kitchen';
     if (filter === 'in_progress') return o.status === 'kitchen_in_progress' || o.status === 'in_progress';
     if (filter === 'ready') return o.status === 'kitchen_ready' || o.status === 'ready_to_serve';
-    return o.status !== 'paid' && o.status !== 'closed' && o.status !== 'delivered';
+    return true;
   });
 
   const isShiftActive = data.isShiftActive !== false;
@@ -353,25 +364,25 @@ export function KitchenPanel({ data, updateData, kitchenInfo }: KitchenPanelProp
                 onClick={() => setFilter('all')}
                 className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${filter === 'all' ? 'bg-stone-900 text-white shadow-xs' : 'text-stone-600 hover:text-stone-900'}`}
               >
-                {t('Todas')} ({orders.length})
+                {t('Todas')} ({activeKitchenOrders.length})
               </button>
               <button
                 onClick={() => setFilter('pending')}
                 className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${filter === 'pending' ? 'bg-amber-500 text-stone-950 shadow-xs' : 'text-stone-600 hover:text-stone-900'}`}
               >
-                {t('Pendientes')} ({orders.filter(o => o.status === 'pending').length})
+                {t('Pendientes')} ({pendingCount})
               </button>
               <button
                 onClick={() => setFilter('in_progress')}
                 className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${filter === 'in_progress' ? 'bg-blue-600 text-white shadow-xs' : 'text-stone-600 hover:text-stone-900'}`}
               >
-                {t('En Preparación')} ({orders.filter(o => o.status === 'kitchen_in_progress').length})
+                {t('En Preparación')} ({inProgressCount})
               </button>
               <button
                 onClick={() => setFilter('ready')}
                 className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${filter === 'ready' ? 'bg-green-600 text-white shadow-xs' : 'text-stone-600 hover:text-stone-900'}`}
               >
-                {t('Listos')} ({orders.filter(o => o.status === 'kitchen_ready').length})
+                {t('Listos')} ({readyCount})
               </button>
             </div>
           </div>

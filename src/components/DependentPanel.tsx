@@ -1090,13 +1090,21 @@ export function DependentPanel({ data, updateData, dependentInfo }: DependentPan
             {clientPendingOrders.map((ord) => (
               <div key={ord.id} className="bg-white p-4 rounded-2xl border border-amber-300 shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 text-xs">
                 <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="font-bold text-amber-900 bg-amber-100 px-2 py-0.5 rounded text-[11px]">
+                      Cliente: {ord.customerName || 'Cliente'}
+                    </span>
+                    <span className="text-[10px] text-stone-400 font-mono">
+                      #{ord.id}
+                    </span>
+                  </div>
                   <div className="font-bold text-stone-900 text-sm">
                     {ord.orderItems && ord.orderItems.length > 0
                       ? ord.orderItems.map(i => `${i.quantity}x ${i.name}`).join(', ')
                       : ord.items.join(', ')}
                   </div>
                   <div className="text-[11px] text-stone-500 font-mono mt-0.5">
-                    ID: #{ord.id} • {new Date(ord.timestamp).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}
+                    Hora: {new Date(ord.timestamp).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}
                   </div>
                 </div>
 
@@ -1327,15 +1335,18 @@ export function DependentPanel({ data, updateData, dependentInfo }: DependentPan
 
                           <div className="flex items-center gap-2">
                             <span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase ${
-                              currentStatus === 'delivered' ? 'bg-green-100 text-green-700' :
-                              currentStatus === 'kitchen_ready' ? 'bg-emerald-600 text-white animate-pulse' :
-                              'bg-amber-100 text-amber-800'
+                              currentStatus === 'delivered' ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' :
+                              currentStatus === 'kitchen_ready' || currentStatus === 'ready_to_serve' ? 'bg-green-600 text-white animate-pulse shadow-xs' :
+                              currentStatus === 'kitchen_in_progress' || currentStatus === 'in_progress' ? 'bg-blue-100 text-blue-800 border border-blue-300' :
+                              'bg-amber-100 text-amber-800 border border-amber-300'
                             }`}>
-                              {currentStatus === 'delivered' ? t('Servido') :
-                               currentStatus === 'kitchen_ready' ? '🔔 ¡LISTO EN COCINA!' : t('En Marcha')}
+                              {currentStatus === 'delivered' ? '✓ Servido' :
+                               currentStatus === 'kitchen_ready' || currentStatus === 'ready_to_serve' ? '🔔 ¡LISTO EN COCINA!' :
+                               currentStatus === 'kitchen_in_progress' || currentStatus === 'in_progress' ? '🔥 En Elaboración' :
+                               '⏳ Enviado a Cocina'}
                             </span>
 
-                            {currentStatus === 'kitchen_ready' && (
+                            {(currentStatus === 'kitchen_ready' || currentStatus === 'ready_to_serve') && (
                               <button
                                 onClick={() => {
                                   const updatedOrders = (data.orders || []).map(o => o.id === order.id ? { ...o, status: 'delivered' as const } : o);
@@ -1350,7 +1361,7 @@ export function DependentPanel({ data, updateData, dependentInfo }: DependentPan
                                   });
                                   updateData({ orders: updatedOrders, comandas: updatedComandas });
                                 }}
-                                className="bg-emerald-800 hover:bg-stone-900 text-white px-2 py-1 rounded text-[10px] font-bold transition-colors"
+                                className="bg-emerald-800 hover:bg-stone-900 text-white px-2.5 py-1 rounded-lg text-[10px] font-bold transition-colors shadow-xs"
                               >
                                 Marcar Servido
                               </button>

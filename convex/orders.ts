@@ -179,10 +179,22 @@ export const createOrder = mutation({
     assignedDependentId: v.string(),
     reservationId: v.optional(v.string()),
     customerName: v.optional(v.string()),
+    comandaId: v.optional(v.string()),
+    username: v.optional(v.string()),
+    userRole: v.optional(v.string()),
+    deviceId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const orderId = await ctx.db.insert("orders", {
-      ...args,
+      tableNumber: args.tableNumber,
+      items: args.items,
+      totalCUP: args.totalCUP,
+      totalUSD: args.totalUSD,
+      status: args.status,
+      assignedDependentId: args.assignedDependentId,
+      reservationId: args.reservationId,
+      customerName: args.customerName,
+      comandaId: args.comandaId,
       timestamp: Date.now(),
     });
     return orderId;
