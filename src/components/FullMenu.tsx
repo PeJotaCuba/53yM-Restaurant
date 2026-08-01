@@ -116,8 +116,8 @@ export function FullMenu({
       tableNumber: cleanTable,
       items: formattedItems,
       orderItems: orderItemsList,
-      totalAmountCUP: totalPrice,
-      totalAmountUSD: totalPrice / usdCUP,
+      totalCUP: totalPrice,
+      totalUSD: totalPrice / usdCUP,
       status: 'client_pending',
       customerName: prefilledName?.trim() || undefined,
       timestamp: Date.now()

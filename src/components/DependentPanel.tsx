@@ -432,28 +432,53 @@ export function DependentPanel({ data, updateData, dependentInfo }: DependentPan
     updateData({ auditLogs: [log, ...(data.auditLogs || [])] });
   };
 
+  // Helper to reliably get orders for a specific comanda without mixing unrelated table orders
+  const getComandaOrders = (com?: Comanda | null, allOrders: Order[] = []) => {
+    if (!com) return [];
+    const comOrders = com.orders || [];
+    const liveOrders = allOrders.filter(o => {
+      if (o.comandaId && o.comandaId === com.id) return true;
+      return comOrders.some(co => 
+        (co.id && (co.id === o.id || (co as any)._id === o.id)) || 
+        ((co as any)._id && ((co as any)._id === o.id || (co as any)._id === (o as any)._id))
+      );
+    });
+    
+    const map = new Map<string, Order>();
+    comOrders.forEach(o => {
+      const key = o.id || (o as any)._id;
+      if (key) map.set(key, o);
+    });
+    liveOrders.forEach(o => {
+      const key = o.id || (o as any)._id;
+      if (key) map.set(key, o);
+    });
+    return Array.from(map.values());
+  };
+
   // Calculate total for open comanda
   const calculateComandaTotal = (com: Comanda) => {
     let total = 0;
-    const comandaLiveOrders = (data.orders || []).filter(o => 
-      (o.comandaId && o.comandaId === com.id) ||
-      (com.orders || []).some(co => co.id === o.id || (co as any)._id === o.id) ||
-      (isSameTable(o.tableNumber, com.tableNumber) && o.status !== 'closed' && o.status !== 'paid')
-    );
-    const effectiveOrders = comandaLiveOrders.length > 0 ? comandaLiveOrders : (com.orders || []);
+    const effectiveOrders = getComandaOrders(com, data.orders || []);
 
     effectiveOrders.forEach(o => {
       if (o.orderItems && o.orderItems.length > 0) {
         o.orderItems.forEach(it => {
-          total += (it.priceCUP || 0) * it.quantity;
+          const cleanName = (it.name || '').replace(/^(\d+)\s*x\s*/i, '').trim();
+          let priceCUP = Number(it.priceCUP || 0);
+          if (priceCUP <= 0 && cleanName) {
+            const found = data.menuItems.find(m => m.name.trim().toLowerCase() === cleanName.toLowerCase());
+            if (found) priceCUP = found.priceCUP;
+          }
+          total += priceCUP * (Number(it.quantity) || 1);
         });
       } else if (o.items && o.items.length > 0) {
         // Fallback string matching
         o.items.forEach(raw => {
-          const match = raw.match(/^(\d+)x\s+(.+)$/);
-          const qty = match ? parseInt(match[1]) : 1;
-          const name = match ? match[2] : raw;
-          const found = data.menuItems.find(m => m.name === name);
+          const match = raw.match(/^(\d+)\s*x\s*(.+)$/i);
+          const qty = match ? parseInt(match[1], 10) : 1;
+          const name = match ? match[2].trim() : raw.trim();
+          const found = data.menuItems.find(m => m.name.trim().toLowerCase() === name.toLowerCase());
           total += (found ? found.priceCUP : 100) * qty;
         });
       }
@@ -1284,12 +1309,7 @@ export function DependentPanel({ data, updateData, dependentInfo }: DependentPan
                     </div>
 
                     {(() => {
-                      const comandaLiveOrders = openComanda ? (data.orders || []).filter(o => 
-                        (o.comandaId && o.comandaId === openComanda.id) ||
-                        (openComanda.orders || []).some(co => co.id === o.id || (co as any)._id === o.id) ||
-                        (isSameTable(o.tableNumber, openComanda.tableNumber) && o.status !== 'closed' && o.status !== 'paid')
-                      ) : [];
-                      const effectiveOrders = comandaLiveOrders.length > 0 ? comandaLiveOrders : (openComanda?.orders || []);
+                      const effectiveOrders = getComandaOrders(openComanda, data.orders || []);
 
                       const canCloseAndCharge = openComanda && (
                         effectiveOrders.length === 0 || 
@@ -1386,11 +1406,7 @@ export function DependentPanel({ data, updateData, dependentInfo }: DependentPan
                 {/* Orders in this Comanda */}
                 <div className="space-y-3">
                   {(() => {
-                    const comandaLiveOrders = openComanda ? (data.orders || []).filter(o => 
-                      (o.comandaId && o.comandaId === openComanda.id) ||
-                      (openComanda.orders || []).some(co => co.id === o.id || (co as any)._id === o.id)
-                    ) : [];
-                    const displayOrders = comandaLiveOrders.length > 0 ? comandaLiveOrders : (openComanda?.orders || []);
+                    const displayOrders = getComandaOrders(openComanda, data.orders || []);
 
                     return (
                       <>
