@@ -176,6 +176,7 @@ export const createOrder = mutation({
     status: v.string(),
     assignedDependentId: v.string(),
     reservationId: v.optional(v.string()),
+    customerName: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const orderId = await ctx.db.insert("orders", {
