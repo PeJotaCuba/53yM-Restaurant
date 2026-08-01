@@ -717,7 +717,7 @@ export function ClientOrderWorkspace({ data, updateData, onBack }: ClientOrderWo
                 {/* Fetch current active orders for this table */}
                 {(() => {
                   const tableOrders = (data?.orders || [])
-                    .filter(o => o.tableNumber === clientTable && o.status !== 'closed' && o.status !== 'paid')
+                    .filter(o => (o.tableNumber === clientTable || (o.tableNumber && clientTable && o.tableNumber.replace(/\D/g, '') === clientTable.replace(/\D/g, '') && clientTable.replace(/\D/g, '') !== '')) && o.status !== 'closed' && o.status !== 'paid')
                     .sort((a, b) => b.timestamp - a.timestamp);
 
                   if (tableOrders.length === 0) {

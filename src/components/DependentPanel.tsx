@@ -60,7 +60,15 @@ export function DependentPanel({ data, updateData, dependentInfo }: DependentPan
   // Ready orders modal state for dependent
   const [showReadyModal, setShowReadyModal] = useState<boolean>(false);
 
-  const comandas = (data.comandas || []).filter(c => c.tableNumber === activeTableNumber);
+  const isSameTable = (t1?: string, t2?: string) => {
+    if (!t1 || !t2) return false;
+    if (t1.trim().toLowerCase() === t2.trim().toLowerCase()) return true;
+    const n1 = t1.replace(/\D/g, '');
+    const n2 = t2.replace(/\D/g, '');
+    return n1 !== '' && n1 === n2;
+  };
+
+  const comandas = (data.comandas || []).filter(c => isSameTable(c.tableNumber, activeTableNumber));
   const openComanda = comandas.find(c => c.status === 'open');
   const closedComandas = comandas.filter(c => c.status === 'closed');
 
@@ -1228,17 +1236,29 @@ export function DependentPanel({ data, updateData, dependentInfo }: DependentPan
                       </div>
                     </div>
 
-                    {openComanda.orders.length > 0 && openComanda.orders.every(o => {
-                      const liveOrder = (data.orders || []).find(lo => lo.id === o.id);
-                      return (liveOrder ? liveOrder.status : o.status) === 'delivered';
-                    }) && (
-                      <button
-                        onClick={() => handleOpenCloseModal(openComanda)}
-                        className="bg-green-600 hover:bg-green-700 text-white font-bold px-4 py-2.5 rounded-xl text-xs transition-colors shadow-md flex items-center gap-1.5 animate-fade-in"
-                      >
-                        <DollarSign size={16} /> {t('Cerrar & Cobrar Comanda')}
-                      </button>
-                    )}
+                    {(() => {
+                      const comandaLiveOrders = openComanda ? (data.orders || []).filter(o => 
+                        (o.comandaId && o.comandaId === openComanda.id) ||
+                        (openComanda.orders || []).some(co => co.id === o.id || (co as any)._id === o.id)
+                      ) : [];
+                      const effectiveOrders = comandaLiveOrders.length > 0 ? comandaLiveOrders : (openComanda?.orders || []);
+
+                      if (effectiveOrders.length > 0 && effectiveOrders.every(o => {
+                        const liveOrder = (data.orders || []).find(lo => lo.id === o.id || (lo as any)._id === o.id);
+                        const st = liveOrder ? liveOrder.status : o.status;
+                        return st === 'delivered';
+                      })) {
+                        return (
+                          <button
+                            onClick={() => handleOpenCloseModal(openComanda)}
+                            className="bg-green-600 hover:bg-green-700 text-white font-bold px-4 py-2.5 rounded-xl text-xs transition-colors shadow-md flex items-center gap-1.5 animate-fade-in"
+                          >
+                            <DollarSign size={16} /> {t('Cerrar & Cobrar Comanda')}
+                          </button>
+                        );
+                      }
+                      return null;
+                    })()}
                   </div>
                 </div>
 
@@ -1312,71 +1332,84 @@ export function DependentPanel({ data, updateData, dependentInfo }: DependentPan
 
                 {/* Orders in this Comanda */}
                 <div className="space-y-3">
-                  <h5 className="font-bold text-xs text-stone-700 uppercase tracking-wider">
-                    {t('Pedidos en esta Comanda')} ({openComanda.orders.length})
-                  </h5>
+                  {(() => {
+                    const comandaLiveOrders = openComanda ? (data.orders || []).filter(o => 
+                      (o.comandaId && o.comandaId === openComanda.id) ||
+                      (openComanda.orders || []).some(co => co.id === o.id || (co as any)._id === o.id)
+                    ) : [];
+                    const displayOrders = comandaLiveOrders.length > 0 ? comandaLiveOrders : (openComanda?.orders || []);
 
-                  <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
-                    {openComanda.orders.map(order => {
-                      const liveOrder = (data.orders || []).find(o => o.id === order.id);
-                      const currentStatus = liveOrder ? liveOrder.status : order.status;
-                      return (
-                        <div key={order.id} className="p-3 bg-white border border-stone-200 rounded-xl flex items-center justify-between text-xs">
-                          <div>
-                            <div className="font-bold text-stone-900">
-                              {order.orderItems 
-                                ? order.orderItems.map(i => `${i.name} (x${i.quantity})`).join(', ')
-                                : order.items.join(', ')}
+                    return (
+                      <>
+                        <h5 className="font-bold text-xs text-stone-700 uppercase tracking-wider">
+                          {t('Pedidos en esta Comanda')} ({displayOrders.length})
+                        </h5>
+
+                        <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                          {displayOrders.map(order => {
+                            const liveOrder = (data.orders || []).find(o => o.id === order.id || (o as any)._id === order.id);
+                            const currentStatus = liveOrder ? liveOrder.status : order.status;
+                            return (
+                              <div key={order.id} className="p-3 bg-white border border-stone-200 rounded-xl flex items-center justify-between text-xs">
+                                <div>
+                                  <div className="font-bold text-stone-900">
+                                    {order.orderItems 
+                                      ? order.orderItems.map(i => `${i.name} (x${i.quantity})`).join(', ')
+                                      : order.items.join(', ')}
+                                  </div>
+                                  <div className="text-[10px] text-stone-400 font-mono">
+                                    #{order.id} • {new Date(order.timestamp).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}
+                                  </div>
+                                </div>
+
+                                <div className="flex items-center gap-2">
+                                  <span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase ${
+                                    currentStatus === 'delivered' ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' :
+                                    currentStatus === 'kitchen_ready' || currentStatus === 'ready_to_serve' ? 'bg-green-600 text-white animate-pulse shadow-xs' :
+                                    currentStatus === 'kitchen_in_progress' || currentStatus === 'in_progress' ? 'bg-blue-100 text-blue-800 border border-blue-300' :
+                                    'bg-amber-100 text-amber-800 border border-amber-300'
+                                  }`}>
+                                    {currentStatus === 'delivered' ? '✓ Servido en Mesa · A la espera de cobro' :
+                                     currentStatus === 'kitchen_ready' || currentStatus === 'ready_to_serve' ? '🔔 ¡LISTO EN COCINA!' :
+                                     currentStatus === 'kitchen_in_progress' || currentStatus === 'in_progress' ? '🔥 En Elaboración' :
+                                     '⏳ Enviado a Cocina'}
+                                  </span>
+
+                                  {(currentStatus === 'kitchen_ready' || currentStatus === 'ready_to_serve') && (
+                                    <button
+                                      onClick={() => {
+                                        const targetComandaId = order.comandaId || openComanda.id;
+                                        const updatedOrders = (data.orders || []).map(o => (o.id === order.id || (o as any)._id === order.id) ? { ...o, status: 'delivered' as const, comandaId: targetComandaId } : o);
+                                        const updatedComandas = (data.comandas || []).map(c => {
+                                          if (c.id === targetComandaId || c.id === openComanda.id) {
+                                            return {
+                                              ...c,
+                                              orders: c.orders.map(o => (o.id === order.id || (o as any)._id === order.id) ? { ...o, status: 'delivered' as const, comandaId: targetComandaId } : o)
+                                            };
+                                          }
+                                          return c;
+                                        });
+                                        updateData({ orders: updatedOrders, comandas: updatedComandas });
+                                      }}
+                                      className="bg-emerald-800 hover:bg-stone-900 text-white px-2.5 py-1 rounded-lg text-[10px] font-bold transition-colors shadow-xs"
+                                    >
+                                      ✓ Servido en Mesa · A la espera de cobro
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+
+                          {displayOrders.length === 0 && (
+                            <div className="text-stone-400 text-xs text-center py-6 border border-dashed border-stone-200 rounded-xl">
+                              {t('Esta comanda no tiene pedidos registrados aún.')}
                             </div>
-                            <div className="text-[10px] text-stone-400 font-mono">
-                              #{order.id} • {new Date(order.timestamp).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}
-                            </div>
-                          </div>
-
-                          <div className="flex items-center gap-2">
-                            <span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase ${
-                              currentStatus === 'delivered' ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' :
-                              currentStatus === 'kitchen_ready' || currentStatus === 'ready_to_serve' ? 'bg-green-600 text-white animate-pulse shadow-xs' :
-                              currentStatus === 'kitchen_in_progress' || currentStatus === 'in_progress' ? 'bg-blue-100 text-blue-800 border border-blue-300' :
-                              'bg-amber-100 text-amber-800 border border-amber-300'
-                            }`}>
-                              {currentStatus === 'delivered' ? '✓ Servido' :
-                               currentStatus === 'kitchen_ready' || currentStatus === 'ready_to_serve' ? '🔔 ¡LISTO EN COCINA!' :
-                               currentStatus === 'kitchen_in_progress' || currentStatus === 'in_progress' ? '🔥 En Elaboración' :
-                               '⏳ Enviado a Cocina'}
-                            </span>
-
-                            {(currentStatus === 'kitchen_ready' || currentStatus === 'ready_to_serve') && (
-                              <button
-                                onClick={() => {
-                                  const updatedOrders = (data.orders || []).map(o => o.id === order.id ? { ...o, status: 'delivered' as const } : o);
-                                  const updatedComandas = (data.comandas || []).map(c => {
-                                    if (c.id === openComanda.id) {
-                                      return {
-                                        ...c,
-                                        orders: c.orders.map(o => o.id === order.id ? { ...o, status: 'delivered' as const } : o)
-                                      };
-                                    }
-                                    return c;
-                                  });
-                                  updateData({ orders: updatedOrders, comandas: updatedComandas });
-                                }}
-                                className="bg-emerald-800 hover:bg-stone-900 text-white px-2.5 py-1 rounded-lg text-[10px] font-bold transition-colors shadow-xs"
-                              >
-                                Marcar Servido
-                              </button>
-                            )}
-                          </div>
+                          )}
                         </div>
-                      );
-                    })}
-
-                    {openComanda.orders.length === 0 && (
-                      <div className="text-stone-400 text-xs text-center py-6 border border-dashed border-stone-200 rounded-xl">
-                        {t('Esta comanda no tiene pedidos registrados aún.')}
-                      </div>
-                    )}
-                  </div>
+                      </>
+                    );
+                  })()}
                 </div>
               </div>
             )}
@@ -1730,14 +1763,14 @@ export function DependentPanel({ data, updateData, dependentInfo }: DependentPan
                       <div className="flex justify-end pt-1">
                         <button
                           onClick={() => {
-                            const parentComanda = (data.comandas || []).find(c => c.orders.some(o => o.id === ord.id));
-                            const targetComandaId = ord.comandaId || parentComanda?.id;
-                            const updatedOrders = (data.orders || []).map(o => o.id === ord.id ? { ...o, status: 'delivered' as const, comandaId: targetComandaId } : o);
+                            const parentComanda = (data.comandas || []).find(c => c.orders.some(o => o.id === ord.id || (o as any)._id === ord.id));
+                            const targetComandaId = ord.comandaId || parentComanda?.id || openComanda?.id;
+                            const updatedOrders = (data.orders || []).map(o => (o.id === ord.id || (o as any)._id === ord.id) ? { ...o, status: 'delivered' as const, comandaId: targetComandaId } : o);
                             const updatedComandas = (data.comandas || []).map(c => {
                               if (c.id === targetComandaId) {
                                 return {
                                   ...c,
-                                  orders: c.orders.map(o => o.id === ord.id ? { ...o, status: 'delivered' as const, comandaId: targetComandaId } : o)
+                                  orders: c.orders.map(o => (o.id === ord.id || (o as any)._id === ord.id) ? { ...o, status: 'delivered' as const, comandaId: targetComandaId } : o)
                                 };
                               }
                               return c;
@@ -1747,7 +1780,7 @@ export function DependentPanel({ data, updateData, dependentInfo }: DependentPan
                           }}
                           className="bg-emerald-700 hover:bg-stone-900 text-white font-bold text-xs px-4 py-2 rounded-xl transition-all shadow-md flex items-center gap-1.5"
                         >
-                          ✓ Marcar Servido en Mesa
+                          ✓ Servido en Mesa · A la espera de cobro
                         </button>
                       </div>
                     </div>
