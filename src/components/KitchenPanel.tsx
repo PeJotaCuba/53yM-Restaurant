@@ -37,25 +37,26 @@ export function KitchenPanel({ data, updateData, kitchenInfo }: KitchenPanelProp
 
   const orders = data.orders || [];
 
-  // Active operational kitchen orders (exclude client_pending, pending_dependent, delivered, paid, closed)
+  // Active operational kitchen orders (include pending, in_kitchen, kitchen_in_progress, in_progress, kitchen_ready, ready_to_serve, delivered)
   const activeKitchenOrders = orders.filter(o => 
     o.status === 'pending' || 
     o.status === 'in_kitchen' || 
     o.status === 'kitchen_in_progress' || 
     o.status === 'in_progress' || 
     o.status === 'kitchen_ready' || 
-    o.status === 'ready_to_serve'
+    o.status === 'ready_to_serve' ||
+    o.status === 'delivered'
   );
 
   const pendingCount = activeKitchenOrders.filter(o => o.status === 'pending' || o.status === 'in_kitchen').length;
   const inProgressCount = activeKitchenOrders.filter(o => o.status === 'kitchen_in_progress' || o.status === 'in_progress').length;
-  const readyCount = activeKitchenOrders.filter(o => o.status === 'kitchen_ready' || o.status === 'ready_to_serve').length;
+  const readyCount = activeKitchenOrders.filter(o => o.status === 'kitchen_ready' || o.status === 'ready_to_serve' || o.status === 'delivered').length;
 
   // Filter orders according to tab selection
   const filteredOrders = activeKitchenOrders.filter(o => {
     if (filter === 'pending') return o.status === 'pending' || o.status === 'in_kitchen';
     if (filter === 'in_progress') return o.status === 'kitchen_in_progress' || o.status === 'in_progress';
-    if (filter === 'ready') return o.status === 'kitchen_ready' || o.status === 'ready_to_serve';
+    if (filter === 'ready') return o.status === 'kitchen_ready' || o.status === 'ready_to_serve' || o.status === 'delivered';
     return true;
   });
 
@@ -428,12 +429,12 @@ export function KitchenPanel({ data, updateData, kitchenInfo }: KitchenPanelProp
                     <span className={`px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1.5 shadow-xs ${
                       isPending ? 'bg-amber-500 text-stone-950' :
                       isInProgress ? 'bg-blue-600 text-white' :
-                      isReady ? 'bg-green-600 text-white' : 'bg-stone-200 text-stone-700'
+                      isReady ? 'bg-green-600 text-white' : 'bg-emerald-800 text-white'
                     }`}>
                       {isPending && <Clock size={13} />}
                       {isInProgress && <Flame size={13} />}
-                      {isReady && <CheckCircle2 size={13} />}
-                      {isPending ? t('Pendiente') : isInProgress ? t('En Marcha') : isReady ? t('Listo') : t('Servido')}
+                      {(isReady || isDelivered) && <CheckCircle2 size={13} />}
+                      {isPending ? t('Pendiente') : isInProgress ? t('En Marcha') : isReady ? t('Listo en Cocina') : t('Servido en Mesa')}
                     </span>
                   </div>
 
@@ -494,6 +495,12 @@ export function KitchenPanel({ data, updateData, kitchenInfo }: KitchenPanelProp
                     {isReady && (
                       <span className="text-xs text-green-700 font-bold flex items-center gap-1 bg-green-100 px-3 py-1 rounded-xl">
                         ✓ {t('Avisado a Garzón')}
+                      </span>
+                    )}
+
+                    {isDelivered && (
+                      <span className="text-xs text-emerald-800 font-bold flex items-center gap-1 bg-emerald-100 px-3 py-1 rounded-xl border border-emerald-200">
+                        ✓ {t('Entregado en Mesa · A la espera de cobro')}
                       </span>
                     )}
                   </div>

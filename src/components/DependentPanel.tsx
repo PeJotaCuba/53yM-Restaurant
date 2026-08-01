@@ -69,8 +69,9 @@ export function DependentPanel({ data, updateData, dependentInfo }: DependentPan
   };
 
   const comandas = (data.comandas || []).filter(c => isSameTable(c.tableNumber, activeTableNumber));
-  const openComanda = comandas.find(c => c.status === 'open');
+  const openComanda = comandas.find(c => c.status === 'open' || (c.status as string) !== 'closed');
   const closedComandas = comandas.filter(c => c.status === 'closed');
+  const allActiveComandas = (data.comandas || []).filter(c => c.status === 'open' || (c.status as string) !== 'closed');
 
   // Exchange rate & ready kitchen orders
   const usdCUP = data.exchangeRate?.usdCUP || 320;
@@ -418,12 +419,19 @@ export function DependentPanel({ data, updateData, dependentInfo }: DependentPan
   // Calculate total for open comanda
   const calculateComandaTotal = (com: Comanda) => {
     let total = 0;
-    com.orders.forEach(o => {
-      if (o.orderItems) {
+    const comandaLiveOrders = (data.orders || []).filter(o => 
+      (o.comandaId && o.comandaId === com.id) ||
+      (com.orders || []).some(co => co.id === o.id || (co as any)._id === o.id) ||
+      (isSameTable(o.tableNumber, com.tableNumber) && o.status !== 'closed' && o.status !== 'paid')
+    );
+    const effectiveOrders = comandaLiveOrders.length > 0 ? comandaLiveOrders : (com.orders || []);
+
+    effectiveOrders.forEach(o => {
+      if (o.orderItems && o.orderItems.length > 0) {
         o.orderItems.forEach(it => {
           total += (it.priceCUP || 0) * it.quantity;
         });
-      } else {
+      } else if (o.items && o.items.length > 0) {
         // Fallback string matching
         o.items.forEach(raw => {
           const match = raw.match(/^(\d+)x\s+(.+)$/);
@@ -1161,6 +1169,29 @@ export function DependentPanel({ data, updateData, dependentInfo }: DependentPan
             )}
           </div>
         </div>
+
+        {allActiveComandas.length > 0 && (
+          <div className="bg-amber-50/80 border border-amber-200 p-3.5 rounded-2xl flex flex-wrap items-center gap-2 text-xs shadow-xs">
+            <span className="font-bold text-amber-950 flex items-center gap-1.5 mr-1">
+              📋 Comandas Activas ({allActiveComandas.length}):
+            </span>
+            {allActiveComandas.map(c => (
+              <button
+                key={c.id}
+                onClick={() => setActiveTableNumber(c.tableNumber)}
+                className={`px-3 py-1.5 rounded-xl font-bold transition-all flex items-center gap-1.5 text-xs ${
+                  isSameTable(c.tableNumber, activeTableNumber)
+                    ? 'bg-amber-600 text-white shadow-xs ring-2 ring-amber-400/40'
+                    : 'bg-white border border-amber-300 text-amber-900 hover:bg-amber-100'
+                }`}
+              >
+                <span>{c.tableNumber}</span>
+                <span className="text-[10px] font-mono opacity-80">#{c.id}</span>
+                {c.customerName && <span className="text-[10px] italic">({c.customerName})</span>}
+              </button>
+            ))}
+          </div>
+        )}
           {/* SECTION: Open Comanda / Create Comanda */}
           <div className="bg-white rounded-3xl border border-stone-200 shadow-sm p-6 md:p-8 space-y-6">
             <div className="flex justify-between items-center border-b border-stone-100 pb-4">
@@ -1239,15 +1270,21 @@ export function DependentPanel({ data, updateData, dependentInfo }: DependentPan
                     {(() => {
                       const comandaLiveOrders = openComanda ? (data.orders || []).filter(o => 
                         (o.comandaId && o.comandaId === openComanda.id) ||
-                        (openComanda.orders || []).some(co => co.id === o.id || (co as any)._id === o.id)
+                        (openComanda.orders || []).some(co => co.id === o.id || (co as any)._id === o.id) ||
+                        (isSameTable(o.tableNumber, openComanda.tableNumber) && o.status !== 'closed' && o.status !== 'paid')
                       ) : [];
                       const effectiveOrders = comandaLiveOrders.length > 0 ? comandaLiveOrders : (openComanda?.orders || []);
 
-                      if (effectiveOrders.length > 0 && effectiveOrders.every(o => {
-                        const liveOrder = (data.orders || []).find(lo => lo.id === o.id || (lo as any)._id === o.id);
-                        const st = liveOrder ? liveOrder.status : o.status;
-                        return st === 'delivered';
-                      })) {
+                      const canCloseAndCharge = openComanda && (
+                        effectiveOrders.length === 0 || 
+                        effectiveOrders.every(o => {
+                          const liveOrder = (data.orders || []).find(lo => lo.id === o.id || (lo as any)._id === o.id);
+                          const st = liveOrder ? liveOrder.status : o.status;
+                          return st === 'delivered' || st === 'paid' || st === 'closed' || st === 'kitchen_ready' || st === 'ready_to_serve';
+                        })
+                      );
+
+                      if (canCloseAndCharge) {
                         return (
                           <button
                             onClick={() => handleOpenCloseModal(openComanda)}

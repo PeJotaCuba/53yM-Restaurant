@@ -350,9 +350,11 @@ export default function App() {
           const isSameStatus = existingOrder.status === newOrder.status;
           const isSameTable = existingOrder.tableNumber === newOrder.tableNumber;
           const isSameAssigned = existingOrder.assignedDependentId === newOrder.assignedDependentId;
+          const isSameComanda = existingOrder.comandaId === newOrder.comandaId;
+          const isSameCustomer = existingOrder.customerName === newOrder.customerName;
           const isSameItemsLength = (existingOrder.orderItems?.length || 0) === (newOrder.orderItems?.length || 0);
 
-          if (isSameStatus && isSameTable && isSameAssigned && isSameItemsLength) {
+          if (isSameStatus && isSameTable && isSameAssigned && isSameComanda && isSameCustomer && isSameItemsLength) {
             let itemsChanged = false;
             for (let i = 0; i < (existingOrder.orderItems?.length || 0); i++) {
               const oldIt = existingOrder.orderItems[i];
