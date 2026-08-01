@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { AppData, Order, OrderItem } from '../types';
+import { AppData, Order, OrderItem, Comanda } from '../types';
 import { 
   Utensils, Plus, Trash2, Send, ShoppingBag, Download, ArrowLeft, 
   MessageCircle, X, QrCode, Camera, CheckCircle2, Image as ImageIcon, 
   AlertTriangle, RotateCcw, Sparkles, BookOpen, Clock, ChevronRight,
-  ChefHat, Bell
+  ChefHat, Bell, DollarSign
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useDeviceId } from '../hooks/useDeviceId';
@@ -40,6 +40,120 @@ export function ClientOrderWorkspace({ data, updateData, onBack }: ClientOrderWo
   const [cartItems, setCartItems] = useState<{ dishName: string; quantity: number; priceCUP: number }[]>([]);
   const [showClosedComandas, setShowClosedComandas] = useState(false);
   const [activeSubView, setActiveSubView] = useState<'welcome' | 'consult' | 'order'>('welcome');
+  const [targetAnnexedComandaId, setTargetAnnexedComandaId] = useState<string | undefined>(undefined);
+
+  const getComandaOrdersClient = (com?: Comanda | null, allOrders: Order[] = []) => {
+    if (!com) return [];
+    const comOrders = com.orders || [];
+    const liveOrders = allOrders.filter(o => {
+      if (o.comandaId && o.comandaId === com.id) return true;
+      return comOrders.some(co => 
+        (co.id && (co.id === o.id || (co as any)._id === o.id)) || 
+        ((co as any)._id && ((co as any)._id === o.id || (co as any)._id === (o as any)._id))
+      );
+    });
+    const map = new Map<string, Order>();
+    comOrders.forEach(o => {
+      const key = o.id || (o as any)._id;
+      if (key) map.set(key, o);
+    });
+    liveOrders.forEach(o => {
+      const key = o.id || (o as any)._id;
+      if (key) map.set(key, o);
+    });
+    return Array.from(map.values());
+  };
+
+  const getGroupOrdersClient = (com?: Comanda | null, allComandas: Comanda[] = [], allOrders: Order[] = []) => {
+    if (!com) return [];
+    const rootId = com.parentComandaId || com.id;
+    const root = allComandas.find(c => c.id === rootId) || com;
+    const annexed = allComandas.filter(c => c.parentComandaId === root.id && c.id !== root.id && c.status === 'open');
+    const group = [root, ...annexed];
+    const map = new Map<string, Order>();
+    group.forEach(c => {
+      getComandaOrdersClient(c, allOrders).forEach(o => {
+        const key = o.id || (o as any)._id;
+        if (key) map.set(key, o);
+      });
+    });
+    return Array.from(map.values());
+  };
+
+  const handleClientAddAnnexedOrder = (rootComanda: Comanda) => {
+    const rootId = rootComanda.parentComandaId || rootComanda.id;
+    const shortId = Date.now().toString().slice(-4);
+    const newAnnexedComandaId = `COM-ANX-${rootId}-${shortId}`;
+    
+    const newAnnexedComanda: Comanda = {
+      id: newAnnexedComandaId,
+      tableNumber: clientTable,
+      customerName: rootComanda.customerName || clientName || 'Cliente Comensal',
+      dependentId: rootComanda.dependentId,
+      dependentName: rootComanda.dependentName,
+      status: 'open',
+      openedAt: Date.now(),
+      orders: [],
+      parentComandaId: rootId,
+    };
+
+    const updatedComandas = [newAnnexedComanda, ...(data?.comandas || [])];
+    
+    const log = {
+      id: `LOG-${Date.now()}`,
+      timestamp: Date.now(),
+      timeStr: new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }),
+      dateStr: new Date().toLocaleDateString('es-ES'),
+      role: 'Cliente' as const,
+      userOrDevice: clientName.trim() || 'Cliente',
+      action: 'Creación de Comanda Anexa',
+      details: `Cliente inició Comanda Anexa #${newAnnexedComandaId} vinculada a comanda principal #${rootId} en ${clientTable}.`
+    };
+
+    if (updateData) {
+      updateData({
+        comandas: updatedComandas,
+        auditLogs: [log, ...(data?.auditLogs || [])]
+      });
+    }
+
+    setTargetAnnexedComandaId(newAnnexedComandaId);
+    setActiveSubView('order');
+  };
+
+  const handleClientRequestPayment = (rootComanda: Comanda) => {
+    const rootId = rootComanda.parentComandaId || rootComanda.id;
+    const groupComandas = (data?.comandas || []).filter(
+      c => (c.id === rootId || c.parentComandaId === rootId) && c.status === 'open'
+    );
+
+    const groupIds = groupComandas.map(c => c.id);
+
+    const updatedComandas = (data?.comandas || []).map(c => {
+      if (groupIds.includes(c.id)) {
+        return { ...c, paymentRequested: true };
+      }
+      return c;
+    });
+
+    const log = {
+      id: `LOG-${Date.now()}`,
+      timestamp: Date.now(),
+      timeStr: new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }),
+      dateStr: new Date().toLocaleDateString('es-ES'),
+      role: 'Cliente' as const,
+      userOrDevice: clientName.trim() || 'Cliente',
+      action: 'Solicitud de Pago de Cuenta',
+      details: `Cliente en ${clientTable} solicitó la cuenta para la comanda #${rootId}.`
+    };
+
+    if (updateData) {
+      updateData({
+        comandas: updatedComandas,
+        auditLogs: [log, ...(data?.auditLogs || [])]
+      });
+    }
+  };
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -710,6 +824,180 @@ export function ClientOrderWorkspace({ data, updateData, onBack }: ClientOrderWo
                 </button>
               </div>
 
+              {/* Client Comanda & Account Card */}
+              {(() => {
+                const clientRootComanda = (data?.comandas || []).find(
+                  c => (c.tableNumber === clientTable || (c.tableNumber && clientTable && c.tableNumber.replace(/\D/g, '') === clientTable.replace(/\D/g, '') && clientTable.replace(/\D/g, '') !== '')) && c.status === 'open' && !c.parentComandaId
+                ) || (data?.comandas || []).find(
+                  c => (c.tableNumber === clientTable || (c.tableNumber && clientTable && c.tableNumber.replace(/\D/g, '') === clientTable.replace(/\D/g, '') && clientTable.replace(/\D/g, '') !== '')) && c.status === 'open'
+                );
+
+                if (!clientRootComanda) return null;
+
+                const activeGroupComandas = [
+                  clientRootComanda,
+                  ...(data?.comandas || []).filter(c => c.parentComandaId === clientRootComanda.id && c.status === 'open')
+                ];
+
+                const activeGroupOrders = getGroupOrdersClient(clientRootComanda, data?.comandas || [], data?.orders || []);
+
+                // Consolidate dishes for this comanda group
+                const groupDishes: { name: string; quantity: number; priceCUP: number }[] = [];
+                activeGroupOrders.forEach(o => {
+                  if (o.orderItems && o.orderItems.length > 0) {
+                    o.orderItems.forEach(it => {
+                      const cleanName = (it.name || '').replace(/^(\d+)\s*x\s*/i, '').trim();
+                      let priceCUP = Number(it.priceCUP || 0);
+                      if (priceCUP <= 0 && cleanName) {
+                        const found = (data?.menuItems || []).find(m => m.name.trim().toLowerCase() === cleanName.toLowerCase());
+                        if (found) priceCUP = found.priceCUP;
+                      }
+                      const existing = groupDishes.find(d => d.name.toLowerCase() === cleanName.toLowerCase());
+                      if (existing) {
+                        existing.quantity += Number(it.quantity) || 1;
+                      } else {
+                        groupDishes.push({ name: cleanName, quantity: Number(it.quantity) || 1, priceCUP });
+                      }
+                    });
+                  } else if (o.items && o.items.length > 0) {
+                    o.items.forEach(raw => {
+                      const match = raw.match(/^(\d+)\s*x\s*(.+)$/i);
+                      const qty = match ? parseInt(match[1], 10) : 1;
+                      const name = match ? match[2].trim() : raw.trim();
+                      const found = (data?.menuItems || []).find(m => m.name.trim().toLowerCase() === name.toLowerCase());
+                      const priceCUP = found ? found.priceCUP : 100;
+                      const existing = groupDishes.find(d => d.name.toLowerCase() === name.toLowerCase());
+                      if (existing) {
+                        existing.quantity += qty;
+                      } else {
+                        groupDishes.push({ name, quantity: qty, priceCUP });
+                      }
+                    });
+                  }
+                });
+
+                const groupTotalCUP = groupDishes.reduce((acc, d) => acc + (d.priceCUP * d.quantity), 0);
+                const isPaymentRequested = clientRootComanda.paymentRequested || activeGroupComandas.some(c => c.paymentRequested);
+
+                return (
+                  <div className="bg-white rounded-3xl p-6 border-2 border-stone-200 shadow-xl space-y-5 animate-fade-in">
+                    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-stone-100 pb-4">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-mono font-bold text-dark-green bg-stone-100 px-2.5 py-1 rounded-lg">
+                            Comanda #{clientRootComanda.id.slice(-6).toUpperCase()}
+                          </span>
+                          {activeGroupComandas.length > 1 && (
+                            <span className="text-[10px] font-bold text-amber-800 bg-amber-100 px-2 py-0.5 rounded-md">
+                              + {activeGroupComandas.length - 1} Comanda(s) Anexa(s)
+                            </span>
+                          )}
+                        </div>
+                        <h4 className="font-serif font-bold text-lg text-stone-900 mt-1">
+                          {clientTable} • {clientRootComanda.customerName || clientName || 'Comensal'}
+                        </h4>
+                      </div>
+
+                      <div>
+                        {isPaymentRequested ? (
+                          <div className="bg-amber-50 border border-amber-200 text-amber-900 px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 animate-pulse">
+                            <span>💳</span> {t('Solicitud de Pago enviada')}
+                          </div>
+                        ) : activeGroupOrders.some(o => o.status === 'delivered') ? (
+                          <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5">
+                            <span>🍽️</span> {t('Servido en Mesa • En consumo')}
+                          </div>
+                        ) : (
+                          <div className="bg-stone-50 border border-stone-200 text-stone-700 px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5">
+                            <span>⏳</span> {t('En preparación')}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <span className="text-[11px] font-bold text-stone-400 uppercase tracking-wider block">
+                        {t('Resumen Completo de la Cuenta (Platos Consumidos):')}
+                      </span>
+                      {groupDishes.length > 0 ? (
+                        <div className="divide-y divide-stone-100 bg-stone-50/60 rounded-2xl p-4 border border-stone-100">
+                          {groupDishes.map((dish, dIdx) => (
+                            <div key={dIdx} className="py-2 flex items-center justify-between text-xs first:pt-0 last:pb-0">
+                              <div className="flex items-center gap-2">
+                                <span className="font-bold text-dark-green text-sm">{dish.quantity}x</span>
+                                <span className="font-semibold text-stone-800">{dish.name}</span>
+                              </div>
+                              <div className="text-right">
+                                <span className="font-mono text-stone-500 font-semibold">
+                                  ${(dish.priceCUP * dish.quantity).toLocaleString()} CUP
+                                </span>
+                                {dish.priceCUP > 0 && (
+                                  <span className="text-[10px] text-stone-400 block font-mono">
+                                    (${dish.priceCUP.toLocaleString()} c/u)
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                          <div className="border-t border-stone-200 pt-3 mt-2 flex justify-between items-center">
+                            <span className="font-serif font-bold text-stone-900 text-sm">{t('TOTAL CONSOLIDADO:')}</span>
+                            <div className="text-right">
+                              <span className="font-serif font-extrabold text-xl text-dark-green block">
+                                ${groupTotalCUP.toLocaleString()} CUP
+                              </span>
+                              {data?.exchangeRate?.usdCUP && (
+                                <span className="text-[11px] text-stone-500 font-mono">
+                                  ≈ ${(groupTotalCUP / data.exchangeRate.usdCUP).toFixed(2)} USD
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="text-xs text-stone-400 italic p-3 text-center">
+                          {t('No hay platos aprobados registrados aún en esta comanda.')}
+                        </div>
+                      )}
+                    </div>
+
+                    {isPaymentRequested && (
+                      <div className="bg-amber-100/80 border border-amber-300 rounded-2xl p-4 text-amber-950 text-xs font-medium flex items-center gap-3">
+                        <span className="text-xl">🔔</span>
+                        <div>
+                          <strong className="block font-bold text-amber-900">{t('Has solicitado la cuenta al camarero.')}</strong>
+                          <span>{t('El camarero se acerca a tu mesa con el comprobante para procesar el cobro.')}</span>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+                      <button
+                        onClick={() => handleClientAddAnnexedOrder(clientRootComanda)}
+                        className="w-full bg-stone-900 hover:bg-stone-800 text-white font-serif font-bold py-3.5 px-4 rounded-2xl text-xs md:text-sm transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer border border-stone-800"
+                      >
+                        <Plus size={18} className="text-gold" />
+                        <span>{t('AGREGAR PEDIDO (Comanda Anexa)')}</span>
+                      </button>
+
+                      <button
+                        onClick={() => handleClientRequestPayment(clientRootComanda)}
+                        disabled={isPaymentRequested}
+                        className={`w-full font-serif font-bold py-3.5 px-4 rounded-2xl text-xs md:text-sm transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer ${
+                          isPaymentRequested
+                            ? 'bg-amber-200 text-amber-900 cursor-not-allowed border border-amber-300'
+                            : 'bg-gold hover:bg-amber-400 text-dark-green border border-amber-300 font-extrabold'
+                        }`}
+                      >
+                        <DollarSign size={18} />
+                        <span>
+                          {isPaymentRequested ? t('✓ Solicitud de Pago Enviada') : t('PAGAR LA CUENTA')}
+                        </span>
+                      </button>
+                    </div>
+                  </div>
+                );
+              })()}
+
               {/* Active Orders Track list */}
               <div className="space-y-6">
                 <div className="flex items-center gap-2 mb-2 px-2">
@@ -1002,8 +1290,12 @@ export function ClientOrderWorkspace({ data, updateData, onBack }: ClientOrderWo
                 prefilledTable={clientTable}
                 prefilledName={clientName}
                 isOrderMode={true}
+                targetComandaId={targetAnnexedComandaId}
                 updateData={updateData}
-                onClose={() => setActiveSubView('welcome')}
+                onClose={() => {
+                  setActiveSubView('welcome');
+                  setTargetAnnexedComandaId(undefined);
+                }}
               />
             </div>
           )}

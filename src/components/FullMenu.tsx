@@ -14,7 +14,8 @@ export function FullMenu({
   updateData,
   prefilledTable,
   prefilledName,
-  isOrderMode = true
+  isOrderMode = true,
+  targetComandaId
 }: { 
   onClose?: () => void, 
   pendingReservation?: any, 
@@ -24,7 +25,8 @@ export function FullMenu({
   updateData?: (data: any) => void,
   prefilledTable?: string,
   prefilledName?: string,
-  isOrderMode?: boolean
+  isOrderMode?: boolean,
+  targetComandaId?: string
 }) {
   const { t } = useLanguage();
   const [activeCategory, setActiveCategory] = useState('Todos');
@@ -120,6 +122,7 @@ export function FullMenu({
       totalUSD: totalPrice / usdCUP,
       status: 'client_pending',
       customerName: prefilledName?.trim() || undefined,
+      comandaId: targetComandaId || undefined,
       timestamp: Date.now()
     };
 

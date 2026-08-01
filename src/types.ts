@@ -100,6 +100,7 @@ export interface Comanda {
   openedAt: number;
   closedAt?: number;
   orders: Order[];
+  parentComandaId?: string;
   currency?: 'CUP' | 'USD' | 'EUR';
   paymentMethod?: 'cash' | 'digital' | 'mixed';
   cashAmount?: number;

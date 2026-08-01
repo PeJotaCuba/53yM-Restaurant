@@ -456,10 +456,34 @@ export function DependentPanel({ data, updateData, dependentInfo }: DependentPan
     return Array.from(map.values());
   };
 
-  // Calculate total for open comanda
+  // Helper to get all comandas belonging to a group (Root comanda + all Annexed comandas)
+  const getComandaGroup = (com?: Comanda | null, allComandas: Comanda[] = []) => {
+    if (!com) return [];
+    const rootId = com.parentComandaId || com.id;
+    const root = allComandas.find(c => c.id === rootId) || com;
+    const annexed = allComandas.filter(c => c.parentComandaId === root.id && c.id !== root.id);
+    return [root, ...annexed];
+  };
+
+  // Helper to get all orders for a comanda group (Root + Annexes)
+  const getGroupOrders = (com?: Comanda | null, allComandas: Comanda[] = [], allOrders: Order[] = []) => {
+    if (!com) return [];
+    const group = getComandaGroup(com, allComandas);
+    const map = new Map<string, Order>();
+    group.forEach(c => {
+      const comOrders = getComandaOrders(c, allOrders);
+      comOrders.forEach(o => {
+        const key = o.id || (o as any)._id;
+        if (key) map.set(key, o);
+      });
+    });
+    return Array.from(map.values());
+  };
+
+  // Calculate total for open comanda group (Root + Annexed)
   const calculateComandaTotal = (com: Comanda) => {
     let total = 0;
-    const effectiveOrders = getComandaOrders(com, data.orders || []);
+    const effectiveOrders = getGroupOrders(com, data.comandas || [], data.orders || []);
 
     effectiveOrders.forEach(o => {
       if (o.orderItems && o.orderItems.length > 0) {
@@ -689,16 +713,37 @@ export function DependentPanel({ data, updateData, dependentInfo }: DependentPan
       exchangeRateUsed: { usdCUP, eurCUP }
     };
 
+    const groupComandas = getComandaGroup(closingComanda, data.comandas || []);
+    const groupComandaIds = groupComandas.map(c => c.id);
+    const groupOrders = getGroupOrders(closingComanda, data.comandas || [], data.orders || []);
+    const groupOrderIds = groupOrders.map(o => o.id || (o as any)._id);
+
     const updatedComandas = (data.comandas || []).map(c => {
-      if (c.id === closingComanda.id) {
-        return closedComandaObj;
+      if (groupComandaIds.includes(c.id)) {
+        return {
+          ...c,
+          status: 'closed' as const,
+          closedAt: Date.now(),
+          currency: selectedCurrencies[0],
+          currencyBreakdown: {
+            CUP: selectedCurrencies.includes('CUP') ? payCUP : undefined,
+            USD: selectedCurrencies.includes('USD') ? payUSD : undefined,
+            EUR: selectedCurrencies.includes('EUR') ? payEUR : undefined,
+          },
+          paymentSummaryStr: summaryStr,
+          paymentMethod,
+          cashAmount: finalCash,
+          digitalAmount: finalDigital,
+          totalAmountCUP: totalCUP,
+          exchangeRateUsed: { usdCUP, eurCUP }
+        };
       }
       return c;
     });
 
-    const closingOrderIds = (closingComanda.orders || []).map(o => o.id);
     const updatedOrders = (data.orders || []).map(o => {
-      if (o.comandaId === closingComanda.id || closingOrderIds.includes(o.id)) {
+      const oId = o.id || (o as any)._id;
+      if ((o.comandaId && groupComandaIds.includes(o.comandaId)) || groupOrderIds.includes(oId)) {
         return { ...o, status: 'closed' as const };
       }
       return o;
@@ -712,8 +757,8 @@ export function DependentPanel({ data, updateData, dependentInfo }: DependentPan
       dateStr: new Date().toLocaleDateString('es-ES'),
       role: 'Dependiente' as const,
       userOrDevice: dependentInfo.username,
-      action: 'Cierre y Cobro de Comanda Multi-Moneda',
-      details: `Cerró comanda #${closingComanda.id} de ${dependentInfo.tableNumber}. Total Cobrado: ${summaryStr} (${paymentMethod})`
+      action: 'Cierre y Cobro de Comanda Consolidada (Grupo)',
+      details: `Cerró y cobró comanda principal #${closingComanda.id} ${groupComandas.length > 1 ? `junto a ${groupComandas.length - 1} comanda(s) anexa(s)` : ''} de ${closingComanda.tableNumber}. Total Cobrado: ${summaryStr} (${paymentMethod})`
     };
 
     updateData({
@@ -1040,6 +1085,38 @@ export function DependentPanel({ data, updateData, dependentInfo }: DependentPan
           </div>
         </div>
       </div>
+
+      {/* Payment Requested Alert Banner */}
+      {(() => {
+        const paymentReqs = (data.comandas || []).filter(c => c.status === 'open' && c.paymentRequested);
+        if (paymentReqs.length === 0) return null;
+        return (
+          <div className="bg-gradient-to-r from-amber-500 via-amber-600 to-amber-700 text-stone-900 rounded-3xl p-5 mb-8 shadow-xl border-2 border-amber-300 flex flex-col sm:flex-row items-center justify-between gap-4 animate-pulse">
+            <div className="flex items-center gap-3">
+              <div className="p-3 bg-white/30 rounded-2xl text-2xl">💳</div>
+              <div>
+                <h4 className="font-serif font-bold text-lg text-stone-950">
+                  ¡{paymentReqs.length} Cliente(s) solicita(n) pagar la cuenta!
+                </h4>
+                <p className="text-xs text-stone-900 font-medium">
+                  Mesas solicitando cobro: <strong>{paymentReqs.map(c => c.tableNumber).join(', ')}</strong>. ¡Favor pasar a procesar el pago!
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              {paymentReqs.map(c => (
+                <button
+                  key={c.id}
+                  onClick={() => handleOpenCloseModal(c)}
+                  className="bg-stone-950 text-gold hover:bg-stone-900 font-bold text-xs px-4 py-2.5 rounded-xl shadow-md transition-all uppercase tracking-wider shrink-0"
+                >
+                  Cobrar {c.tableNumber} (${calculateComandaTotal(c).toLocaleString()} CUP)
+                </button>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Kitchen Ready Notification Alert Banner */}
       {readyKitchenOrders.length > 0 && (
