@@ -234,22 +234,31 @@ export function DependentPanel({ data, updateData, dependentInfo }: DependentPan
       ...clientOrder,
       comandaId: currentOpen.id,
       status: 'pending', // Now sent to kitchen!
-      orderItems: itemsList
+      orderItems: itemsList,
+      customerName: clientOrder.customerName || currentOpen.customerName,
+      assignedDependentId: dependentInfo.id
     };
 
     allComandas = allComandas.map(c => {
       if (c.id === currentOpen?.id) {
-        return { ...c, orders: [...c.orders, updatedOrder] };
+        const orderExists = c.orders.some(o => o.id === clientOrder.id || (o as any)._id === clientOrder.id);
+        const newOrders = orderExists
+          ? c.orders.map(o => (o.id === clientOrder.id || (o as any)._id === clientOrder.id) ? updatedOrder : o)
+          : [...c.orders, updatedOrder];
+        return { ...c, orders: newOrders };
       }
       return c;
     });
 
-    const updatedOrders = (data.orders || []).map(o => o.id === clientOrder.id ? updatedOrder : o);
+    const exists = (data.orders || []).some(o => o.id === clientOrder.id || (o as any)._id === clientOrder.id);
+    const updatedOrders = exists
+      ? (data.orders || []).map(o => (o.id === clientOrder.id || (o as any)._id === clientOrder.id) ? updatedOrder : o)
+      : [...(data.orders || []), updatedOrder];
 
     // Download PDF
     const pdfName = downloadOrderPdf(
       clientOrder.tableNumber,
-      currentOpen.customerName || 'Cliente Comensal',
+      currentOpen.customerName || clientOrder.customerName || 'Cliente Comensal',
       itemsList,
       updatedOrder.id
     );
@@ -262,7 +271,7 @@ export function DependentPanel({ data, updateData, dependentInfo }: DependentPan
       role: 'Dependiente' as const,
       userOrDevice: dependentInfo.username,
       action: 'Aprobación & Envío a Cocina (PDF)',
-      details: `Aprobó pedido de cliente en ${clientOrder.tableNumber}, lo mandó a cocina y descargó ${pdfName}`
+      details: `Aprobó pedido de cliente en ${clientOrder.tableNumber} (${clientOrder.customerName || 'Cliente'}), lo mandó a cocina y descargó ${pdfName}`
     };
 
     updateData({
