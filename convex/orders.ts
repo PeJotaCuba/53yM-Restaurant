@@ -24,6 +24,7 @@ export const syncOrUpdateOrder = mutation({
     assignedDependentId: v.string(),
     reservationId: v.optional(v.string()),
     customerName: v.optional(v.string()),
+    comandaId: v.optional(v.string()),
     timestamp: v.optional(v.number()),
     username: v.optional(v.string()),
     userRole: v.optional(v.string()),
@@ -41,6 +42,7 @@ export const syncOrUpdateOrder = mutation({
       assignedDependentId: args.assignedDependentId,
       reservationId: args.reservationId,
       customerName: args.customerName,
+      comandaId: args.comandaId,
     };
 
     if (args.id) {

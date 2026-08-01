@@ -133,6 +133,7 @@ export default function App() {
         totalUSD: lo.totalUSD || 0,
         status: lo.status || 'pending_dependent',
         customerName: lo.customerName,
+        comandaId: lo.comandaId,
         timestamp: lo.timestamp || Date.now(),
         assignedDependentId: lo.assignedDependentId || 'no_assigned',
         reservationId: lo.reservationId,
@@ -419,6 +420,7 @@ export default function App() {
           assignedDependentId: newOrder.assignedDependentId || 'no_assigned',
           reservationId: newOrder.reservationId || undefined,
           customerName: newOrder.customerName || undefined,
+          comandaId: newOrder.comandaId || undefined,
           username: currentUsername,
           userRole: currentUserRole,
         }).catch(err => console.warn('Convex syncOrder error:', err));

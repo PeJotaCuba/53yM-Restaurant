@@ -41,6 +41,7 @@ export default defineSchema({
     assignedDependentId: v.string(),
     reservationId: v.optional(v.string()),
     customerName: v.optional(v.string()),
+    comandaId: v.optional(v.string()),
   }).index("by_status", ["status"]),
 
   reservations: defineTable({

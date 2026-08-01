@@ -630,8 +630,9 @@ export function DependentPanel({ data, updateData, dependentInfo }: DependentPan
       return c;
     });
 
+    const closingOrderIds = (closingComanda.orders || []).map(o => o.id);
     const updatedOrders = (data.orders || []).map(o => {
-      if (o.comandaId === closingComanda.id) {
+      if (o.comandaId === closingComanda.id || closingOrderIds.includes(o.id)) {
         return { ...o, status: 'closed' as const };
       }
       return o;
@@ -1709,12 +1710,14 @@ export function DependentPanel({ data, updateData, dependentInfo }: DependentPan
                       <div className="flex justify-end pt-1">
                         <button
                           onClick={() => {
-                            const updatedOrders = (data.orders || []).map(o => o.id === ord.id ? { ...o, status: 'delivered' as const } : o);
+                            const parentComanda = (data.comandas || []).find(c => c.orders.some(o => o.id === ord.id));
+                            const targetComandaId = ord.comandaId || parentComanda?.id;
+                            const updatedOrders = (data.orders || []).map(o => o.id === ord.id ? { ...o, status: 'delivered' as const, comandaId: targetComandaId } : o);
                             const updatedComandas = (data.comandas || []).map(c => {
-                              if (c.id === ord.comandaId) {
+                              if (c.id === targetComandaId) {
                                 return {
                                   ...c,
-                                  orders: c.orders.map(o => o.id === ord.id ? { ...o, status: 'delivered' as const } : o)
+                                  orders: c.orders.map(o => o.id === ord.id ? { ...o, status: 'delivered' as const, comandaId: targetComandaId } : o)
                                 };
                               }
                               return c;
