@@ -236,7 +236,7 @@ export interface AppNotification {
   timestamp: number;
   orderId: string;
   tableNumber: string;
-  targetRole: 'dependent' | 'client' | 'all';
+  targetRole: 'dependent' | 'client' | 'kitchen' | 'all';
   title: string;
   message: string;
   isRead?: boolean;

@@ -37,6 +37,29 @@ export function KitchenPanel({ data, updateData, kitchenInfo }: KitchenPanelProp
 
   const orders = data.orders || [];
 
+  // Track the last known pending orders count to notify on new arrivals
+  const lastPendingCountRef = React.useRef(orders.filter(o => o.status === 'pending' || o.status === 'in_kitchen').length);
+
+  React.useEffect(() => {
+    const currentPending = orders.filter(o => o.status === 'pending' || o.status === 'in_kitchen');
+    if (currentPending.length > lastPendingCountRef.current) {
+      // New order arrived!
+      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const osc = audioCtx.createOscillator();
+      const gainNode = audioCtx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(660, audioCtx.currentTime); 
+      osc.frequency.setValueAtTime(880, audioCtx.currentTime + 0.1); 
+      gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.5);
+      osc.connect(gainNode);
+      gainNode.connect(audioCtx.destination);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.5);
+    }
+    lastPendingCountRef.current = currentPending.length;
+  }, [orders]);
+
   // Active operational kitchen orders (include pending, in_kitchen, kitchen_in_progress, in_progress, kitchen_ready, ready_to_serve, delivered)
   const activeKitchenOrders = orders.filter(o => 
     o.status === 'pending' || 

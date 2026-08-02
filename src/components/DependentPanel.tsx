@@ -74,17 +74,24 @@ export function DependentPanel({ data, updateData, dependentInfo }: DependentPan
   };
 
   const comandas = (data.comandas || []).filter(c => isSameTable(c.tableNumber, activeTableNumber));
-  const openComanda = comandas.find(c => c.status === 'open' || (c.status as string) !== 'closed');
+  // Prefer the root comanda (the one without parentComandaId) for the main view
+  const openComanda = comandas.find(c => (c.status === 'open' || (c.status as string) !== 'closed') && !c.parentComandaId) || 
+                      comandas.find(c => c.status === 'open' || (c.status as string) !== 'closed');
   const closedComandas = comandas.filter(c => c.status === 'closed');
-  const allActiveComandas = (data.comandas || []).filter(c => c.status === 'open' || (c.status as string) !== 'closed');
+  // Show only root comandas in the active list pills to avoid duplication by table
+  const allActiveComandas = (data.comandas || [])
+    .filter(c => (c.status === 'open' || (c.status as string) !== 'closed') && !c.parentComandaId)
+    .sort((a, b) => (b.openedAt || 0) - (a.openedAt || 0));
 
   // Exchange rate & ready kitchen orders
   const usdCUP = data.exchangeRate?.usdCUP || 320;
   const eurCUP = data.exchangeRate?.eurCUP || 350;
   const readyKitchenOrders = (data.orders || []).filter(o => o.status === 'kitchen_ready' || o.status === 'ready_to_serve');
 
-  // Filter incoming client pending orders for table
-  const clientPendingOrders = (data.orders || []).filter(o => (o.status === 'client_pending' || o.status === 'pending_dependent') && (o.tableNumber === activeTableNumber || o.tableNumber?.includes(activeTableNumber.replace(/\D/g, ''))));
+  // Filter incoming client pending orders for table - Newest First
+  const clientPendingOrders = (data.orders || [])
+    .filter(o => (o.status === 'client_pending' || o.status === 'pending_dependent') && (o.tableNumber === activeTableNumber || o.tableNumber?.includes(activeTableNumber.replace(/\D/g, ''))))
+    .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
 
   const isShiftActive = data.isShiftActive !== false;
 
@@ -293,6 +300,17 @@ export function DependentPanel({ data, updateData, dependentInfo }: DependentPan
       updatedOrder.id
     );
 
+    const kitchenNotif = {
+      id: `NOTIF-KITCHEN-${Date.now()}`,
+      timestamp: Date.now(),
+      orderId: updatedOrder.id,
+      tableNumber: updatedOrder.tableNumber,
+      targetRole: 'kitchen' as const,
+      title: '👨‍🍳 Nuevo Pedido Aprobado',
+      message: `La ${updatedOrder.tableNumber} ha enviado un nuevo pedido a cocina.`
+    };
+    const updatedNotifications = [kitchenNotif, ...(data.notifications || [])].slice(0, 50);
+
     const log = {
       id: `LOG-${Date.now()}`,
       timestamp: Date.now(),
@@ -307,6 +325,7 @@ export function DependentPanel({ data, updateData, dependentInfo }: DependentPan
     updateData({
       comandas: allComandas,
       orders: updatedOrders,
+      notifications: updatedNotifications,
       auditLogs: [log, ...(data.auditLogs || [])]
     });
   };
@@ -405,6 +424,17 @@ export function DependentPanel({ data, updateData, dependentInfo }: DependentPan
       newOrder.id
     );
 
+    const kitchenNotif = {
+      id: `NOTIF-KITCHEN-${Date.now()}`,
+      timestamp: Date.now(),
+      orderId: newOrder.id,
+      tableNumber: activeTableNumber,
+      targetRole: 'kitchen' as const,
+      title: '👨‍🍳 Nuevo Pedido de Garzón',
+      message: `El garzón ha enviado raciones de la ${activeTableNumber} a cocina.`
+    };
+    const updatedNotifications = [kitchenNotif, ...(data.notifications || [])].slice(0, 50);
+
     // Update Comanda and global Orders
     const updatedComandas = (data.comandas || []).map(c => {
       if (c.id === openComanda.id) {
@@ -415,13 +445,6 @@ export function DependentPanel({ data, updateData, dependentInfo }: DependentPan
       }
       return c;
     });
-
-    updateData({
-      comandas: updatedComandas,
-      orders: [...(data.orders || []), newOrder]
-    });
-
-    setDraftItems([]); // Clear drafts
 
     // Audit log
     const log = {
@@ -434,7 +457,15 @@ export function DependentPanel({ data, updateData, dependentInfo }: DependentPan
       action: 'Pedido a Cocina & Descarga PDF',
       details: `Envió ${draftItems.length} platos a comanda #${openComanda.id} (${activeTableNumber}), mandó a cocina y descargó ${pdfName}`
     };
-    updateData({ auditLogs: [log, ...(data.auditLogs || [])] });
+
+    updateData({
+      comandas: updatedComandas,
+      orders: [...(data.orders || []), newOrder],
+      notifications: updatedNotifications,
+      auditLogs: [log, ...(data.auditLogs || [])]
+    });
+
+    setDraftItems([]); // Clear drafts
   };
 
   // Helper to reliably get orders for a specific comanda without mixing unrelated table orders

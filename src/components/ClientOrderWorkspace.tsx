@@ -995,9 +995,9 @@ export function ClientOrderWorkspace({ data, updateData, onBack }: ClientOrderWo
                     )}
 
                     {(() => {
-                      const hasBeenServed = activeGroupOrders.some(o => o.status === 'delivered' || o.status === 'paid' || o.status === 'closed');
+                      const hasServedOrder = activeGroupOrders.some(o => o.status === 'delivered' || o.status === 'paid' || o.status === 'closed');
                       
-                      if (!hasBeenServed) {
+                      if (!hasServedOrder) {
                         return (
                           <div className="bg-stone-50 border border-stone-200 rounded-2xl p-4 text-stone-600 text-xs text-center font-medium animate-pulse">
                             ⏳ {t('Tus platos están siendo elaborados en cocina. Una vez servidos en la mesa, se habilitará la opción de agregar pedidos anexos o solicitar la cuenta.')}
