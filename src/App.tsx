@@ -816,14 +816,12 @@ export default function App() {
         return null;
       }
       return (
-        <div className="space-y-6">
-          <AdminPanel data={appData} updateData={updateData} updateStatus={updateReservationStatus} />
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <ConvexErrorBoundary fallbackTitle="Bitácora Operacional (Admin)">
-              <BitacoraStream requesterRole={userRole} />
-            </ConvexErrorBoundary>
-          </div>
-        </div>
+        <AdminPanel 
+          data={appData} 
+          updateData={updateData} 
+          updateStatus={updateReservationStatus}
+          userRole={userRole}
+        />
       );
     }
 
