@@ -1411,7 +1411,7 @@ export function DependentPanel({ data, updateData, dependentInfo }: DependentPan
                     </div>
 
                     {(() => {
-                      const effectiveOrders = getComandaOrders(openComanda, data.orders || []);
+                      const effectiveOrders = getGroupOrders(openComanda, data.comandas || [], data.orders || []);
                       const groupComs = openComanda ? [openComanda, ...(data.comandas || []).filter(c => c.parentComandaId === openComanda.id)] : [];
                       const isPaymentRequested = groupComs.some(c => c.paymentRequested);
 
