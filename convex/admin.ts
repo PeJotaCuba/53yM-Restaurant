@@ -320,6 +320,31 @@ export const closeWorkdayAndArchive = mutation({
   },
 });
 
+export const createSnapshot = mutation({
+  args: {
+    data: v.any(),
+    createdBy: v.string(),
+    label: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const id = await ctx.db.insert("snapshots", {
+      data: args.data,
+      timestamp: Date.now(),
+      createdBy: args.createdBy,
+      label: args.label,
+    });
+
+    await ctx.db.insert("bitacora", {
+      action: `BACKUP EXCELENCIA: Se ha generado un respaldo completo del sistema (${args.label}).`,
+      userRole: "admin",
+      username: args.createdBy,
+      timestamp: Date.now(),
+    });
+
+    return id;
+  },
+});
+
 export const getHistory = query({
   args: {
     requesterRole: v.optional(v.string()),

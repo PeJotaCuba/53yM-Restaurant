@@ -110,6 +110,13 @@ export default defineSchema({
     timestamp: v.number(),
   }).index("by_date", ["year", "month", "day"]),
 
+  snapshots: defineTable({
+    data: v.any(),
+    timestamp: v.number(),
+    createdBy: v.string(),
+    label: v.string(),
+  }).index("by_timestamp", ["timestamp"]),
+
   pushSubscriptions: defineTable({
     deviceId: v.string(),
     role: v.string(),
