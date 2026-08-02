@@ -1141,32 +1141,65 @@ export function ManagerPanel({ data, updateData, managerInfo, updateStatus }: Ma
             </div>
           </div>
 
-          <div className="space-y-3">
-            {reservations.map((res, idx) => (
-              <div key={`res-${res.id}-${idx}`} className="border border-stone-200 rounded-2xl p-4 flex justify-between items-center bg-stone-50">
-                <div>
-                  <div className="font-bold text-stone-900 text-sm">{res.name} — {res.date} ({res.time})</div>
-                  <div className="text-xs text-stone-500">{res.guests} pax • {res.occasion} • Tel: {res.phone}</div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase ${
-                    res.status === 'confirmed' || res.status === 'paid' ? 'bg-green-100 text-green-700' :
-                    res.status === 'pending' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'
-                  }`}>
-                    {res.status === 'confirmed' || res.status === 'paid' ? t('Confirmada') : res.status === 'pending' ? t('Pendiente') : t('Cancelada')}
-                  </span>
+          <div className="space-y-4">
+            {reservations
+              .filter(r => r.status !== 'cancelled') // Typically manager only sees active ones, but I'll follow Admin sort logic
+              .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
+              .map((res, idx) => (
+                <div key={`res-${res.id}-${idx}`} className="border border-stone-200 rounded-2xl p-5 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-stone-50 hover:bg-white transition-all shadow-sm">
+                  <div className="flex-1 space-y-2">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-dark-green text-white flex items-center justify-center font-bold text-sm">
+                        {res.time}
+                      </div>
+                      <div>
+                        <div className="font-bold text-stone-900 text-sm">{res.name}</div>
+                        <div className="text-[11px] text-stone-500 font-medium">{res.date} • {res.guests} pax • {res.occasion}</div>
+                      </div>
+                    </div>
+                    
+                    {res.dishes && res.dishes.length > 0 && (
+                      <div className="ml-13 bg-white border border-stone-100 rounded-xl p-3 text-[11px]">
+                        <p className="font-bold text-dark-green mb-1 flex items-center gap-1">
+                          <Utensils size={12} /> {t('Platos Pre-ordenados:')}
+                        </p>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1">
+                          {res.dishes.map((dish, i) => (
+                            <div key={i} className="flex justify-between border-b border-stone-50 pb-1 last:border-0">
+                              <span className="text-stone-700">{dish.name}</span>
+                              <span className="font-bold">x{dish.quantity}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
                   
-                  {res.status !== 'cancelled' && (
-                    <button
-                      onClick={() => handleConfirmPresence(res)}
-                      className="bg-gold hover:bg-amber-500 text-stone-900 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 shadow-sm transition-all"
-                    >
-                      <CheckCircle2 size={13} /> {t('Confirmar Presencia')}
-                    </button>
-                  )}
+                  <div className="flex flex-row md:flex-col items-center md:items-end gap-3 w-full md:w-auto pt-3 md:pt-0 border-t md:border-t-0 border-stone-100">
+                    <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${
+                      res.status === 'confirmed' || res.status === 'paid' ? 'bg-green-100 text-green-700' :
+                      res.status === 'pending' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'
+                    }`}>
+                      {res.status === 'confirmed' || res.status === 'paid' ? t('Confirmada') : res.status === 'pending' ? t('Pendiente') : t('Cancelada')}
+                    </span>
+                    
+                    {res.status !== 'cancelled' && (
+                      <button
+                        onClick={() => handleConfirmPresence(res)}
+                        className="flex-1 md:flex-none bg-gold hover:bg-amber-500 text-stone-900 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center justify-center gap-1.5 shadow-sm transition-all"
+                      >
+                        <CheckCircle2 size={14} /> {t('Confirmar Presencia')}
+                      </button>
+                    )}
+                  </div>
                 </div>
+              ))}
+            {reservations.filter(r => r.status !== 'cancelled').length === 0 && (
+              <div className="text-center py-10 border border-dashed border-stone-200 rounded-3xl">
+                <CalendarCheck className="mx-auto text-stone-200 mb-2" size={40} />
+                <p className="text-stone-400 text-sm font-medium">{t('No hay reservas activas en el sistema.')}</p>
               </div>
-            ))}
+            )}
           </div>
         </div>
       )}

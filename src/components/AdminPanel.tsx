@@ -58,7 +58,7 @@ export function AdminPanel({ data, updateData, updateStatus, userRole }: AdminPa
   const { t } = useLanguage();
   const [activeTab, setActiveTab] = useState<'reservations' | 'landing' | 'menu' | 'dependents' | 'managers' | 'kitchen' | 'exchange' | 'security' | 'simulator' | 'history'>('reservations');
   const [isLogExpanded, setIsLogExpanded] = useState(true);
-  const [reservationFilter, setReservationFilter] = useState<'Todas' | 'Hoy' | 'Canceladas'>('Todas');
+  const [reservationFilter, setReservationFilter] = useState<'Pendientes' | 'Confirmadas' | 'Canceladas'>('Pendientes');
   const [isLogDrawerOpen, setIsLogDrawerOpen] = useState(false);
   const [showModuleOverlay, setShowModuleOverlay] = useState(false);
   const [overlayTab, setOverlayTab] = useState<typeof activeTab | null>(null);
@@ -165,7 +165,9 @@ export function AdminPanel({ data, updateData, updateStatus, userRole }: AdminPa
   const today = new Date().toISOString().split('T')[0];
   const reservations = data.reservations;
   
-  const todayReservations = reservations.filter(r => r.date === today && r.status !== 'cancelled');
+  const todayReservations = reservations
+    .filter(r => r.date === today && r.status !== 'cancelled')
+    .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
   const todayGuests = todayReservations.reduce((sum, r) => sum + r.guests, 0);
 
   const handleConfirmReservation = (res: Reservation) => {
@@ -586,8 +588,8 @@ export function AdminPanel({ data, updateData, updateStatus, userRole }: AdminPa
   const filteredReservations = reservations
     .filter(r => {
       if (reservationFilter === 'Canceladas') return r.status === 'cancelled';
-      if (reservationFilter === 'Hoy') return r.date === today && r.status !== 'cancelled';
-      return true; // 'Todas'
+      if (reservationFilter === 'Confirmadas') return r.status === 'confirmed';
+      return r.status === 'pending';
     })
     .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
 
@@ -692,11 +694,11 @@ export function AdminPanel({ data, updateData, updateStatus, userRole }: AdminPa
           <div id="reservations-section" className="space-y-6">
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
               <div>
-                <h2 className="text-2xl font-bold text-[#1A2E26]">Reservas del Día</h2>
-                <p className="text-sm text-[#6B7280]">Vista rápida de la operación de hoy</p>
+                <h2 className="text-2xl font-bold text-[#1A2E26]">Reservas</h2>
+                <p className="text-sm text-[#6B7280]">Gestión de solicitudes y confirmaciones</p>
               </div>
               <div className="flex bg-white rounded-full p-1 border border-[#E8E0D0] w-fit shadow-sm">
-                {['Todas', 'Hoy', 'Canceladas'].map((filter) => (
+                {['Pendientes', 'Confirmadas', 'Canceladas'].map((filter) => (
                   <button
                     key={filter}
                     onClick={() => setReservationFilter(filter as any)}
@@ -712,30 +714,76 @@ export function AdminPanel({ data, updateData, updateStatus, userRole }: AdminPa
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="bg-white rounded-2xl p-5 border border-[#E8E0D0] flex items-center gap-4 shadow-[0_2px_12px_rgba(26,46,38,0.03)]">
-                <div className="w-12 h-12 rounded-2xl bg-[#F6F2E7] flex items-center justify-center text-[#1A2E26]">
-                  <Calendar size={24} />
-                </div>
-                <div>
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-[#6B7280]">Reservas Hoy</p>
-                  <p className="text-3xl font-bold text-[#1A2E26]">{todayReservations.length}</p>
-                </div>
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                 <h3 className="text-lg font-bold text-[#1A2E26]">Reservas de Hoy</h3>
+                 <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-2 text-xs font-bold text-[#6B7280]">
+                       <Calendar size={14} /> {todayReservations.length} reservas
+                    </div>
+                    <div className="flex items-center gap-2 text-xs font-bold text-[#6B7280]">
+                       <Users size={14} /> {todayGuests} comensales
+                    </div>
+                 </div>
               </div>
-              <div className="bg-white rounded-2xl p-5 border border-[#E8E0D0] flex items-center gap-4 shadow-[0_2px_12px_rgba(26,46,38,0.03)]">
-                <div className="w-12 h-12 rounded-2xl bg-[#F6F2E7] flex items-center justify-center text-[#1A2E26]">
-                  <Users size={24} />
-                </div>
-                <div>
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-[#6B7280]">Comensales Hoy</p>
-                  <p className="text-3xl font-bold text-[#1A2E26]">{todayGuests}</p>
-                </div>
+
+              <div className="grid grid-cols-1 gap-4">
+                {todayReservations.length === 0 ? (
+                  <div className="bg-white/50 rounded-2xl border border-dashed border-[#E8E0D0] p-8 text-center">
+                    <p className="text-[#6B7280] text-sm">No hay reservas programadas para hoy.</p>
+                  </div>
+                ) : (
+                  todayReservations.map(res => (
+                    <div key={res.id} className="bg-white rounded-2xl p-5 border border-[#E8E0D0] shadow-sm space-y-4">
+                      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                        <div className="flex items-center gap-4">
+                          <div className="w-12 h-12 rounded-2xl bg-[#0F2E26] text-white flex items-center justify-center text-xl font-bold">
+                            {res.time}
+                          </div>
+                          <div>
+                            <h4 className="font-bold text-[#1A2E26]">{res.name}</h4>
+                            <p className="text-xs text-[#6B7280]">{res.guests} personas • {res.occasion}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          {res.dishes && res.dishes.length > 0 && (
+                            <button 
+                              onClick={() => setResMenuId(resMenuId === res.id ? null : res.id)}
+                              className="flex items-center gap-2 px-4 py-2 bg-[#F6F2E7] text-[#1A2E26] rounded-xl text-xs font-bold hover:bg-[#E8E0D0] transition-colors"
+                            >
+                              <Utensils size={14} /> Ver Pre-Pedido
+                            </button>
+                          )}
+                          <div className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${
+                            res.status === 'confirmed' ? 'bg-[#B8E6C8] text-[#0F4D2A]' : 'bg-[#FEF3D6] text-[#7A5A10]'
+                          }`}>
+                            {res.status === 'confirmed' ? 'Confirmada' : 'Pendiente'}
+                          </div>
+                        </div>
+                      </div>
+
+                      {resMenuId === res.id && res.dishes && (
+                        <div className="bg-[#F9F5EB] rounded-xl p-4 border border-[#E8E0D0] animate-in slide-in-from-top-2 duration-200">
+                          <h5 className="text-[10px] font-black uppercase tracking-widest text-[#9A958A] mb-3">Pre-Pedido del Cliente</h5>
+                          <div className="space-y-2">
+                            {res.dishes.map((dish, i) => (
+                              <div key={i} className="flex justify-between items-center text-sm">
+                                <span className="font-medium text-[#1A2E26]">{dish.name}</span>
+                                <span className="text-[#6B7280]">x{dish.quantity}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))
+                )}
               </div>
             </div>
 
-            {/* Todas las Reservas List */}
-            <div className="space-y-3">
-              <h3 className="text-sm font-bold text-[#1A2E26] px-1">Todas las Reservas</h3>
+            {/* Lista de Reservas por Filtro */}
+            <div className="space-y-3 pt-4">
+              <h3 className="text-sm font-bold text-[#1A2E26] px-1">Listado de {reservationFilter}</h3>
               <div className="space-y-3">
                 {filteredReservations.length === 0 ? (
                   <div className="bg-white/50 rounded-2xl border border-dashed border-[#E8E0D0] p-12 text-center">
@@ -793,30 +841,23 @@ export function AdminPanel({ data, updateData, updateStatus, userRole }: AdminPa
                             <X size={16} />
                           </button>
                         )}
-                        <div className="relative">
-                          <button 
-                            onClick={() => setResMenuId(resMenuId === res.id ? null : res.id)}
-                            className="text-[#6B7280] hover:text-[#1A2E26] p-2 rounded-full transition-colors"
-                          >
-                            <MoreVertical size={20} />
-                          </button>
-                          {resMenuId === res.id && (
-                            <div className="absolute right-0 bottom-full mb-2 w-48 bg-white border border-[#E8E0D0] rounded-xl shadow-xl z-50 overflow-hidden animate-in fade-in zoom-in duration-200">
-                              {res.status === 'cancelled' ? (
-                                <button 
-                                  onClick={() => handleDeleteReservation(res.id)}
-                                  className="w-full flex items-center gap-3 px-4 py-3 text-sm text-[#C93A3A] hover:bg-red-50 transition-colors text-left"
-                                >
-                                  <Trash2 size={16} /> Eliminar Permanente
-                                </button>
-                              ) : (
+                        {res.status !== 'cancelled' && (
+                          <div className="relative">
+                            <button 
+                              onClick={() => setResMenuId(resMenuId === res.id ? null : res.id)}
+                              className="text-[#6B7280] hover:text-[#1A2E26] p-2 rounded-full transition-colors"
+                            >
+                              <MoreVertical size={20} />
+                            </button>
+                            {resMenuId === res.id && (
+                              <div className="absolute right-0 bottom-full mb-2 w-48 bg-white border border-[#E8E0D0] rounded-xl shadow-xl z-50 overflow-hidden animate-in fade-in zoom-in duration-200">
                                 <div className="px-4 py-3 text-xs text-[#9A958A] italic">
-                                  No eliminable (debe estar cancelada)
+                                  No hay acciones adicionales
                                 </div>
-                              )}
-                            </div>
-                          )}
-                        </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </div>
                   ))
@@ -1303,7 +1344,7 @@ export function AdminPanel({ data, updateData, updateStatus, userRole }: AdminPa
 
       {/* User Management Modal */}
       {showUserModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
            <div className="bg-white rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl border border-[#E8E0D0] animate-in zoom-in-95 duration-200">
               <div className="p-6 bg-[#0F2E26] text-white flex items-center justify-between">
                  <div className="flex items-center gap-3">
