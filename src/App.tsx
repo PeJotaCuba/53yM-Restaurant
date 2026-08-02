@@ -89,11 +89,10 @@ export default function App() {
   const liveKitchenReports = useQuery(api.admin.getSetting, { key: "kitchenReports" });
   const liveCashRegisterCloses = useQuery(api.admin.getSetting, { key: "cashRegisterCloses" });
   const liveIsShiftActive = useQuery(api.admin.getSetting, { key: "isShiftActive" });
+  const liveGerenteCierreCompleto = useQuery(api.admin.getSetting, { key: "gerenteCierreCompleto" });
   const liveHistory = useQuery(
     api.admin.getHistory,
-    requesterRole === 'admin' || requesterRole === 'manager'
-      ? { requesterRole }
-      : 'skip'
+    requesterRole !== 'none' ? { requesterRole } : 'skip'
   );
 
   const liveMenuItems = useQuery(api.menuItems.getLiveMenuItems);
@@ -218,6 +217,7 @@ export default function App() {
       comandas: liveComandas || [],
       notifications: liveNotifications || [],
       isShiftActive: liveIsShiftActive !== false,
+      gerenteCierreCompleto: liveGerenteCierreCompleto || false,
       orderReports: liveOrderReports || [],
       kitchenReports: liveKitchenReports || [],
       cashRegisterCloses: liveCashRegisterCloses || [],
@@ -236,6 +236,7 @@ export default function App() {
     liveComandas,
     liveNotifications,
     liveIsShiftActive,
+    liveGerenteCierreCompleto,
     liveOrderReports,
     liveKitchenReports,
     liveCashRegisterCloses,
@@ -304,6 +305,9 @@ export default function App() {
     }
     if (newData.isShiftActive !== undefined) {
       updateSettingMutation({ key: "isShiftActive", value: newData.isShiftActive }).catch(console.warn);
+    }
+    if (newData.gerenteCierreCompleto !== undefined) {
+      updateSettingMutation({ key: "gerenteCierreCompleto", value: newData.gerenteCierreCompleto }).catch(console.warn);
     }
     if (newData.menuItems) {
       syncMenuItemsMutation({ 

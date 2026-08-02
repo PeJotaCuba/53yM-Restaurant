@@ -252,6 +252,12 @@ export const closeWorkdayAndArchive = mutation({
       .first();
     const cashRegisterCloses = cashRegisterClosesSetting ? (cashRegisterClosesSetting.value || []) : [];
 
+    const comandasSetting = await ctx.db
+      .query("settings")
+      .withIndex("by_key", (q) => q.eq("key", "comandas"))
+      .first();
+    const comandas = comandasSetting ? (comandasSetting.value || []) : [];
+
     // 4. Gather active bitacora logs
     const bitacora = await ctx.db.query("bitacora").collect();
 
@@ -267,6 +273,7 @@ export const closeWorkdayAndArchive = mutation({
       orderReports,
       kitchenReports,
       cashRegisterCloses,
+      comandas,
       bitacora,
       timestamp: now,
     });
@@ -293,6 +300,17 @@ export const closeWorkdayAndArchive = mutation({
     }
     if (cashRegisterClosesSetting) {
       await ctx.db.patch(cashRegisterClosesSetting._id, { value: [] });
+    }
+    if (comandasSetting) {
+      await ctx.db.patch(comandasSetting._id, { value: [] });
+    }
+
+    const gerenteCierreSetting = await ctx.db
+      .query("settings")
+      .withIndex("by_key", (q) => q.eq("key", "gerenteCierreCompleto"))
+      .first();
+    if (gerenteCierreSetting) {
+      await ctx.db.patch(gerenteCierreSetting._id, { value: false });
     }
 
     // 10. Deactivate shift (isShiftActive = false)
@@ -348,7 +366,7 @@ export const getHistory = query({
     requesterRole: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    if (args.requesterRole !== "admin" && args.requesterRole !== "manager") {
+    if (!args.requesterRole || args.requesterRole === 'none') {
       return [];
     }
     return await ctx.db.query("history").order("desc").collect();

@@ -362,7 +362,7 @@ export function ManagerPanel({ data, updateData, managerInfo, updateStatus }: Ma
     // 1. Validation before closing
     const cashClose = cashRegisterCloses[0];
     if (!cashClose || cashClose.status !== 'balanced') {
-      alert('El cuadre de caja no coincide. Revise los datos antes de cerrar.');
+      alert('El cierre completo no puede realizarse porque existen diferencias en el cuadre de caja. Revise los valores antes de continuar.');
       return;
     }
 
