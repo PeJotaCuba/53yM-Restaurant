@@ -27,7 +27,7 @@ import { LoginModal } from './components/LoginModal';
 import { PWAInstallBanner } from './components/PWAInstallBanner';
 import { SystemNotificationManager } from './components/SystemNotificationManager';
 import { useDeviceId } from './hooks/useDeviceId';
-import { DependentConfig, ManagerConfig, Reservation, AppData } from './types';
+import { DependentConfig, ManagerConfig, Reservation, AppData, AppNotification } from './types';
 import { ADMIN_DEVICE_IDS } from './utils/deviceUtils';
 import { useLanguage } from './context/LanguageContext';
 import { MENU_ITEMS } from './data';
@@ -633,8 +633,37 @@ export default function App() {
 
   const updateReservationStatus = async (id: string, status: any) => {
     // 1. Update in state
+    const targetRes = appData.reservations.find(r => r.id === id);
     const updated = appData.reservations.map(r => r.id === id ? { ...r, status } : r);
-    updateData({ reservations: updated });
+
+    let newNotifications = [...(appData.notifications || [])];
+    if (status === 'cancellation_pending' && targetRes) {
+      const adminNotif: AppNotification = {
+        id: `NOTIF-${Date.now()}`,
+        timestamp: Date.now(),
+        orderId: id,
+        tableNumber: 'Reserva',
+        title: 'Solicitud de Cancelación de Reserva',
+        message: `El cliente ${targetRes.name} ha solicitado cancelar su reserva del ${targetRes.date} (${targetRes.time}).`,
+        targetRole: 'admin',
+        isRead: false,
+      };
+      newNotifications = [adminNotif, ...newNotifications].slice(0, 50);
+    } else if (status === 'cancelled' && targetRes) {
+      const clientNotif: AppNotification = {
+        id: `NOTIF-${Date.now()}`,
+        timestamp: Date.now(),
+        orderId: id,
+        tableNumber: 'Reserva',
+        title: 'Cancelación de Reserva Confirmada',
+        message: `La cancelación de tu reserva para el ${targetRes.date} (${targetRes.time}) ha sido confirmada por el administrador.`,
+        targetRole: 'client',
+        isRead: false,
+      };
+      newNotifications = [clientNotif, ...newNotifications].slice(0, 50);
+    }
+
+    updateData({ reservations: updated, notifications: newNotifications });
 
     // 2. If it is a Convex ID, update it in Convex as well
     if (id && !id.includes('.') && id.length > 10) {

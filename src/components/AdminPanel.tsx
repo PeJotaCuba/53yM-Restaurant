@@ -641,7 +641,7 @@ export function AdminPanel({ data, updateData, updateStatus, userRole }: AdminPa
     .filter(r => {
       if (reservationFilter === 'Canceladas') return r.status === 'cancelled';
       if (reservationFilter === 'Confirmadas') return r.status === 'confirmed';
-      return r.status === 'pending';
+      return r.status === 'pending' || r.status === 'cancellation_pending';
     })
     .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
 
@@ -810,10 +810,21 @@ export function AdminPanel({ data, updateData, updateStatus, userRole }: AdminPa
                               <Utensils size={14} /> Ver Pre-Pedido
                             </button>
                           )}
+                          {res.status === 'cancellation_pending' && (
+                            <button 
+                              onClick={() => updateStatus(res.id, 'cancelled')}
+                              className="bg-[#C93A3A] text-white px-3 py-1.5 rounded-full text-xs font-bold hover:bg-[#B82E2E] transition-colors flex items-center gap-1.5 shadow-sm"
+                              title="Confirmar cancelación"
+                            >
+                              <Check size={14} /> Confirmar cancelación
+                            </button>
+                          )}
                           <div className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${
-                            res.status === 'confirmed' ? 'bg-[#B8E6C8] text-[#0F4D2A]' : 'bg-[#FEF3D6] text-[#7A5A10]'
+                            res.status === 'confirmed' ? 'bg-[#B8E6C8] text-[#0F4D2A]' : 
+                            res.status === 'cancellation_pending' ? 'bg-[#FDE8E8] text-[#C93A3A]' : 
+                            'bg-[#FEF3D6] text-[#7A5A10]'
                           }`}>
-                            {res.status === 'confirmed' ? 'Confirmada' : 'Pendiente'}
+                            {res.status === 'confirmed' ? 'Confirmada' : res.status === 'cancellation_pending' ? 'Cancelación Pendiente' : 'Pendiente'}
                           </div>
                         </div>
                       </div>
@@ -871,9 +882,12 @@ export function AdminPanel({ data, updateData, updateStatus, userRole }: AdminPa
                           <span className={`text-[9px] font-bold px-2.5 py-1 rounded-full border uppercase tracking-wider ${
                             res.status === 'confirmed' ? 'bg-[#B8E6C8] text-[#0F4D2A] border-[#B8E6C8]' :
                             res.status === 'cancelled' ? 'bg-[#FDE8E8] text-[#C93A3A] border-[#FDE8E8]' :
+                            res.status === 'cancellation_pending' ? 'bg-[#FDE8E8] text-[#C93A3A] border-[#FDE8E8]' :
                             'bg-[#FEF3D6] text-[#7A5A10] border-[#FEF3D6]'
                           }`}>
-                            {res.status === 'confirmed' ? 'Confirmada' : res.status === 'cancelled' ? 'Cancelada' : 'Pendiente'}
+                            {res.status === 'confirmed' ? 'Confirmada' : 
+                             res.status === 'cancelled' ? 'Cancelada' : 
+                             res.status === 'cancellation_pending' ? 'Cancelación Pendiente' : 'Pendiente'}
                           </span>
                         </div>
                       </div>
@@ -888,7 +902,17 @@ export function AdminPanel({ data, updateData, updateStatus, userRole }: AdminPa
                             <Check size={16} />
                           </button>
                         )}
-                        {res.status !== 'cancelled' && (
+                        {res.status === 'cancellation_pending' && (
+                          <button 
+                            onClick={() => updateStatus(res.id, 'cancelled')}
+                            className="bg-[#C93A3A] text-white px-3.5 py-2 rounded-full text-xs font-bold hover:bg-[#B82E2E] transition-colors flex items-center gap-1.5 shadow-sm"
+                            title="Confirmar cancelación"
+                          >
+                            <Check size={14} />
+                            <span>Confirmar cancelación</span>
+                          </button>
+                        )}
+                        {res.status !== 'cancelled' && res.status !== 'cancellation_pending' && (
                           <button 
                             onClick={() => updateStatus(res.id, 'cancelled')}
                             className="bg-white border border-[#E8E0D0] text-[#C93A3A] p-2 rounded-full hover:bg-red-50 transition-colors"
