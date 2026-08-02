@@ -60,6 +60,8 @@ export function AdminPanel({ data, updateData, updateStatus, userRole }: AdminPa
   const [isLogExpanded, setIsLogExpanded] = useState(true);
   const [reservationFilter, setReservationFilter] = useState<'Todas' | 'Hoy' | 'Canceladas'>('Todas');
   const [isLogDrawerOpen, setIsLogDrawerOpen] = useState(false);
+  const [showModuleOverlay, setShowModuleOverlay] = useState(false);
+  const [overlayTab, setOverlayTab] = useState<typeof activeTab | null>(null);
 
   // Real-time reactive Convex query streaming audit logs
   const liveLogs = useQuery(
@@ -581,11 +583,13 @@ export function AdminPanel({ data, updateData, updateStatus, userRole }: AdminPa
     }
   ];
 
-  const filteredReservations = reservations.filter(r => {
-    if (reservationFilter === 'Canceladas') return r.status === 'cancelled';
-    if (reservationFilter === 'Hoy') return r.date === today && r.status !== 'cancelled';
-    return true; // 'Todas'
-  });
+  const filteredReservations = reservations
+    .filter(r => {
+      if (reservationFilter === 'Canceladas') return r.status === 'cancelled';
+      if (reservationFilter === 'Hoy') return r.date === today && r.status !== 'cancelled';
+      return true; // 'Todas'
+    })
+    .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
 
   return (
     <div className="min-h-screen bg-[#F6F2E7] font-[Inter,system-ui,sans-serif] text-[#1A2E26] selection:bg-[#1A3D32] selection:text-white flex flex-col lg:flex-row relative">
@@ -836,16 +840,16 @@ export function AdminPanel({ data, updateData, updateStatus, userRole }: AdminPa
                   <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                     {cat.items.map((item) => {
                       const Icon = item.icon;
-                      const isActive = activeTab === item.id;
+                      const isActive = (showModuleOverlay ? overlayTab : activeTab) === item.id;
                       return (
                         <button
                           key={item.id}
                           onClick={() => {
-                            setActiveTab(item.id as any);
                             if (item.id === 'reservations') {
                               document.getElementById('reservations-section')?.scrollIntoView({ behavior: 'smooth' });
-                            } else if (window.innerWidth < 1024) {
-                              window.scrollTo({ top: document.getElementById('active-module-content')?.offsetTop || 0, behavior: 'smooth' });
+                            } else {
+                              setOverlayTab(item.id as any);
+                              setShowModuleOverlay(true);
                             }
                           }}
                           className={`flex flex-col h-[130px] p-[18px] rounded-2xl border transition-all relative group text-left ${
@@ -879,297 +883,14 @@ export function AdminPanel({ data, updateData, updateStatus, userRole }: AdminPa
             </div>
           </div>
 
-          {/* 4. ACTIVE MODULE CONTENT */}
-          {activeTab !== 'reservations' && (
-            <div id="active-module-content" className="pt-8 border-t border-[#E8E0D0] animate-in fade-in slide-in-from-bottom-4 duration-500">
-              <div className="flex items-center gap-3 mb-8">
-                <div className="w-10 h-10 rounded-full bg-[#0F2E26] text-white flex items-center justify-center shadow-lg">
-                  {(() => {
-                    const item = controlPanelCategories.flatMap(c => c.items).find(i => i.id === activeTab);
-                    const Icon = item?.icon || Settings;
-                    return <Icon size={20} />;
-                  })()}
-                </div>
-                <div>
-                  <h2 className="text-2xl font-bold text-[#1A2E26] capitalize">{activeTab.replace('_', ' ')}</h2>
-                  <p className="text-sm text-[#6B7280]">Configuración y gestión del módulo</p>
-                </div>
-              </div>
-
-              <div className="bg-white rounded-3xl border border-[#E8E0D0] p-6 md:p-8 shadow-[0_4px_24px_rgba(26,46,38,0.04)] min-h-[400px]">
-                {activeTab === 'simulator' && (
-                  <AdminSimulator data={data} updateData={updateData} updateStatus={updateStatus} />
-                )}
-
-                {activeTab === 'history' && (
-                  <HistoryViewer data={data} userRole="admin" />
-                )}
-
-                {activeTab === 'landing' && (
-                  <AdminLandingEditor config={data.landingConfig} onSave={(newConfig) => updateData({ landingConfig: newConfig })} />
-                )}
-
-                {activeTab === 'menu' && (
-                  <AdminMenuEditor menuItems={data.menuItems} onSave={(newItems) => updateData({ menuItems: newItems })} />
-                )}
-
-                {activeTab === 'exchange' && (
-                  <div className="max-w-2xl">
-                    <div className="flex items-center gap-3 mb-6">
-                      <div className="p-3 bg-amber-100 text-amber-800 rounded-xl">
-                        <DollarSign size={24} />
-                      </div>
-                      <div>
-                        <h3 className="font-bold text-xl text-[#1A2E26]">Tasa de Cambio Diaria</h3>
-                        <p className="text-xs text-[#6B7280]">Establece la conversión oficial del día (24h vigencia).</p>
-                      </div>
-                    </div>
-
-                    {/* Status Indicator */}
-                    {(() => {
-                      const isRateExpired = !data.exchangeRate || (Date.now() - data.exchangeRate.updatedAt > 24 * 60 * 60 * 1000);
-                      return isRateExpired ? (
-                        <div className="bg-red-50 border border-red-200 text-red-700 text-xs rounded-2xl p-4 mb-6 flex items-center gap-3">
-                          <AlertCircle size={20} className="shrink-0 text-red-600" />
-                          <div>
-                            <span className="font-bold block text-sm">⚠️ Tasa de cambio vencida</span>
-                            Debe configurar la nueva tasa para que los gerentes puedan operar.
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded-2xl p-4 mb-6 flex items-center gap-3">
-                          <Check size={20} className="shrink-0 text-emerald-600" />
-                          <div>
-                            <span className="font-bold block text-sm">🟢 Tasa de cambio vigente</span>
-                            Actualización: {new Date(data.exchangeRate!.updatedAt).toLocaleString('es-ES')}
-                          </div>
-                        </div>
-                      );
-                    })()}
-
-                    {exchangeSavedMessage && (
-                      <div className="bg-green-50 border border-green-200 text-green-700 text-xs rounded-xl p-3 mb-6 font-bold">
-                        {exchangeSavedMessage}
-                      </div>
-                    )}
-
-                    <form onSubmit={handleSaveExchangeRate} className="space-y-6">
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                        <div>
-                          <label className="block text-[10px] font-black tracking-widest uppercase text-[#6B7280] mb-2">1 USD EN CUP</label>
-                          <div className="relative">
-                            <input 
-                              type="number" min="1" step="0.01" required value={usdRate}
-                              onChange={e => setUsdRate(Number(e.target.value))}
-                              className="w-full bg-[#F6F2E7] border border-[#E8E0D0] rounded-xl py-3 px-4 text-sm font-bold focus:border-[#0F2E26] outline-none"
-                            />
-                            <span className="absolute right-4 top-3 text-xs text-[#6B7280] font-bold">CUP</span>
-                          </div>
-                        </div>
-                        <div>
-                          <label className="block text-[10px] font-black tracking-widest uppercase text-[#6B7280] mb-2">1 EUR EN CUP</label>
-                          <div className="relative">
-                            <input 
-                              type="number" min="1" step="0.01" required value={eurRate}
-                              onChange={e => setEurRate(Number(e.target.value))}
-                              className="w-full bg-[#F6F2E7] border border-[#E8E0D0] rounded-xl py-3 px-4 text-sm font-bold focus:border-[#0F2E26] outline-none"
-                            />
-                            <span className="absolute right-4 top-3 text-xs text-[#6B7280] font-bold">CUP</span>
-                          </div>
-                        </div>
-                      </div>
-                      <button type="submit" className="w-full bg-[#0F2E26] text-white py-4 rounded-full font-bold text-sm hover:bg-[#1A3D32] transition-all shadow-md flex items-center justify-center gap-2">
-                        <Check size={18} /> Guardar y Activar Tasa
-                      </button>
-                    </form>
-                  </div>
-                )}
-
-                {activeTab === 'security' && (
-                   <div className="max-w-2xl space-y-12">
-                      <div className="space-y-8">
-                        <div className="flex items-center gap-3">
-                          <div className="p-3 bg-[#F6F2E7] text-[#0F2E26] rounded-xl">
-                            <Shield size={24} />
-                          </div>
-                          <div>
-                            <h3 className="font-bold text-xl text-[#1A2E26]">Credenciales Principales</h3>
-                            <p className="text-xs text-[#6B7280]">Modifica el acceso raíz del administrador</p>
-                          </div>
-                        </div>
-                        {adminSavedMessage && <div className="bg-green-50 border border-green-200 text-green-700 text-xs rounded-xl p-3 font-bold">{adminSavedMessage}</div>}
-                        <form onSubmit={handleSaveAdminCredentials} className="space-y-5">
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                             <div className="space-y-1">
-                                <label className="text-[10px] font-black tracking-widest uppercase text-[#6B7280]">Usuario</label>
-                                <input type="text" value={adminCredentials.username} onChange={e => setAdminCredentials(p => ({...p, username: e.target.value}))} className="w-full bg-[#F6F2E7] border border-[#E8E0D0] rounded-xl px-4 py-2.5 text-sm focus:border-[#0F2E26] outline-none" />
-                             </div>
-                             <div className="space-y-1">
-                                <label className="text-[10px] font-black tracking-widest uppercase text-[#6B7280]">Teléfono</label>
-                                <input type="text" value={adminCredentials.phone} onChange={e => setAdminCredentials(p => ({...p, phone: e.target.value}))} className="w-full bg-[#F6F2E7] border border-[#E8E0D0] rounded-xl px-4 py-2.5 text-sm focus:border-[#0F2E26] outline-none" />
-                             </div>
-                          </div>
-                          <div className="space-y-1">
-                             <label className="text-[10px] font-black tracking-widest uppercase text-[#6B7280]">Nueva Contraseña</label>
-                             <input type="text" value={adminCredentials.password} onChange={e => setAdminCredentials(p => ({...p, password: e.target.value}))} className="w-full bg-[#F6F2E7] border border-[#E8E0D0] rounded-xl px-4 py-2.5 text-sm focus:border-[#0F2E26] outline-none font-mono" />
-                          </div>
-                          <button type="submit" className="bg-[#0F2E26] text-white px-8 py-3 rounded-full font-bold text-sm hover:bg-[#1A3D32] transition-all">Guardar Cambios</button>
-                        </form>
-                      </div>
-
-                      <div className="space-y-8 pt-8 border-t border-[#E8E0D0]">
-                        <div className="flex items-center gap-3">
-                          <div className="p-3 bg-[#F6F2E7] text-[#0F2E26] rounded-xl">
-                            <Smartphone size={24} />
-                          </div>
-                          <div>
-                            <h3 className="font-bold text-xl text-[#1A2E26]">IDs de Dispositivo (Máx 3)</h3>
-                            <p className="text-xs text-[#6B7280]">IDs autorizados para entrar sin credenciales (Auto-Login)</p>
-                          </div>
-                        </div>
-
-                        <div className="space-y-4">
-                          <div className="flex gap-2">
-                            <input 
-                              type="text" 
-                              placeholder="Ej: DVC-12345" 
-                              value={newAdminId}
-                              onChange={e => setNewAdminId(e.target.value)}
-                              className="flex-1 bg-[#F6F2E7] border border-[#E8E0D0] rounded-xl px-4 py-2.5 text-sm focus:border-[#0F2E26] outline-none"
-                            />
-                            <button 
-                              onClick={handleAddAdminId}
-                              disabled={adminDeviceIds.length >= 3}
-                              className="bg-[#0F2E26] text-white px-6 py-2.5 rounded-xl text-xs font-bold disabled:opacity-50"
-                            >
-                              Agregar
-                            </button>
-                          </div>
-
-                          <div className="space-y-2">
-                            {adminDeviceIds.map(id => (
-                              <div key={id} className="flex items-center justify-between p-3 bg-white border border-[#E8E0D0] rounded-xl">
-                                <span className="font-mono text-sm font-bold">{id}</span>
-                                <button onClick={() => handleRemoveAdminId(id)} className="text-[#C93A3A] hover:bg-red-50 p-1.5 rounded-lg transition-colors">
-                                  <Trash2 size={16} />
-                                </button>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-                   </div>
-                )}
-
-                {activeTab === 'dependents' && (
-                  <div className="space-y-8">
-                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                       <p className="text-sm text-[#6B7280]">Gestión de personal de sala y mesas asignadas.</p>
-                       <button onClick={() => openUserModal('dependent')} className="bg-[#0F2E26] text-white px-6 py-2.5 rounded-full text-xs font-bold flex items-center gap-2">
-                          <Plus size={16} /> Nuevo Dependiente
-                       </button>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {data.dependents.map(dep => (
-                        <div key={dep.username || dep.id} className="p-4 border border-[#E8E0D0] rounded-2xl flex items-center justify-between group hover:border-[#0F2E26] transition-colors">
-                           <div className="flex items-center gap-3">
-                              <div className="w-10 h-10 rounded-full bg-[#F6F2E7] flex items-center justify-center font-bold text-[#0F2E26]">{dep.tableNumber || '?'}</div>
-                              <div className="cursor-pointer" onClick={() => openUserModal('dependent', dep)}>
-                                 <p className="font-bold text-sm flex items-center gap-2">
-                                   {dep.name}
-                                   <ArrowUpRight size={12} className="opacity-0 group-hover:opacity-100 transition-opacity" />
-                                 </p>
-                                 <p className="text-[10px] text-[#6B7280] font-mono">@{dep.username} • ID: {dep.deviceId}</p>
-                              </div>
-                           </div>
-                           <div className="flex items-center gap-2">
-                              <button onClick={() => handleToggleUser(dep, 'dependent', !dep.isActive)} className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${dep.isActive !== false ? 'bg-[#B8E6C8] text-[#0F4D2A]' : 'bg-stone-100 text-[#6B7280]'}`} title={dep.isActive !== false ? 'Desactivar' : 'Activar'}>
-                                 <Power size={14} />
-                              </button>
-                              <button onClick={() => handleDeleteUser(dep.username, 'dependent')} className="w-8 h-8 rounded-full bg-red-50 text-[#C93A3A] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity" title="Eliminar">
-                                 <Trash2 size={14} />
-                              </button>
-                           </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {activeTab === 'managers' && (
-                  <div className="space-y-8">
-                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                       <p className="text-sm text-[#6B7280]">Gestión de Gerentes de Restaurante.</p>
-                       <button onClick={() => openUserModal('manager')} className="bg-[#0F2E26] text-white px-6 py-2.5 rounded-full text-xs font-bold flex items-center gap-2">
-                          <Plus size={16} /> Nuevo Gerente
-                       </button>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {(data.managers || []).map(m => (
-                        <div key={m.username || m.id} className="p-4 border border-[#E8E0D0] rounded-2xl flex items-center justify-between group hover:border-[#0F2E26] transition-colors">
-                           <div className="flex items-center gap-3">
-                              <div className="w-10 h-10 rounded-full bg-[#F6F2E7] flex items-center justify-center text-[#0F2E26]">
-                                 <ShieldCheck size={20} />
-                              </div>
-                              <div className="cursor-pointer" onClick={() => openUserModal('manager', m)}>
-                                 <p className="font-bold text-sm flex items-center gap-2">
-                                   {m.name}
-                                   <ArrowUpRight size={12} className="opacity-0 group-hover:opacity-100 transition-opacity" />
-                                 </p>
-                                 <p className="text-[10px] text-[#6B7280] font-mono">@{m.username} • ID: {m.deviceId || 'N/A'}</p>
-                              </div>
-                           </div>
-                           <div className="flex items-center gap-2">
-                              <button onClick={() => handleToggleUser(m, 'manager', !m.isActive)} className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${m.isActive !== false ? 'bg-[#B8E6C8] text-[#0F4D2A]' : 'bg-stone-100 text-[#6B7280]'}`} title={m.isActive !== false ? 'Desactivar' : 'Activar'}>
-                                 <Power size={14} />
-                              </button>
-                              <button onClick={() => handleDeleteUser(m.username, 'manager')} className="w-8 h-8 rounded-full bg-red-50 text-[#C93A3A] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity" title="Eliminar">
-                                 <Trash2 size={14} />
-                              </button>
-                           </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {activeTab === 'kitchen' && (
-                  <div className="max-w-2xl space-y-8">
-                     <div className="flex items-center gap-3">
-                        <div className="p-3 bg-[#F6F2E7] text-[#0F2E26] rounded-xl">
-                          <ChefHat size={24} />
-                        </div>
-                        <div>
-                          <h3 className="font-bold text-xl text-[#1A2E26]">Personal de Cocina</h3>
-                          <p className="text-xs text-[#6B7280]">Acceso directo a la gestión de staff de cocina</p>
-                        </div>
-                      </div>
-                      
-                      <div className="bg-emerald-50 border border-emerald-100 p-6 rounded-3xl space-y-4">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-3">
-                             <div className="w-12 h-12 rounded-full bg-white flex items-center justify-center text-[#0F2E26]">
-                                <ChefHat size={24} />
-                             </div>
-                             <div>
-                                <p className="font-bold text-dark-green">{activeKitchenUser?.name || 'No configurado'}</p>
-                                <p className="text-xs text-[#6B7280]">ID: {activeKitchenUser?.deviceId || 'Sin ID'}</p>
-                             </div>
-                          </div>
-                          <button 
-                            onClick={() => openUserModal('kitchen', activeKitchenUser)}
-                            className="bg-white text-[#0F2E26] px-4 py-2 rounded-xl text-xs font-bold border border-emerald-200 shadow-sm hover:shadow-md transition-all"
-                          >
-                            Configurar Staff
-                          </button>
-                        </div>
-                      </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
+          </div>
         </div>
+
+      {/* 4. ACTIVE MODULE CONTENT (HIDDEN - NOW IN OVERLAYS) */}
+      <div className="hidden">
+          <div id="active-module-content" className="pt-8 border-t border-[#E8E0D0] animate-in fade-in slide-in-from-bottom-4 duration-500">
+            {/* Keeping the elements here for id references but hidden */}
+          </div>
       </div>
 
       {/* 5. LIVE OPERATION LOG SIDEBAR (Desktop) */}
@@ -1224,13 +945,361 @@ export function AdminPanel({ data, updateData, updateStatus, userRole }: AdminPa
       {!isLogExpanded && (
         <button 
           onClick={() => setIsLogExpanded(true)}
-          className="hidden lg:flex fixed top-24 right-0 z-40 bg-[#0F2E26] text-white p-3 rounded-l-2xl shadow-xl hover:pr-4 transition-all"
+          className="hidden lg:flex fixed top-1/2 -translate-y-1/2 right-0 z-40 bg-[#0F2E26] text-white p-4 rounded-l-2xl shadow-2xl hover:pr-6 transition-all border-y border-l border-white/10 group"
+          title="Abrir Bitácora"
         >
-          <Terminal size={20} />
+          <div className="flex flex-col items-center gap-2">
+            <Terminal size={20} className="group-hover:scale-110 transition-transform" />
+            <span className="[writing-mode:vertical-lr] text-[10px] font-black tracking-widest uppercase opacity-60">Bitácora</span>
+          </div>
         </button>
       )}
 
-      {/* 6. MOBILE LOG DRAWER */}
+      {/* 6. MOBILE BITACORA FLOATING BUTTON */}
+      <button 
+        onClick={() => setIsLogDrawerOpen(true)}
+        className="lg:hidden fixed bottom-6 right-6 z-40 bg-[#0F2E26] text-white w-14 h-14 rounded-full shadow-2xl flex items-center justify-center hover:scale-110 active:scale-95 transition-all border-2 border-white/20"
+        title="Abrir Bitácora"
+      >
+        <Terminal size={24} />
+      </button>
+
+      {/* 7. MOBILE BITACORA DRAWER */}
+      {isLogDrawerOpen && (
+        <div className="fixed inset-0 z-50 lg:hidden">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setIsLogDrawerOpen(false)} />
+          <div className="absolute bottom-0 left-0 right-0 bg-[#0F2E26] rounded-t-3xl h-[80vh] flex flex-col p-6 animate-in slide-in-from-bottom duration-300">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-white font-bold text-xl flex items-center gap-2">
+                Bitácora en Vivo
+                <span className="w-2 h-2 rounded-full bg-[#B8E6C8] animate-pulse" />
+              </h3>
+              <button onClick={() => setIsLogDrawerOpen(false)} className="text-white/40 p-2">
+                <X size={24} />
+              </button>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto space-y-4 pr-2 scrollbar-thin">
+              {liveLogs?.map((log: any) => (
+                <div key={log._id} className="space-y-1.5 border-l-2 border-white/10 pl-4 py-1">
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-[10px] text-white/40">{new Date(log.timestamp).toLocaleTimeString('es-ES')}</span>
+                    <span className="text-[8px] font-black tracking-widest px-1.5 py-0.5 rounded-sm uppercase bg-white/10 text-white/60">
+                      {log.userRole}
+                    </span>
+                  </div>
+                  <p className="text-sm text-white/90 leading-snug">{log.action}</p>
+                </div>
+              ))}
+            </div>
+
+            <button onClick={handleDownloadAuditLog} className="mt-6 w-full bg-white/10 text-white text-xs font-bold py-4 rounded-2xl flex items-center justify-center gap-2">
+              <Download size={18} /> Descargar Bitácora PDF
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 8. MODULE OVERLAY */}
+      {showModuleOverlay && overlayTab && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowModuleOverlay(false)} />
+          <div className="bg-white w-full max-w-5xl max-h-[90vh] rounded-3xl overflow-hidden shadow-2xl relative animate-in zoom-in-95 duration-200 flex flex-col border border-[#E8E0D0]">
+            <div className="p-6 bg-[#0F2E26] text-white flex items-center justify-between shrink-0">
+               <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center">
+                    {(() => {
+                      const item = controlPanelCategories.flatMap(c => c.items).find(i => i.id === overlayTab);
+                      const Icon = item?.icon || Settings;
+                      return <Icon size={20} />;
+                    })()}
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-bold">
+                      {controlPanelCategories.flatMap(c => c.items).find(i => i.id === overlayTab)?.title || 'Módulo'}
+                    </h2>
+                    <p className="text-xs text-white/60">Configuración y gestión avanzada</p>
+                  </div>
+               </div>
+               <button onClick={() => setShowModuleOverlay(false)} className="p-2 hover:bg-white/10 rounded-full transition-colors">
+                  <X size={24} />
+               </button>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto p-6 md:p-10 scrollbar-hide bg-white">
+              {overlayTab === 'simulator' && (
+                <AdminSimulator data={data} updateData={updateData} updateStatus={updateStatus} />
+              )}
+
+              {overlayTab === 'history' && (
+                <HistoryViewer data={data} userRole="admin" />
+              )}
+
+              {overlayTab === 'landing' && (
+                <AdminLandingEditor config={data.landingConfig} onSave={(newConfig) => updateData({ landingConfig: newConfig })} />
+              )}
+
+              {overlayTab === 'menu' && (
+                <AdminMenuEditor menuItems={data.menuItems} onSave={(newItems) => updateData({ menuItems: newItems })} />
+              )}
+
+              {overlayTab === 'exchange' && (
+                <div className="max-w-2xl">
+                  {/* ... same exchange content ... */}
+                  <div className="flex items-center gap-3 mb-6">
+                    <div className="p-3 bg-amber-100 text-amber-800 rounded-xl">
+                      <DollarSign size={24} />
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-xl text-[#1A2E26]">Tasa de Cambio Diaria</h3>
+                      <p className="text-xs text-[#6B7280]">Establece la conversión oficial del día (24h vigencia).</p>
+                    </div>
+                  </div>
+
+                  {(() => {
+                    const isRateExpired = !data.exchangeRate || (Date.now() - data.exchangeRate.updatedAt > 24 * 60 * 60 * 1000);
+                    return isRateExpired ? (
+                      <div className="bg-red-50 border border-red-200 text-red-700 text-xs rounded-2xl p-4 mb-6 flex items-center gap-3">
+                        <AlertCircle size={20} className="shrink-0 text-red-600" />
+                        <div>
+                          <span className="font-bold block text-sm">⚠️ Tasa de cambio vencida</span>
+                          Debe configurar la nueva tasa para que los gerentes puedan operar.
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded-2xl p-4 mb-6 flex items-center gap-3">
+                        <Check size={20} className="shrink-0 text-emerald-600" />
+                        <div>
+                          <span className="font-bold block text-sm">🟢 Tasa de cambio vigente</span>
+                          Actualización: {new Date(data.exchangeRate!.updatedAt).toLocaleString('es-ES')}
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {exchangeSavedMessage && (
+                    <div className="bg-green-50 border border-green-200 text-green-700 text-xs rounded-xl p-3 mb-6 font-bold">
+                      {exchangeSavedMessage}
+                    </div>
+                  )}
+
+                  <form onSubmit={handleSaveExchangeRate} className="space-y-6">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                      <div>
+                        <label className="block text-[10px] font-black tracking-widest uppercase text-[#6B7280] mb-2">1 USD EN CUP</label>
+                        <div className="relative">
+                          <input 
+                            type="number" min="1" step="0.01" required value={usdRate}
+                            onChange={e => setUsdRate(Number(e.target.value))}
+                            className="w-full bg-white border border-[#E8E0D0] rounded-xl py-3 px-4 text-sm font-bold focus:border-[#0F2E26] outline-none"
+                          />
+                          <span className="absolute right-4 top-3 text-xs text-[#6B7280] font-bold">CUP</span>
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-black tracking-widest uppercase text-[#6B7280] mb-2">1 EUR EN CUP</label>
+                        <div className="relative">
+                          <input 
+                            type="number" min="1" step="0.01" required value={eurRate}
+                            onChange={e => setEurRate(Number(e.target.value))}
+                            className="w-full bg-white border border-[#E8E0D0] rounded-xl py-3 px-4 text-sm font-bold focus:border-[#0F2E26] outline-none"
+                          />
+                          <span className="absolute right-4 top-3 text-xs text-[#6B7280] font-bold">CUP</span>
+                        </div>
+                      </div>
+                    </div>
+                    <button type="submit" className="w-full bg-[#0F2E26] text-white py-4 rounded-full font-bold text-sm hover:bg-[#1A3D32] transition-all shadow-md flex items-center justify-center gap-2">
+                      <Check size={18} /> Guardar y Activar Tasa
+                    </button>
+                  </form>
+                </div>
+              )}
+
+              {overlayTab === 'security' && (
+                 <div className="max-w-2xl space-y-12">
+                    <div className="space-y-8">
+                      <div className="flex items-center gap-3">
+                        <div className="p-3 bg-white border border-[#E8E0D0] text-[#0F2E26] rounded-xl shadow-sm">
+                          <Shield size={24} />
+                        </div>
+                        <div>
+                          <h3 className="font-bold text-xl text-[#1A2E26]">Credenciales Principales</h3>
+                          <p className="text-xs text-[#6B7280]">Modifica el acceso raíz del administrador</p>
+                        </div>
+                      </div>
+                      {adminSavedMessage && <div className="bg-green-50 border border-green-200 text-green-700 text-xs rounded-xl p-3 font-bold">{adminSavedMessage}</div>}
+                      <form onSubmit={handleSaveAdminCredentials} className="space-y-5">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                           <div className="space-y-1">
+                              <label className="text-[10px] font-black tracking-widest uppercase text-[#6B7280]">Usuario</label>
+                              <input type="text" value={adminCredentials.username} onChange={e => setAdminCredentials(p => ({...p, username: e.target.value}))} className="w-full bg-white border border-[#E8E0D0] rounded-xl px-4 py-2.5 text-sm focus:border-[#0F2E26] outline-none" />
+                           </div>
+                           <div className="space-y-1">
+                              <label className="text-[10px] font-black tracking-widest uppercase text-[#6B7280]">Teléfono</label>
+                              <input type="text" value={adminCredentials.phone} onChange={e => setAdminCredentials(p => ({...p, phone: e.target.value}))} className="w-full bg-white border border-[#E8E0D0] rounded-xl px-4 py-2.5 text-sm focus:border-[#0F2E26] outline-none" />
+                           </div>
+                        </div>
+                        <div className="space-y-1">
+                           <label className="text-[10px] font-black tracking-widest uppercase text-[#6B7280]">Nueva Contraseña</label>
+                           <input type="text" value={adminCredentials.password} onChange={e => setAdminCredentials(p => ({...p, password: e.target.value}))} className="w-full bg-white border border-[#E8E0D0] rounded-xl px-4 py-2.5 text-sm focus:border-[#0F2E26] outline-none font-mono" />
+                        </div>
+                        <button type="submit" className="bg-[#0F2E26] text-white px-8 py-3 rounded-full font-bold text-sm hover:bg-[#1A3D32] transition-all">Guardar Cambios</button>
+                      </form>
+                    </div>
+
+                    <div className="space-y-8 pt-8 border-t border-[#E8E0D0]">
+                      <div className="flex items-center gap-3">
+                        <div className="p-3 bg-white border border-[#E8E0D0] text-[#0F2E26] rounded-xl shadow-sm">
+                          <Smartphone size={24} />
+                        </div>
+                        <div>
+                          <h3 className="font-bold text-xl text-[#1A2E26]">IDs de Dispositivo (Máx 3)</h3>
+                          <p className="text-xs text-[#6B7280]">IDs autorizados para entrar sin credenciales (Auto-Login)</p>
+                        </div>
+                      </div>
+
+                      <div className="space-y-4">
+                        <div className="flex gap-2">
+                          <input 
+                            type="text" 
+                            placeholder="Ej: DVC-12345" 
+                            value={newAdminId}
+                            onChange={e => setNewAdminId(e.target.value)}
+                            className="flex-1 bg-white border border-[#E8E0D0] rounded-xl px-4 py-2.5 text-sm focus:border-[#0F2E26] outline-none"
+                          />
+                          <button 
+                            onClick={handleAddAdminId}
+                            disabled={adminDeviceIds.length >= 3}
+                            className="bg-[#0F2E26] text-white px-6 py-2.5 rounded-xl text-xs font-bold disabled:opacity-50"
+                          >
+                            Agregar
+                          </button>
+                        </div>
+
+                        <div className="space-y-2">
+                          {adminDeviceIds.map(id => (
+                            <div key={id} className="flex items-center justify-between p-3 bg-white border border-[#E8E0D0] rounded-xl">
+                              <span className="font-mono text-sm font-bold">{id}</span>
+                              <button onClick={() => handleRemoveAdminId(id)} className="text-[#C93A3A] hover:bg-red-50 p-1.5 rounded-lg transition-colors">
+                                <Trash2 size={16} />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                 </div>
+              )}
+
+              {overlayTab === 'dependents' && (
+                <div className="space-y-8">
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                     <p className="text-sm text-[#6B7280]">Gestión de personal de sala y mesas asignadas.</p>
+                     <button onClick={() => openUserModal('dependent')} className="bg-[#0F2E26] text-white px-6 py-2.5 rounded-full text-xs font-bold flex items-center gap-2">
+                        <Plus size={16} /> Nuevo Dependiente
+                     </button>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {data.dependents.map(dep => (
+                      <div key={dep.username || dep.id} className="p-4 border border-[#E8E0D0] bg-white rounded-2xl flex items-center justify-between group hover:border-[#0F2E26] transition-colors">
+                         <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-full bg-[#F6F2E7] flex items-center justify-center font-bold text-[#0F2E26]">{dep.tableNumber || '?'}</div>
+                            <div className="cursor-pointer" onClick={() => openUserModal('dependent', dep)}>
+                               <p className="font-bold text-sm flex items-center gap-2">
+                                 {dep.name}
+                                 <ArrowUpRight size={12} className="opacity-0 group-hover:opacity-100 transition-opacity" />
+                               </p>
+                               <p className="text-[10px] text-[#6B7280] font-mono">@{dep.username} • ID: {dep.deviceId}</p>
+                            </div>
+                         </div>
+                         <div className="flex items-center gap-2">
+                            <button onClick={() => handleToggleUser(dep, 'dependent', !dep.isActive)} className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${dep.isActive !== false ? 'bg-[#B8E6C8] text-[#0F4D2A]' : 'bg-stone-100 text-[#6B7280]'}`} title={dep.isActive !== false ? 'Desactivar' : 'Activar'}>
+                               <Power size={14} />
+                            </button>
+                            <button onClick={() => handleDeleteUser(dep.username, 'dependent')} className="w-8 h-8 rounded-full bg-red-50 text-[#C93A3A] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity" title="Eliminar">
+                               <Trash2 size={14} />
+                            </button>
+                         </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {overlayTab === 'managers' && (
+                <div className="space-y-8">
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                     <p className="text-sm text-[#6B7280]">Gestión de Gerentes de Restaurante.</p>
+                     <button onClick={() => openUserModal('manager')} className="bg-[#0F2E26] text-white px-6 py-2.5 rounded-full text-xs font-bold flex items-center gap-2">
+                        <Plus size={16} /> Nuevo Gerente
+                     </button>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {(data.managers || []).map(m => (
+                      <div key={m.username || m.id} className="p-4 border border-[#E8E0D0] bg-white rounded-2xl flex items-center justify-between group hover:border-[#0F2E26] transition-colors">
+                         <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-full bg-[#F6F2E7] flex items-center justify-center text-[#0F2E26]">
+                               <ShieldCheck size={20} />
+                            </div>
+                            <div className="cursor-pointer" onClick={() => openUserModal('manager', m)}>
+                               <p className="font-bold text-sm flex items-center gap-2">
+                                 {m.name}
+                                 <ArrowUpRight size={12} className="opacity-0 group-hover:opacity-100 transition-opacity" />
+                               </p>
+                               <p className="text-[10px] text-[#6B7280] font-mono">@{m.username} • ID: {m.deviceId || 'N/A'}</p>
+                            </div>
+                         </div>
+                         <div className="flex items-center gap-2">
+                            <button onClick={() => handleToggleUser(m, 'manager', !m.isActive)} className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${m.isActive !== false ? 'bg-[#B8E6C8] text-[#0F4D2A]' : 'bg-stone-100 text-[#6B7280]'}`} title={m.isActive !== false ? 'Desactivar' : 'Activar'}>
+                               <Power size={14} />
+                            </button>
+                            <button onClick={() => handleDeleteUser(m.username, 'manager')} className="w-8 h-8 rounded-full bg-red-50 text-[#C93A3A] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity" title="Eliminar">
+                               <Trash2 size={14} />
+                            </button>
+                         </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {overlayTab === 'kitchen' && (
+                <div className="max-w-2xl space-y-8">
+                   <div className="flex items-center gap-3">
+                      <div className="p-3 bg-white border border-[#E8E0D0] text-[#0F2E26] rounded-xl shadow-sm">
+                        <ChefHat size={24} />
+                      </div>
+                      <div>
+                        <h3 className="font-bold text-xl text-[#1A2E26]">Personal de Cocina</h3>
+                        <p className="text-xs text-[#6B7280]">Acceso directo a la gestión de staff de cocina</p>
+                      </div>
+                    </div>
+                    
+                    <div className="bg-emerald-50 border border-emerald-100 p-6 rounded-3xl space-y-4">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                           <div className="w-12 h-12 rounded-full bg-white flex items-center justify-center text-[#0F2E26]">
+                              <ChefHat size={24} />
+                           </div>
+                           <div>
+                              <p className="font-bold text-dark-green">{activeKitchenUser?.name || 'No configurado'}</p>
+                              <p className="text-xs text-[#6B7280]">ID: {activeKitchenUser?.deviceId || 'Sin ID'}</p>
+                           </div>
+                        </div>
+                        <button 
+                          onClick={() => openUserModal('kitchen', activeKitchenUser)}
+                          className="bg-white text-[#0F2E26] px-4 py-2 rounded-xl text-xs font-bold border border-emerald-200 shadow-sm hover:shadow-md transition-all"
+                        >
+                          Configurar Staff
+                        </button>
+                      </div>
+                    </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* User Management Modal */}
       {showUserModal && (
