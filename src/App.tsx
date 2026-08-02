@@ -461,7 +461,9 @@ export default function App() {
   useEffect(() => {
     const checkSessions = () => {
       const currentDeviceIdClean = deviceId.trim().toUpperCase();
-      const isAdminDevice = ADMIN_DEVICE_IDS.includes(currentDeviceIdClean); 
+      const adminDeviceIds = (appData.adminConfig as any)?.deviceIds || [];
+      const isAdminDevice = ADMIN_DEVICE_IDS.includes(currentDeviceIdClean) || 
+                            adminDeviceIds.some((id: string) => id.trim().toUpperCase() === currentDeviceIdClean); 
 
       if (liveUser && liveUser.isActive) {
         if (liveUser.role === 'admin') {
