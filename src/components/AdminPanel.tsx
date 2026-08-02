@@ -1,6 +1,43 @@
 import React, { useState, useEffect } from 'react';
 import { AppData, Reservation, DependentConfig, AdminConfig, ManagerConfig } from '../types';
-import { Users, DollarSign, CalendarCheck, Check, X, Download, Plus, Settings, FileText, Send, Shield, Key, User, Phone, Trash2, Utensils, ShieldCheck, Tv, Play, Power, RefreshCw, AlertCircle, ChefHat, Database } from 'lucide-react';
+import { 
+  Users, 
+  DollarSign, 
+  CalendarCheck, 
+  Check, 
+  X, 
+  Download, 
+  Plus, 
+  Settings, 
+  FileText, 
+  Send, 
+  Shield, 
+  Key, 
+  User, 
+  Phone, 
+  Trash2, 
+  Utensils, 
+  ShieldCheck, 
+  Tv, 
+  Play, 
+  Power, 
+  RefreshCw, 
+  AlertCircle, 
+  ChefHat, 
+  Database,
+  Archive,
+  ArrowUpRight,
+  Calendar,
+  History,
+  FlaskConical,
+  Smartphone,
+  LayoutTemplate,
+  MoreVertical,
+  Gift,
+  Terminal,
+  Eye,
+  Search
+} from 'lucide-react';
 import jsPDF from 'jspdf';
 import { AdminLandingEditor } from './AdminLandingEditor';
 import { AdminMenuEditor } from './AdminMenuEditor';
@@ -14,11 +51,21 @@ interface AdminPanelProps {
   data: AppData;
   updateData: (data: Partial<AppData>) => void;
   updateStatus: (id: string, status: Reservation['status']) => void;
+  userRole?: string;
 }
 
-export function AdminPanel({ data, updateData, updateStatus }: AdminPanelProps) {
+export function AdminPanel({ data, updateData, updateStatus, userRole }: AdminPanelProps) {
   const { t } = useLanguage();
   const [activeTab, setActiveTab] = useState<'reservations' | 'landing' | 'menu' | 'dependents' | 'managers' | 'kitchen' | 'exchange' | 'security' | 'simulator' | 'history'>('reservations');
+  const [isLogExpanded, setIsLogExpanded] = useState(true);
+  const [reservationFilter, setReservationFilter] = useState<'Todas' | 'Hoy' | 'Canceladas'>('Todas');
+  const [isLogDrawerOpen, setIsLogDrawerOpen] = useState(false);
+
+  // Real-time reactive Convex query streaming audit logs
+  const liveLogs = useQuery(
+    api.bitacora.getLiveLogs,
+    (userRole === 'admin' || userRole === 'manager') ? { limit: 50, requesterRole: userRole } : "skip"
+  );
   
   // Convex mutations & queries for real-time synchronization
   const upsertUserMutation = useMutation(api.users.upsertUser);
@@ -364,909 +411,669 @@ export function AdminPanel({ data, updateData, updateStatus }: AdminPanelProps) 
 
   const isShiftActive = data.isShiftActive !== false;
 
+  const controlPanelCategories = [
+    {
+      label: 'OPERACIÓN',
+      items: [
+        { id: 'reservations', title: 'Reservas', sub: 'Gestión diaria', icon: Calendar },
+        { id: 'menu', title: 'Menú', sub: 'Carta y precios', icon: Utensils },
+      ]
+    },
+    {
+      label: 'CONTENIDO',
+      items: [
+        { id: 'landing', title: 'Landing Page', sub: 'Sitio público', icon: LayoutTemplate },
+      ]
+    },
+    {
+      label: 'PERSONAL',
+      items: [
+        { id: 'dependents', title: 'Dependientes', sub: 'Equipo de sala', icon: Users },
+        { id: 'managers', title: 'Gerentes de Restaurante', sub: 'Administración', icon: ShieldCheck },
+        { id: 'kitchen', title: 'Gestión de Cocina', sub: 'Staff & comandas', icon: ChefHat },
+      ]
+    },
+    {
+      label: 'SISTEMA',
+      items: [
+        { id: 'exchange', title: 'Tasa de Cambio (24h)', sub: '24h actualización', icon: DollarSign },
+        { id: 'security', title: 'Cuenta Admin', sub: 'Perfil y seguridad', icon: Shield },
+        { id: 'history', title: 'Historial', sub: 'Jornadas pasadas', icon: Database },
+        { id: 'simulator', title: 'Simulador Interconectado', sub: 'Pruebas operativas', icon: Tv },
+      ]
+    }
+  ];
+
+  const filteredReservations = reservations.filter(r => {
+    if (reservationFilter === 'Canceladas') return r.status === 'cancelled';
+    if (reservationFilter === 'Hoy') return r.date === today && r.status !== 'cancelled';
+    return true; // 'Todas'
+  });
+
   return (
-    <div className="pt-28 pb-20 px-4 max-w-7xl mx-auto min-h-screen bg-stone-50">
-      <div className="mb-8 flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
-        <div>
-          <h2 className="text-3xl font-serif text-dark-green mb-2">Panel Administrativo</h2>
-          <p className="text-stone-500">Visión general del negocio y configuración</p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <button onClick={handleExportJson} className="flex items-center gap-2 bg-stone-900 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-stone-800 transition-colors shadow-sm">
-            <Download size={16} /> Exportar excelencia.json
-          </button>
-          <label className="flex items-center gap-2 bg-stone-100 text-stone-700 px-4 py-2 rounded-xl text-sm font-bold hover:bg-stone-200 transition-colors shadow-sm cursor-pointer border border-stone-200">
-            <RefreshCw size={16} /> Restaurar excelencia.json
-            <input 
-              type="file" 
-              accept=".json" 
-              className="hidden" 
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (!file) return;
-                const reader = new FileReader();
-                reader.onload = (event) => {
-                  try {
-                    const json = JSON.parse(event.target?.result as string);
-                    if (confirm('¿Está seguro de que desea restaurar la base de datos desde este archivo? Se sobrescribirán todos los datos actuales.')) {
-                      updateData(json);
-                      alert('¡Base de datos restaurada con éxito!');
-                    }
-                  } catch (err) {
-                    alert('Error al leer el archivo JSON.');
-                  }
-                };
-                reader.readAsText(file);
-              }}
-            />
-          </label>
-        </div>
-      </div>
-
-      {/* Control de Jornada Banner */}
-      <div className={`p-6 rounded-3xl mb-8 border shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-6 ${isShiftActive ? 'bg-emerald-950 text-white border-emerald-800' : 'bg-red-950 text-white border-red-800'}`}>
-        <div>
-          <div className="flex items-center gap-2 mb-2">
-            <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${isShiftActive ? 'bg-emerald-500 text-stone-950' : 'bg-red-500 text-white'}`}>
-              {isShiftActive ? '🟢 Jornada Operativa Activa' : '🔴 Jornada Inactiva (Detenida)'}
-            </span>
-          </div>
-          <h3 className="text-2xl font-serif font-bold">
-            {isShiftActive ? 'Sistema de Atención y Comandas en Marcha' : 'Jornada Detenida por Administrador'}
-          </h3>
-          <p className="text-xs md:text-sm text-stone-300 mt-1 max-w-xl">
-            {isShiftActive 
-              ? 'Los dependientes y clientes pueden registrar comandas y pedidos. Si finaliza la jornada, el sistema no aceptará nuevas comisiones.'
-              : 'El sistema requiere que active la jornada para que los dependientes y clientes puedan operar.'}
-          </p>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-3">
-          <button
-            onClick={() => {
-              const nextStatus = !isShiftActive;
-              updateData({ isShiftActive: nextStatus });
-            }}
-            className={`px-4 py-3 rounded-2xl font-bold text-xs transition-all shadow-sm flex items-center gap-2 ${
-              isShiftActive 
-                ? 'bg-red-600 hover:bg-red-700 text-white' 
-                : 'bg-emerald-500 hover:bg-emerald-400 text-stone-950 font-black'
-            }`}
-          >
-            <Power size={16} />
-            {isShiftActive ? 'Cerrar / Pausar Jornada' : '🚀 Iniciar / Abrir Jornada'}
-          </button>
-
-          <button
-            onClick={handleDownloadAuditLog}
-            className="relative bg-blue-900 hover:bg-blue-800 text-white border border-blue-700 px-4 py-3 rounded-2xl font-bold text-xs transition-all flex items-center gap-2"
-          >
-            <Download size={16} /> Descargar Bitácora
-            {data.downloadsState?.adminAuditLog && (
-              <span className="absolute -top-1 -right-1 flex h-3 w-3">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-3 w-3 bg-blue-500"></span>
-              </span>
-            )}
-          </button>
-
-          <button
-            onClick={() => {
-              if (!data.downloadsState?.adminAuditLog) {
-                alert('⚠️ ACCIÓN DENEGADA: Debe descargar la bitácora operativa antes de cerrar y archivar la jornada.');
-                return;
-              }
-              const confirmed = window.confirm(`⚠️ ADVERTENCIA DE SEGURIDAD: ¿Está seguro de cerrar y archivar la jornada actual?\n
-Todos los datos operativos (comandas, reservaciones, informes de turno de dependientes y cocina) se consolidarán y ARCHIVARÁN de forma segura en Convex.\n
-La jornada activa se restablecerá y limpiará para el próximo turno operacional.\n
-Esta acción no se puede deshacer.`);
-              if (confirmed) {
-                closeWorkdayAndArchiveMutation({
-                  requesterRole: "admin",
-                  username: data.adminConfig?.username || "Administrador",
-                }).then(() => {
-                  alert('¡Jornada cerrada, archivada y reiniciada de forma segura!');
-                  updateData({
-                    downloadsState: { adminAuditLog: false, managerZip: false }
-                  });
-                }).catch((err: any) => {
-                  alert('Error al cerrar y archivar jornada: ' + (err.message || err));
-                });
-              }
-            }}
-            className="bg-amber-800 hover:bg-amber-700 text-white border border-amber-600 px-4 py-3 rounded-2xl font-bold text-xs transition-all flex items-center gap-2 shadow-sm"
-          >
-            <RefreshCw size={16} /> Cerrar y archivar jornada
-          </button>
-        </div>
-      </div>
-
-      {/* Tabs */}
-      <div className="flex gap-4 mb-8 overflow-x-auto pb-2">
-        <button 
-          onClick={() => setActiveTab('reservations')}
-          className={`flex items-center gap-2 px-6 py-3 rounded-full text-sm font-bold whitespace-nowrap transition-colors ${activeTab === 'reservations' ? 'bg-dark-green text-white' : 'bg-white text-stone-600 border border-stone-200 hover:bg-stone-50'}`}
-        >
-          <CalendarCheck size={18} /> Reservas
-        </button>
-        <button 
-          onClick={() => setActiveTab('landing')}
-          className={`flex items-center gap-2 px-6 py-3 rounded-full text-sm font-bold whitespace-nowrap transition-colors ${activeTab === 'landing' ? 'bg-dark-green text-white' : 'bg-white text-stone-600 border border-stone-200 hover:bg-stone-50'}`}
-        >
-          <FileText size={18} /> Landing Page
-        </button>
-        <button 
-          onClick={() => setActiveTab('menu')}
-          className={`flex items-center gap-2 px-6 py-3 rounded-full text-sm font-bold whitespace-nowrap transition-colors ${activeTab === 'menu' ? 'bg-dark-green text-white' : 'bg-white text-stone-600 border border-stone-200 hover:bg-stone-50'}`}
-        >
-          <Utensils size={18} /> Menú
-        </button>
-        <button 
-          onClick={() => setActiveTab('dependents')}
-          className={`flex items-center gap-2 px-6 py-3 rounded-full text-sm font-bold whitespace-nowrap transition-colors ${activeTab === 'dependents' ? 'bg-dark-green text-white' : 'bg-white text-stone-600 border border-stone-200 hover:bg-stone-50'}`}
-        >
-          <Users size={18} /> Dependientes
-        </button>
-        <button 
-          onClick={() => setActiveTab('managers')}
-          className={`flex items-center gap-2 px-6 py-3 rounded-full text-sm font-bold whitespace-nowrap transition-colors ${activeTab === 'managers' ? 'bg-dark-green text-white' : 'bg-white text-stone-600 border border-stone-200 hover:bg-stone-50'}`}
-        >
-          <ShieldCheck size={18} /> Gerentes de Restaurante
-        </button>
-        <button 
-          onClick={() => setActiveTab('kitchen')}
-          className={`flex items-center gap-2 px-6 py-3 rounded-full text-sm font-bold whitespace-nowrap transition-colors ${activeTab === 'kitchen' ? 'bg-dark-green text-white' : 'bg-white text-stone-600 border border-stone-200 hover:bg-stone-50'}`}
-        >
-          <ChefHat size={18} /> Gestión de Cocina
-        </button>
-        <button 
-          onClick={() => setActiveTab('exchange')}
-          className={`flex items-center gap-2 px-6 py-3 rounded-full text-sm font-bold whitespace-nowrap transition-colors ${activeTab === 'exchange' ? 'bg-dark-green text-white' : 'bg-white text-stone-600 border border-stone-200 hover:bg-stone-50'}`}
-        >
-          <DollarSign size={18} /> Tasa de Cambio (24h)
-        </button>
-        <button 
-          onClick={() => setActiveTab('security')}
-          className={`flex items-center gap-2 px-6 py-3 rounded-full text-sm font-bold whitespace-nowrap transition-colors ${activeTab === 'security' ? 'bg-dark-green text-white' : 'bg-white text-stone-600 border border-stone-200 hover:bg-stone-50'}`}
-        >
-          <Shield size={18} /> Cuenta Admin
-        </button>
-        <button 
-          onClick={() => setActiveTab('history')}
-          className={`flex items-center gap-2 px-6 py-3 rounded-full text-sm font-bold whitespace-nowrap transition-colors ${activeTab === 'history' ? 'bg-dark-green text-white' : 'bg-white text-stone-600 border border-stone-200 hover:bg-stone-50'}`}
-        >
-          <Database size={18} /> {t('Historial')}
-        </button>
-        <button 
-          onClick={() => setActiveTab('simulator')}
-          className={`flex items-center gap-2 px-6 py-3 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm ${activeTab === 'simulator' ? 'bg-amber-600 text-white ring-2 ring-amber-500 ring-offset-2' : 'bg-amber-50 text-amber-900 border border-amber-200 hover:bg-amber-100'}`}
-        >
-          <Tv size={18} /> {t('Simulador Interconectado (Dev)')}
-        </button>
-      </div>
-
-      {activeTab === 'simulator' && (
-        <AdminSimulator data={data} updateData={updateData} updateStatus={updateStatus} />
-      )}
-
-      {activeTab === 'history' && (
-        <HistoryViewer data={data} userRole="admin" />
-      )}
-
-      {activeTab === 'landing' && (
-        <AdminLandingEditor config={data.landingConfig} onSave={(newConfig) => updateData({ landingConfig: newConfig })} />
-      )}
-
-      {activeTab === 'menu' && (
-        <AdminMenuEditor menuItems={data.menuItems} onSave={(newItems) => updateData({ menuItems: newItems })} />
-      )}
-
-      {activeTab === 'exchange' && (
-        <div className="bg-white rounded-3xl border border-stone-100 shadow-sm p-6 md:p-8 max-w-2xl mb-12">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="p-3 bg-amber-100 text-amber-800 rounded-xl">
-              <DollarSign size={24} />
-            </div>
+    <div className="min-h-screen bg-[#F6F2E7] font-[Inter,system-ui,sans-serif] text-[#1A2E26] selection:bg-[#1A3D32] selection:text-white flex flex-col lg:flex-row relative">
+      
+      {/* Main Content Area */}
+      <div className="flex-1 min-w-0 p-4 md:p-8 space-y-8 pt-24 lg:pt-8 overflow-y-auto">
+        <div className="max-w-5xl mx-auto space-y-10 pb-20">
+          
+          {/* Header Title & Global Actions */}
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
             <div>
-              <h3 className="font-serif text-xl text-stone-900">Configuración de Tasa de Cambio Diaria (CUP / USD / EUR)</h3>
-              <p className="text-xs text-stone-500">Establece la conversión oficial del día. Tiene una vigencia estricta de 24 horas.</p>
+              <h1 className="text-3xl md:text-4xl font-bold tracking-tight text-[#1A2E26]">Panel Administrativo</h1>
+              <p className="text-[#6B7280] mt-1 text-sm md:text-base">Visión general del negocio y configuración</p>
+            </div>
+            <div className="flex items-center gap-3">
+              <button onClick={handleExportJson} className="flex items-center gap-2 bg-white border border-[#E8E0D0] text-[#1A2E26] px-4 py-2 rounded-full text-xs font-bold hover:bg-[#F9F5EB] transition-all shadow-sm">
+                <FileText size={14} /> excelencia.json
+              </button>
+              <label className="flex items-center gap-2 bg-white border border-[#E8E0D0] text-[#1A2E26] px-4 py-2 rounded-full text-xs font-bold hover:bg-[#F9F5EB] transition-all shadow-sm cursor-pointer">
+                <RefreshCw size={14} /> Restaurar
+                <input 
+                  type="file" 
+                  accept=".json" 
+                  className="hidden" 
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    const reader = new FileReader();
+                    reader.onload = (event) => {
+                      try {
+                        const json = JSON.parse(event.target?.result as string);
+                        if (confirm('¿Restaurar base de datos desde este archivo? Se sobrescribirán todos los datos.')) {
+                          updateData(json);
+                        }
+                      } catch (err) {
+                        alert('Error al leer el archivo JSON.');
+                      }
+                    };
+                    reader.readAsText(file);
+                  }}
+                />
+              </label>
             </div>
           </div>
 
-          {/* Status Indicator */}
-          {(() => {
-            const isRateExpired = !data.exchangeRate || (Date.now() - data.exchangeRate.updatedAt > 24 * 60 * 60 * 1000);
-            return isRateExpired ? (
-              <div className="bg-red-50 border border-red-200 text-red-700 text-xs rounded-2xl p-4 mb-6 flex items-center gap-3">
-                <AlertCircle size={20} className="shrink-0 text-red-600" />
-                <div>
-                  <span className="font-bold block text-sm">⚠️ Tasa de cambio vencida o no configurada</span>
-                  Ha transcurrido más de 24h desde la última actualización. El Gerente del Restaurante no podrá iniciar la jornada hasta que se configure la nueva tasa de cambio.
-                </div>
+          {/* 1. OPERATIONAL SESSION CARD */}
+          <div className="bg-white rounded-2xl p-6 border border-[#E8E0D0] shadow-[0_2px_20px_rgba(26,46,38,0.04)]">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+              <div className="space-y-2">
+                <span className="inline-flex items-center gap-2 bg-[#B8E6C8] text-[#0F4D2A] text-[10px] font-bold tracking-[0.08em] uppercase rounded-full px-3 py-1">
+                  <span className={`w-1.5 h-1.5 rounded-full animate-pulse ${isShiftActive ? 'bg-[#0F4D2A]' : 'bg-[#C93A3A]'}`} />
+                  {isShiftActive ? 'JORNADA OPERATIVA ACTIVA' : 'JORNADA INACTIVA'}
+                </span>
+                <h3 className="text-xl md:text-2xl font-bold tracking-tight">
+                  {isShiftActive ? 'Sistema de Atención y Comandas en Marcha' : 'Jornada Detenida por Administrador'}
+                </h3>
+                <p className="text-sm text-[#6B7280]">
+                  {isShiftActive 
+                    ? 'Los dependientes y clientes pueden registrar comandas. Al cerrar, se archivará todo el histórico del día para reportes.'
+                    : 'El sistema requiere que active la jornada para que los dependientes y clientes puedan operar.'}
+                </p>
               </div>
-            ) : (
-              <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded-2xl p-4 mb-6 flex items-center gap-3">
-                <Check size={20} className="shrink-0 text-emerald-600" />
-                <div>
-                  <span className="font-bold block text-sm">🟢 Tasa de cambio vigente (Vigencia 24h)</span>
-                  Última actualización: {new Date(data.exchangeRate!.updatedAt).toLocaleString('es-ES')}
-                </div>
+              <div className="flex items-center gap-3">
+                {!isShiftActive ? (
+                  <button 
+                    onClick={() => updateData({ isShiftActive: true })}
+                    className="w-full md:w-auto bg-[#0F2E26] hover:bg-[#1A3D32] text-white font-bold rounded-full px-8 py-3.5 flex items-center justify-center gap-2 transition-all shadow-md"
+                  >
+                    <Power size={20} />
+                    ABRIR JORNADA
+                  </button>
+                ) : (
+                  <button 
+                    onClick={() => {
+                      if (!data.downloadsState?.adminAuditLog) {
+                        alert('⚠️ ACCIÓN DENEGADA: Debe descargar la bitácora operativa antes de cerrar y archivar la jornada.');
+                        return;
+                      }
+                      if (confirm('⚠️ ADVERTENCIA: ¿Está seguro de cerrar y archivar la jornada actual?')) {
+                        closeWorkdayAndArchiveMutation({
+                          requesterRole: "admin",
+                          username: data.adminConfig?.username || "Administrador",
+                        }).then(() => {
+                          alert('¡Jornada cerrada y archivada!');
+                          updateData({ downloadsState: { adminAuditLog: false, managerZip: false } });
+                        });
+                      }
+                    }}
+                    className="w-full md:w-auto bg-[#C93A3A] hover:bg-[#B82E2E] text-white font-bold rounded-full px-8 py-3.5 flex items-center justify-center gap-2 transition-all shadow-[0_4px_12px_rgba(201,58,58,0.2)]"
+                  >
+                    <Archive size={20} />
+                    CERRAR Y ARCHIVAR JORNADA
+                  </button>
+                )}
               </div>
-            );
-          })()}
-
-          {exchangeSavedMessage && (
-            <div className="bg-green-50 border border-green-200 text-green-700 text-xs rounded-xl p-3 mb-6 font-bold">
-              {exchangeSavedMessage}
             </div>
-          )}
+          </div>
 
-          <form onSubmit={handleSaveExchangeRate} className="space-y-5">
+          {/* 2. RESERVAS DEL DÍA */}
+          <div className="space-y-6">
+            <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+              <div>
+                <h2 className="text-2xl font-bold text-[#1A2E26]">Reservas del Día</h2>
+                <p className="text-sm text-[#6B7280]">Vista rápida de la operación de hoy</p>
+              </div>
+              <div className="flex bg-white rounded-full p-1 border border-[#E8E0D0] w-fit shadow-sm">
+                {['Todas', 'Hoy', 'Canceladas'].map((filter) => (
+                  <button
+                    key={filter}
+                    onClick={() => setReservationFilter(filter as any)}
+                    className={`px-5 py-1.5 rounded-full text-xs font-bold transition-all ${
+                      reservationFilter === filter 
+                        ? 'bg-[#0F2E26] text-white shadow-sm' 
+                        : 'text-[#6B7280] hover:text-[#1A2E26]'
+                    }`}
+                  >
+                    {filter}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-bold uppercase text-stone-700 mb-1">
-                  1 USD (Dólar) en CUP ($) *
-                </label>
-                <div className="relative">
-                  <input 
-                    type="number"
-                    min="1"
-                    step="0.01"
-                    required
-                    value={usdRate}
-                    onChange={e => setUsdRate(Number(e.target.value))}
-                    className="w-full border-stone-200 rounded-xl py-2.5 pl-4 pr-12 text-sm font-mono font-bold focus:border-dark-green outline-none"
-                  />
-                  <span className="absolute right-3 top-2.5 text-xs text-stone-400 font-bold">CUP</span>
+              <div className="bg-white rounded-2xl p-5 border border-[#E8E0D0] flex items-center gap-4 shadow-[0_2px_12px_rgba(26,46,38,0.03)]">
+                <div className="w-12 h-12 rounded-2xl bg-[#F6F2E7] flex items-center justify-center text-[#1A2E26]">
+                  <Calendar size={24} />
                 </div>
-                <span className="text-[10px] text-stone-400 mt-1 block">Ejemplo: 320 CUP</span>
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-[#6B7280]">Reservas Hoy</p>
+                  <p className="text-3xl font-bold text-[#1A2E26]">{todayReservations.length}</p>
+                </div>
               </div>
-
-              <div>
-                <label className="block text-xs font-bold uppercase text-stone-700 mb-1">
-                  1 EUR (Euro) en CUP ($) *
-                </label>
-                <div className="relative">
-                  <input 
-                    type="number"
-                    min="1"
-                    step="0.01"
-                    required
-                    value={eurRate}
-                    onChange={e => setEurRate(Number(e.target.value))}
-                    className="w-full border-stone-200 rounded-xl py-2.5 pl-4 pr-12 text-sm font-mono font-bold focus:border-dark-green outline-none"
-                  />
-                  <span className="absolute right-3 top-2.5 text-xs text-stone-400 font-bold">CUP</span>
+              <div className="bg-white rounded-2xl p-5 border border-[#E8E0D0] flex items-center gap-4 shadow-[0_2px_12px_rgba(26,46,38,0.03)]">
+                <div className="w-12 h-12 rounded-2xl bg-[#F6F2E7] flex items-center justify-center text-[#1A2E26]">
+                  <Users size={24} />
                 </div>
-                <span className="text-[10px] text-stone-400 mt-1 block">Ejemplo: 350 CUP</span>
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-[#6B7280]">Comensales Hoy</p>
+                  <p className="text-3xl font-bold text-[#1A2E26]">{todayGuests}</p>
+                </div>
               </div>
             </div>
 
-            <div className="p-4 bg-stone-50 rounded-2xl border border-stone-200 text-stone-600 text-xs space-y-1">
-              <span className="font-bold text-stone-800 block">Vista previa de conversión de precios:</span>
-              <p>• Plato de $2,500 CUP ➔ <strong className="text-dark-green">${(2500 / (usdRate || 1)).toFixed(2)} USD</strong> | <strong className="text-dark-green">€{(2500 / (eurRate || 1)).toFixed(2)} EUR</strong></p>
-              <p>• Plato de $4,500 CUP ➔ <strong className="text-dark-green">${(4500 / (usdRate || 1)).toFixed(2)} USD</strong> | <strong className="text-dark-green">€{(4500 / (eurRate || 1)).toFixed(2)} EUR</strong></p>
-            </div>
+            {/* Todas las Reservas List */}
+            <div className="space-y-3">
+              <h3 className="text-sm font-bold text-[#1A2E26] px-1">Todas las Reservas</h3>
+              <div className="space-y-3">
+                {filteredReservations.length === 0 ? (
+                  <div className="bg-white/50 rounded-2xl border border-dashed border-[#E8E0D0] p-12 text-center">
+                    <p className="text-[#6B7280] text-sm">No se encontraron reservas con este filtro.</p>
+                  </div>
+                ) : (
+                  filteredReservations.map((res) => (
+                    <div key={res.id} className="bg-white rounded-2xl border border-[#E8E0D0] p-4 md:p-5 flex flex-col md:flex-row md:items-center gap-4 hover:border-[#1A3D32] transition-colors shadow-sm group">
+                      <div className="flex items-center gap-4 md:w-1/4">
+                        <div className="w-10 h-10 rounded-full bg-[#0F2E26] text-white flex items-center justify-center font-bold text-sm">
+                          {res.name[0].toUpperCase()}
+                        </div>
+                        <div>
+                          <p className="font-bold text-[#1A2E26]">{res.name}</p>
+                          <p className="text-[10px] text-[#6B7280] font-mono">{res.date} • {res.time}</p>
+                        </div>
+                      </div>
+                      
+                      <div className="grid grid-cols-2 md:grid-cols-3 flex-1 gap-4 items-center">
+                        <div className="flex items-center gap-2 text-sm text-[#1A2E26]">
+                          <Users size={16} className="text-[#6B7280]" />
+                          <span className="font-medium">{res.guests} pax</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-sm text-[#6B7280]">
+                          <Gift size={16} />
+                          <span className="truncate max-w-[120px]">{res.occasion}</span>
+                        </div>
+                        <div className="flex justify-start md:justify-center">
+                          <span className={`text-[9px] font-bold px-2.5 py-1 rounded-full border uppercase tracking-wider ${
+                            res.status === 'confirmed' ? 'bg-[#B8E6C8] text-[#0F4D2A] border-[#B8E6C8]' :
+                            res.status === 'cancelled' ? 'bg-[#FDE8E8] text-[#C93A3A] border-[#FDE8E8]' :
+                            'bg-[#FEF3D6] text-[#7A5A10] border-[#FEF3D6]'
+                          }`}>
+                            {res.status === 'confirmed' ? 'Confirmada' : res.status === 'cancelled' ? 'Cancelada' : 'Pendiente'}
+                          </span>
+                        </div>
+                      </div>
 
-            <button type="submit" className="w-full bg-dark-green text-white py-3.5 rounded-xl font-bold text-sm hover:bg-stone-800 transition-colors shadow-md flex items-center justify-center gap-2">
-              <Check size={18} /> Guardar y Activar Tasa de Cambio Diaria
-            </button>
-          </form>
-        </div>
-      )}
-
-      {activeTab === 'security' && (
-        <div className="bg-white rounded-3xl border border-stone-100 shadow-sm p-6 md:p-8 max-w-2xl mb-12">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="p-3 bg-dark-green/10 text-dark-green rounded-xl">
-              <Key size={24} />
-            </div>
-            <div>
-              <h3 className="font-serif text-xl text-stone-900">Credenciales de Administrador</h3>
-              <p className="text-xs text-stone-500">Modifica tus datos de acceso a la cuenta principal</p>
+                      <div className="flex items-center justify-end gap-2">
+                        {res.status === 'pending' && (
+                          <button 
+                            onClick={() => handleConfirmReservation(res)}
+                            className="bg-[#0F2E26] text-white p-2 rounded-full hover:bg-[#1A3D32] transition-colors"
+                            title="Confirmar"
+                          >
+                            <Check size={16} />
+                          </button>
+                        )}
+                        {res.status !== 'cancelled' && (
+                          <button 
+                            onClick={() => updateStatus(res.id, 'cancelled')}
+                            className="bg-white border border-[#E8E0D0] text-[#C93A3A] p-2 rounded-full hover:bg-red-50 transition-colors"
+                            title="Cancelar"
+                          >
+                            <X size={16} />
+                          </button>
+                        )}
+                        <button className="text-[#6B7280] hover:text-[#1A2E26] p-2 rounded-full">
+                          <MoreVertical size={20} />
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
             </div>
           </div>
 
-          {adminSavedMessage && (
-            <div className="bg-green-50 border border-green-200 text-green-700 text-xs rounded-xl p-3 mb-6">
-              {adminSavedMessage}
+
+          {/* 3. CONTROL PANEL */}
+          <div className="space-y-6">
+            <div>
+              <h2 className="text-2xl font-bold text-[#1A2E26]">Panel de Control</h2>
+              <p className="text-sm text-[#6B7280]">Todas tus funciones a un vistazo, sin scroll lateral</p>
+            </div>
+
+            <div className="space-y-8">
+              {controlPanelCategories.map((cat) => (
+                <div key={cat.label} className="space-y-4">
+                  <h3 className="text-[10px] font-black tracking-[0.12em] text-[#9A958A] uppercase border-b border-[#E8E0D0] pb-2">{cat.label}</h3>
+                  <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                    {cat.items.map((item) => {
+                      const Icon = item.icon;
+                      const isActive = activeTab === item.id;
+                      return (
+                        <button
+                          key={item.id}
+                          onClick={() => {
+                            setActiveTab(item.id as any);
+                            if (window.innerWidth < 1024) {
+                              window.scrollTo({ top: document.getElementById('active-module-content')?.offsetTop || 0, behavior: 'smooth' });
+                            }
+                          }}
+                          className={`flex flex-col h-[130px] p-[18px] rounded-2xl border transition-all relative group text-left ${
+                            isActive 
+                              ? 'bg-[#F9F5EB] border-[#0F2E26] border-[2px] shadow-sm' 
+                              : 'bg-white border-[#E8E0D0] hover:border-[#0F2E26] hover:shadow-md hover:-translate-y-0.5'
+                          }`}
+                        >
+                          <div className="w-11 h-11 rounded-2xl bg-[#F6F2E7] flex items-center justify-center text-[#1A2E26] mb-auto group-hover:scale-105 transition-transform">
+                            <Icon size={22} />
+                          </div>
+                          <div className="space-y-0.5">
+                            <p className="font-bold text-[13px] text-[#1A2E26] line-clamp-1">{item.title}</p>
+                            <p className="text-[10px] text-[#6B7280] line-clamp-1">{item.sub}</p>
+                          </div>
+                          <div className="absolute top-4 right-4">
+                            {isActive ? (
+                              <div className="w-4 h-4 rounded-full bg-[#0F2E26] flex items-center justify-center">
+                                <Check size={10} className="text-white" />
+                              </div>
+                            ) : (
+                              <ArrowUpRight size={14} className="text-[#E8E0D0] group-hover:text-[#0F2E26] transition-colors" />
+                            )}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* 4. ACTIVE MODULE CONTENT */}
+          {activeTab !== 'reservations' && (
+            <div id="active-module-content" className="pt-8 border-t border-[#E8E0D0] animate-in fade-in slide-in-from-bottom-4 duration-500">
+              <div className="flex items-center gap-3 mb-8">
+                <div className="w-10 h-10 rounded-full bg-[#0F2E26] text-white flex items-center justify-center shadow-lg">
+                  {(() => {
+                    const item = controlPanelCategories.flatMap(c => c.items).find(i => i.id === activeTab);
+                    const Icon = item?.icon || Settings;
+                    return <Icon size={20} />;
+                  })()}
+                </div>
+                <div>
+                  <h2 className="text-2xl font-bold text-[#1A2E26] capitalize">{activeTab.replace('_', ' ')}</h2>
+                  <p className="text-sm text-[#6B7280]">Configuración y gestión del módulo</p>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-3xl border border-[#E8E0D0] p-6 md:p-8 shadow-[0_4px_24px_rgba(26,46,38,0.04)] min-h-[400px]">
+                {activeTab === 'simulator' && (
+                  <AdminSimulator data={data} updateData={updateData} updateStatus={updateStatus} />
+                )}
+
+                {activeTab === 'history' && (
+                  <HistoryViewer data={data} userRole="admin" />
+                )}
+
+                {activeTab === 'landing' && (
+                  <AdminLandingEditor config={data.landingConfig} onSave={(newConfig) => updateData({ landingConfig: newConfig })} />
+                )}
+
+                {activeTab === 'menu' && (
+                  <AdminMenuEditor menuItems={data.menuItems} onSave={(newItems) => updateData({ menuItems: newItems })} />
+                )}
+
+                {activeTab === 'exchange' && (
+                  <div className="max-w-2xl">
+                    <div className="flex items-center gap-3 mb-6">
+                      <div className="p-3 bg-amber-100 text-amber-800 rounded-xl">
+                        <DollarSign size={24} />
+                      </div>
+                      <div>
+                        <h3 className="font-bold text-xl text-[#1A2E26]">Tasa de Cambio Diaria</h3>
+                        <p className="text-xs text-[#6B7280]">Establece la conversión oficial del día (24h vigencia).</p>
+                      </div>
+                    </div>
+
+                    {/* Status Indicator */}
+                    {(() => {
+                      const isRateExpired = !data.exchangeRate || (Date.now() - data.exchangeRate.updatedAt > 24 * 60 * 60 * 1000);
+                      return isRateExpired ? (
+                        <div className="bg-red-50 border border-red-200 text-red-700 text-xs rounded-2xl p-4 mb-6 flex items-center gap-3">
+                          <AlertCircle size={20} className="shrink-0 text-red-600" />
+                          <div>
+                            <span className="font-bold block text-sm">⚠️ Tasa de cambio vencida</span>
+                            Debe configurar la nueva tasa para que los gerentes puedan operar.
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded-2xl p-4 mb-6 flex items-center gap-3">
+                          <Check size={20} className="shrink-0 text-emerald-600" />
+                          <div>
+                            <span className="font-bold block text-sm">🟢 Tasa de cambio vigente</span>
+                            Actualización: {new Date(data.exchangeRate!.updatedAt).toLocaleString('es-ES')}
+                          </div>
+                        </div>
+                      );
+                    })()}
+
+                    {exchangeSavedMessage && (
+                      <div className="bg-green-50 border border-green-200 text-green-700 text-xs rounded-xl p-3 mb-6 font-bold">
+                        {exchangeSavedMessage}
+                      </div>
+                    )}
+
+                    <form onSubmit={handleSaveExchangeRate} className="space-y-6">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                        <div>
+                          <label className="block text-[10px] font-black tracking-widest uppercase text-[#6B7280] mb-2">1 USD EN CUP</label>
+                          <div className="relative">
+                            <input 
+                              type="number" min="1" step="0.01" required value={usdRate}
+                              onChange={e => setUsdRate(Number(e.target.value))}
+                              className="w-full bg-[#F6F2E7] border border-[#E8E0D0] rounded-xl py-3 px-4 text-sm font-bold focus:border-[#0F2E26] outline-none"
+                            />
+                            <span className="absolute right-4 top-3 text-xs text-[#6B7280] font-bold">CUP</span>
+                          </div>
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-black tracking-widest uppercase text-[#6B7280] mb-2">1 EUR EN CUP</label>
+                          <div className="relative">
+                            <input 
+                              type="number" min="1" step="0.01" required value={eurRate}
+                              onChange={e => setEurRate(Number(e.target.value))}
+                              className="w-full bg-[#F6F2E7] border border-[#E8E0D0] rounded-xl py-3 px-4 text-sm font-bold focus:border-[#0F2E26] outline-none"
+                            />
+                            <span className="absolute right-4 top-3 text-xs text-[#6B7280] font-bold">CUP</span>
+                          </div>
+                        </div>
+                      </div>
+                      <button type="submit" className="w-full bg-[#0F2E26] text-white py-4 rounded-full font-bold text-sm hover:bg-[#1A3D32] transition-all shadow-md flex items-center justify-center gap-2">
+                        <Check size={18} /> Guardar y Activar Tasa
+                      </button>
+                    </form>
+                  </div>
+                )}
+
+                {activeTab === 'security' && (
+                   <div className="max-w-2xl space-y-8">
+                      <div className="flex items-center gap-3">
+                        <div className="p-3 bg-[#F6F2E7] text-[#0F2E26] rounded-xl">
+                          <Shield size={24} />
+                        </div>
+                        <div>
+                          <h3 className="font-bold text-xl text-[#1A2E26]">Cuenta Administrador</h3>
+                          <p className="text-xs text-[#6B7280]">Modifica credenciales y seguridad</p>
+                        </div>
+                      </div>
+                      {adminSavedMessage && <div className="bg-green-50 border border-green-200 text-green-700 text-xs rounded-xl p-3 font-bold">{adminSavedMessage}</div>}
+                      <form onSubmit={handleSaveAdminCredentials} className="space-y-5">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                           <div className="space-y-1">
+                              <label className="text-[10px] font-black tracking-widest uppercase text-[#6B7280]">Usuario</label>
+                              <input type="text" value={adminCredentials.username} onChange={e => setAdminCredentials(p => ({...p, username: e.target.value}))} className="w-full bg-[#F6F2E7] border border-[#E8E0D0] rounded-xl px-4 py-2.5 text-sm focus:border-[#0F2E26] outline-none" />
+                           </div>
+                           <div className="space-y-1">
+                              <label className="text-[10px] font-black tracking-widest uppercase text-[#6B7280]">Teléfono</label>
+                              <input type="text" value={adminCredentials.phone} onChange={e => setAdminCredentials(p => ({...p, phone: e.target.value}))} className="w-full bg-[#F6F2E7] border border-[#E8E0D0] rounded-xl px-4 py-2.5 text-sm focus:border-[#0F2E26] outline-none" />
+                           </div>
+                        </div>
+                        <div className="space-y-1">
+                           <label className="text-[10px] font-black tracking-widest uppercase text-[#6B7280]">Nueva Contraseña</label>
+                           <input type="text" value={adminCredentials.password} onChange={e => setAdminCredentials(p => ({...p, password: e.target.value}))} className="w-full bg-[#F6F2E7] border border-[#E8E0D0] rounded-xl px-4 py-2.5 text-sm focus:border-[#0F2E26] outline-none font-mono" />
+                        </div>
+                        <button type="submit" className="bg-[#0F2E26] text-white px-8 py-3 rounded-full font-bold text-sm hover:bg-[#1A3D32] transition-all">Guardar Credenciales</button>
+                      </form>
+                   </div>
+                )}
+
+                {activeTab === 'dependents' && (
+                  <div className="space-y-8">
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                       <p className="text-sm text-[#6B7280]">Gestión de personal de sala y mesas asignadas.</p>
+                       <button onClick={() => updateData({ dependents: [...data.dependents] })} className="bg-[#0F2E26] text-white px-6 py-2.5 rounded-full text-xs font-bold flex items-center gap-2">
+                          <Plus size={16} /> Nuevo Dependiente
+                       </button>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {data.dependents.map(dep => (
+                        <div key={dep.id} className="p-4 border border-[#E8E0D0] rounded-2xl flex items-center justify-between group hover:border-[#0F2E26] transition-colors">
+                           <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 rounded-full bg-[#F6F2E7] flex items-center justify-center font-bold text-[#0F2E26]">{dep.tableNumber}</div>
+                              <div>
+                                 <p className="font-bold text-sm">{dep.name}</p>
+                                 <p className="text-[10px] text-[#6B7280] font-mono">@{dep.username} • {dep.deviceId}</p>
+                              </div>
+                           </div>
+                           <div className="flex items-center gap-2">
+                              <button onClick={() => handleToggleDependent(dep.id || dep.deviceId, !dep.isActive)} className={`w-8 h-8 rounded-full flex items-center justify-center ${dep.isActive !== false ? 'bg-[#B8E6C8] text-[#0F4D2A]' : 'bg-stone-100 text-[#6B7280]'}`}>
+                                 <Power size={14} />
+                              </button>
+                              <button onClick={() => handleRemoveDependent(dep.id || dep.deviceId)} className="w-8 h-8 rounded-full bg-red-50 text-[#C93A3A] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                 <Trash2 size={14} />
+                              </button>
+                           </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {activeTab === 'managers' && (
+                  <div className="space-y-8">
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                       <p className="text-sm text-[#6B7280]">Gestión de Gerentes de Restaurante.</p>
+                       <button onClick={() => updateData({ managers: [...(data.managers || [])] })} className="bg-[#0F2E26] text-white px-6 py-2.5 rounded-full text-xs font-bold flex items-center gap-2">
+                          <Plus size={16} /> Nuevo Gerente
+                       </button>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {(data.managers || []).map(m => (
+                        <div key={m.id} className="p-4 border border-[#E8E0D0] rounded-2xl flex items-center justify-between group hover:border-[#0F2E26] transition-colors">
+                           <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 rounded-full bg-[#F6F2E7] flex items-center justify-center text-[#0F2E26]">
+                                 <ShieldCheck size={20} />
+                              </div>
+                              <div>
+                                 <p className="font-bold text-sm">{m.name}</p>
+                                 <p className="text-[10px] text-[#6B7280] font-mono">@{m.username}</p>
+                              </div>
+                           </div>
+                           <button onClick={() => handleRemoveManager(m.id)} className="w-8 h-8 rounded-full bg-red-50 text-[#C93A3A] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                              <Trash2 size={14} />
+                           </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {activeTab === 'kitchen' && (
+                  <div className="max-w-2xl space-y-8">
+                     <div className="flex items-center gap-3">
+                        <div className="p-3 bg-[#F6F2E7] text-[#0F2E26] rounded-xl">
+                          <ChefHat size={24} />
+                        </div>
+                        <div>
+                          <h3 className="font-bold text-xl text-[#1A2E26]">Personal de Cocina</h3>
+                          <p className="text-xs text-[#6B7280]">Credenciales de acceso para el módulo de cocina</p>
+                        </div>
+                      </div>
+                      <form onSubmit={async (e) => {
+                        e.preventDefault();
+                        try {
+                          await upsertKitchenUserMutation(kitchenForm);
+                          alert('¡Credenciales de cocina actualizadas!');
+                        } catch (err) { alert('Error al guardar.'); }
+                      }} className="space-y-5">
+                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="space-y-1">
+                               <label className="text-[10px] font-black tracking-widest uppercase text-[#6B7280]">Nombre</label>
+                               <input type="text" value={kitchenForm.name} onChange={e => setKitchenForm(p => ({...p, name: e.target.value}))} className="w-full bg-[#F6F2E7] border border-[#E8E0D0] rounded-xl px-4 py-2.5 text-sm focus:border-[#0F2E26] outline-none" />
+                            </div>
+                            <div className="space-y-1">
+                               <label className="text-[10px] font-black tracking-widest uppercase text-[#6B7280]">Usuario</label>
+                               <input type="text" value={kitchenForm.username} onChange={e => setKitchenForm(p => ({...p, username: e.target.value}))} className="w-full bg-[#F6F2E7] border border-[#E8E0D0] rounded-xl px-4 py-2.5 text-sm focus:border-[#0F2E26] outline-none" />
+                            </div>
+                         </div>
+                         <div className="space-y-1">
+                            <label className="text-[10px] font-black tracking-widest uppercase text-[#6B7280]">Contraseña</label>
+                            <input type="text" value={kitchenForm.password} onChange={e => setKitchenForm(p => ({...p, password: e.target.value}))} className="w-full bg-[#F6F2E7] border border-[#E8E0D0] rounded-xl px-4 py-2.5 text-sm focus:border-[#0F2E26] outline-none font-mono" />
+                         </div>
+                         <button type="submit" className="bg-[#0F2E26] text-white px-8 py-3 rounded-full font-bold text-sm hover:bg-[#1A3D32] transition-all">Guardar Configuración Cocina</button>
+                      </form>
+                  </div>
+                )}
+              </div>
             </div>
           )}
+        </div>
+      </div>
 
-          <form onSubmit={handleSaveAdminCredentials} className="space-y-4">
-            <div>
-              <label className="block text-xs font-bold uppercase text-stone-600 mb-1">Nombre de Usuario</label>
-              <input 
-                type="text"
-                value={adminCredentials.username}
-                onChange={e => setAdminCredentials(prev => ({ ...prev, username: e.target.value }))}
-                className="w-full border-stone-200 rounded-xl py-2.5 px-4 text-sm focus:border-dark-green focus:ring-dark-green outline-none"
-              />
+      {/* 5. LIVE OPERATION LOG SIDEBAR (Desktop) */}
+      <aside className={`hidden lg:flex flex-col w-[320px] bg-[#0F2E26] border-l border-[#1A3D32] sticky top-0 h-screen overflow-hidden z-30 transition-all duration-300 ${!isLogExpanded ? 'w-0 border-none' : ''}`}>
+        <div className="p-6 flex-1 flex flex-col min-h-0">
+          <div className="flex items-center justify-between mb-8">
+            <div className="space-y-1.5">
+              <h3 className="text-white font-bold text-lg flex items-center gap-2">
+                Bitácora en Vivo
+                <span className="w-2 h-2 rounded-full bg-[#B8E6C8] animate-pulse shadow-[0_0_8px_#B8E6C8]" />
+              </h3>
+              <span className="inline-flex items-center bg-white/10 text-[#B8E6C8] text-[10px] font-black tracking-widest px-2 py-0.5 rounded-full uppercase">
+                {liveLogs?.length || 0} REGISTROS LIVE
+              </span>
             </div>
-            <div>
-              <label className="block text-xs font-bold uppercase text-stone-600 mb-1">Teléfono Móvil (Soporta Login)</label>
-              <input 
-                type="text"
-                value={adminCredentials.phone}
-                onChange={e => setAdminCredentials(prev => ({ ...prev, phone: e.target.value }))}
-                className="w-full border-stone-200 rounded-xl py-2.5 px-4 text-sm focus:border-dark-green focus:ring-dark-green outline-none"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-bold uppercase text-stone-600 mb-1">Contraseña</label>
-              <input 
-                type="text"
-                value={adminCredentials.password}
-                onChange={e => setAdminCredentials(prev => ({ ...prev, password: e.target.value }))}
-                className="w-full border-stone-200 rounded-xl py-2.5 px-4 text-sm focus:border-dark-green focus:ring-dark-green outline-none font-mono"
-              />
-            </div>
-
-            <button type="submit" className="bg-dark-green text-white px-6 py-3 rounded-xl font-bold text-sm hover:bg-stone-800 transition-colors shadow-sm mt-4">
-              Guardar Credenciales
+            <button onClick={() => setIsLogExpanded(false)} className="text-white/40 hover:text-white transition-colors">
+               <X size={20} />
             </button>
-          </form>
+          </div>
 
-          <hr className="my-8 border-stone-100" />
-
-          <div className="flex items-center gap-3 mb-6">
-            <div className="p-3 bg-amber-100 text-amber-700 rounded-xl">
-              <Shield size={24} />
-            </div>
-            <div>
-              <h3 className="font-serif text-xl text-stone-900">Dispositivos Autorizados de Administrador</h3>
-              <p className="text-xs text-stone-500">Puedes autorizar hasta 3 ID de dispositivos totales para abrir tu cuenta de Administrador.</p>
-            </div>
+          <div className="flex-1 overflow-y-auto space-y-5 pr-2 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
+            {liveLogs?.map((log: any) => (
+              <div key={log._id} className="space-y-1.5 border-l-2 border-white/10 pl-4 py-0.5 group hover:border-[#B8E6C8] transition-all">
+                <div className="flex items-center gap-2">
+                   <span className="font-mono text-[10px] text-white/40 group-hover:text-white/60">{new Date(log.timestamp).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}</span>
+                   <span className={`text-[8px] font-black tracking-widest px-1.5 py-0.5 rounded-sm uppercase ${
+                      log.userRole === 'admin' ? 'bg-blue-500/20 text-blue-300' :
+                      log.userRole === 'dependent' ? 'bg-[#F6F2E7]/20 text-[#F6F2E7]' :
+                      'bg-emerald-500/20 text-emerald-300'
+                   }`}>
+                      {log.userRole?.substring(0, 7) || 'SYSTEM'}
+                   </span>
+                </div>
+                <p className="text-[12px] text-white/80 leading-snug line-clamp-2 group-hover:text-white transition-colors">{log.action}</p>
+              </div>
+            ))}
+            {(!liveLogs || liveLogs.length === 0) && (
+              <p className="text-white/20 text-center py-10 text-xs italic">No hay registros recientes...</p>
+            )}
           </div>
           
-          <div className="space-y-4">
-            <hr className="my-6 border-stone-100" />
-
-            <div>
-              <label className="block text-xs font-bold uppercase text-stone-600 mb-1">ID de este dispositivo actual</label>
-              <div className="flex gap-4 items-center">
-                <input 
-                  type="text"
-                  readOnly
-                  value={localStorage.getItem('deviceId') || ''}
-                  className="w-full border-stone-200 bg-stone-50 rounded-xl py-2.5 px-4 text-sm font-mono text-stone-600 outline-none"
-                />
-                <button 
-                  type="button"
-                  onClick={() => {
-                    const newId = prompt('Ingrese el ID de administrador para restaurar en este dispositivo (ej: DVC-39D3R):');
-                    if (newId && newId.trim()) {
-                      localStorage.setItem('deviceId', newId.trim().toUpperCase());
-                      window.location.reload();
-                    }
-                  }}
-                  className="whitespace-nowrap bg-stone-900 text-white px-4 py-2.5 rounded-xl font-bold text-sm hover:bg-stone-800 transition-colors shadow-sm"
-                >
-                  Restaurar ID
-                </button>
-              </div>
-            </div>
+          <div className="mt-6 pt-6 border-t border-white/10">
+             <button onClick={handleDownloadAuditLog} className="w-full bg-white/10 hover:bg-white/15 text-white text-[11px] font-black tracking-widest uppercase py-3.5 rounded-xl flex items-center justify-center gap-2 transition-all group">
+                <Download size={14} className="group-hover:translate-y-0.5 transition-transform" /> 
+                Descargar Bitácora
+             </button>
           </div>
         </div>
+      </aside>
+
+      {/* Sidebar Toggle for Desktop (when collapsed) */}
+      {!isLogExpanded && (
+        <button 
+          onClick={() => setIsLogExpanded(true)}
+          className="hidden lg:flex fixed top-24 right-0 z-40 bg-[#0F2E26] text-white p-3 rounded-l-2xl shadow-xl hover:pr-4 transition-all"
+        >
+          <Terminal size={20} />
+        </button>
       )}
 
-      {activeTab === 'dependents' && (
-        <div className="bg-white rounded-3xl border border-stone-100 shadow-sm p-6 md:p-8 mb-12">
-          <h3 className="font-serif text-xl text-stone-900 mb-2">Crear y Gestionar Dependientes</h3>
-          <p className="text-xs text-stone-500 mb-6">
-            El Administrador asigna ID de dispositivo, mesa, usuario, teléfono y contraseña para cada dependiente. La sesión del dependiente expira automáticamente a las 24 horas.
-          </p>
-
-          {/* Form Create Dependent */}
-          <form onSubmit={handleAddDependent} className="bg-stone-50 p-6 rounded-2xl border border-stone-200/60 mb-8 space-y-4">
-            <h4 className="font-bold text-sm text-stone-800">Registrar Nuevo Dependiente</h4>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <label className="block text-xs font-semibold text-stone-600 mb-1">ID Dispositivo (Opcional, Ej: DVC-DEP01)</label>
-                <input 
-                  type="text" 
-                  placeholder="Ej. DVC-MESA1" 
-                  value={newDep.deviceId}
-                  onChange={e => setNewDep(prev => ({ ...prev, deviceId: e.target.value.toUpperCase() }))}
-                  className="w-full border-stone-200 rounded-xl text-sm uppercase px-3 py-2"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-stone-600 mb-1">Mesa Asignada *</label>
-                <input 
-                  type="text" 
-                  placeholder="Ej. Mesa 1" 
-                  value={newDep.tableNumber}
-                  onChange={e => setNewDep(prev => ({ ...prev, tableNumber: e.target.value }))}
-                  className="w-full border-stone-200 rounded-xl text-sm px-3 py-2"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-stone-600 mb-1">Nombre Completo</label>
-                <input 
-                  type="text" 
-                  placeholder="Ej. Carlos Martínez" 
-                  value={newDep.name}
-                  onChange={e => setNewDep(prev => ({ ...prev, name: e.target.value }))}
-                  className="w-full border-stone-200 rounded-xl text-sm px-3 py-2"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-stone-600 mb-1">Teléfono Móvil</label>
-                <input 
-                  type="text" 
-                  placeholder="Ej. 53512345" 
-                  value={newDep.phone}
-                  onChange={e => setNewDep(prev => ({ ...prev, phone: e.target.value }))}
-                  className="w-full border-stone-200 rounded-xl text-sm px-3 py-2"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-stone-600 mb-1">Usuario de Acceso *</label>
-                <input 
-                  type="text" 
-                  placeholder="Ej. dep_mesa1" 
-                  value={newDep.username}
-                  onChange={e => setNewDep(prev => ({ ...prev, username: e.target.value }))}
-                  className="w-full border-stone-200 rounded-xl text-sm px-3 py-2"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-stone-600 mb-1">Contraseña *</label>
-                <input 
-                  type="text" 
-                  placeholder="Ej. pass123" 
-                  value={newDep.password}
-                  onChange={e => setNewDep(prev => ({ ...prev, password: e.target.value }))}
-                  className="w-full border-stone-200 rounded-xl text-sm px-3 py-2 font-mono"
-                  required
-                />
-              </div>
-            </div>
-
-            <button type="submit" className="bg-dark-green text-white px-5 py-2.5 rounded-xl font-bold text-sm hover:bg-stone-800 transition-colors flex items-center gap-2">
-              <Plus size={16} /> Agregar Dependiente
-            </button>
-          </form>
-
-          {/* List Dependents */}
-          <div className="space-y-4">
-            <h4 className="font-bold text-sm text-stone-800 mb-2">Dependientes Registrados ({data.dependents.length})</h4>
-            {data.dependents.map(dep => (
-              <div key={dep.id || dep.deviceId} className="flex flex-col md:flex-row justify-between items-start md:items-center p-4 border border-stone-200 rounded-xl bg-white gap-4 shadow-sm">
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <span className="font-mono text-xs font-bold text-stone-900 bg-stone-100 px-2 py-0.5 rounded">{dep.deviceId}</span>
-                    <span className="font-bold text-sm text-dark-green">{dep.tableNumber}</span>
-                    {dep.name && <span className="text-sm font-medium text-stone-700">— {dep.name}</span>}
-                  </div>
-                  <div className="text-xs text-stone-500 flex flex-wrap gap-4 font-mono">
-                    <span>Usuario: <strong>{dep.username || 'N/A'}</strong></span>
-                    <span>Clave: <strong>{dep.password || 'N/A'}</strong></span>
-                    {dep.phone && <span>Móvil: <strong>{dep.phone}</strong></span>}
-                  </div>
-                </div>
-                <div className="flex items-center gap-3">
-                  <button 
-                    onClick={() => handleToggleDependent(dep.id || dep.deviceId, !dep.isActive)} 
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${dep.isActive !== false ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'bg-stone-200 text-stone-600 hover:bg-stone-300'}`}
-                  >
-                    {dep.isActive !== false ? 'Activo (Desactivar)' : 'Inactivo (Activar)'}
-                  </button>
-                  <button 
-                    onClick={() => handleRemoveDependent(dep.id || dep.deviceId)} 
-                    className="text-red-500 hover:text-red-700 hover:bg-red-50 p-2 rounded-lg transition-colors text-xs font-bold flex items-center gap-1"
-                  >
-                    <Trash2 size={16} /> Eliminar
-                  </button>
-                </div>
-              </div>
-            ))}
-            {data.dependents.length === 0 && (
-              <p className="text-stone-500 text-sm text-center py-6 border border-dashed border-stone-200 rounded-xl">No hay dependientes registrados actualmente.</p>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* MANAGERS TAB */}
-      {activeTab === 'managers' && (
-        <div className="bg-white rounded-3xl p-6 md:p-8 border border-stone-100 shadow-sm space-y-8">
-          <div>
-            <h3 className="font-serif text-xl text-stone-900 mb-1 flex items-center gap-2">
-              <ShieldCheck className="text-dark-green" size={20} /> Gestión de Gerentes de Restaurante
-            </h3>
-            <p className="text-xs text-stone-500">
-              Crea cuentas de Gerente de Restaurante. Ellos recibirán los informes de comandas enviadas por los dependientes, realizarán comparativas con Cocina y ejecutarán el Cierre de Caja.
-            </p>
-          </div>
-
-          <form onSubmit={handleAddManager} className="bg-stone-50 p-6 rounded-2xl border border-stone-200 space-y-4">
-            <h4 className="font-bold text-sm text-stone-800">Agregar Nuevo Gerente de Restaurante</h4>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-semibold text-stone-600 mb-1">Nombre Completo *</label>
-                <input 
-                  type="text" 
-                  placeholder="Ej. Roberto Fernández" 
-                  value={newManager.name}
-                  onChange={e => setNewManager(prev => ({ ...prev, name: e.target.value }))}
-                  className="w-full border-stone-200 rounded-xl text-sm px-3 py-2"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-stone-600 mb-1">Teléfono Móvil (WhatsApp)</label>
-                <input 
-                  type="text" 
-                  placeholder="Ej. 53512345" 
-                  value={newManager.phone}
-                  onChange={e => setNewManager(prev => ({ ...prev, phone: e.target.value }))}
-                  className="w-full border-stone-200 rounded-xl text-sm px-3 py-2"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-stone-600 mb-1">Usuario de Acceso *</label>
-                <input 
-                  type="text" 
-                  placeholder="Ej. gerente_restaurante" 
-                  value={newManager.username}
-                  onChange={e => setNewManager(prev => ({ ...prev, username: e.target.value }))}
-                  className="w-full border-stone-200 rounded-xl text-sm px-3 py-2"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-stone-600 mb-1">Contraseña *</label>
-                <input 
-                  type="text" 
-                  placeholder="Ej. gerente53ym" 
-                  value={newManager.password}
-                  onChange={e => setNewManager(prev => ({ ...prev, password: e.target.value }))}
-                  className="w-full border-stone-200 rounded-xl text-sm px-3 py-2 font-mono"
-                  required
-                />
-              </div>
-              <div className="md:col-span-2">
-                <label className="block text-xs font-semibold text-stone-600 mb-1">
-                  ID de Dispositivo Autorizado (Opcional - Restringe el acceso a este dispositivo)
-                </label>
-                <input 
-                  type="text" 
-                  placeholder="Ej. DVC-U30C5 o dejar en blanco" 
-                  value={newManager.deviceId}
-                  onChange={e => setNewManager(prev => ({ ...prev, deviceId: e.target.value }))}
-                  className="w-full border-stone-200 rounded-xl text-sm px-3 py-2 font-mono uppercase"
-                />
-              </div>
-            </div>
-
-            <button type="submit" className="bg-dark-green text-white px-5 py-2.5 rounded-xl font-bold text-sm hover:bg-stone-800 transition-colors flex items-center gap-2">
-              <Plus size={16} /> Crear Gerente de Restaurante
-            </button>
-          </form>
-
-          {/* List Managers */}
-          <div className="space-y-4">
-            <h4 className="font-bold text-sm text-stone-800 mb-2">
-              Gerentes de Restaurante Creados ({(data.managers || []).length})
-            </h4>
-            {(data.managers || []).map(mgr => (
-              <div key={mgr.id || mgr.username} className="flex flex-col md:flex-row justify-between items-start md:items-center p-4 border border-stone-200 rounded-xl bg-white gap-4 shadow-sm">
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <span className="font-bold text-base text-dark-green">{mgr.name}</span>
-                    <span className="text-xs bg-amber-100 text-amber-800 font-bold px-2 py-0.5 rounded-full">Gerente</span>
-                    {mgr.deviceId && (
-                      <span className="text-[11px] bg-stone-100 text-stone-700 font-mono font-bold px-2 py-0.5 rounded-md border border-stone-200">
-                        ID: {mgr.deviceId}
-                      </span>
-                    )}
-                  </div>
-                  <div className="text-xs text-stone-500 flex flex-wrap gap-4 font-mono">
-                    <span>Usuario: <strong>{mgr.username}</strong></span>
-                    <span>Contraseña: <strong>{mgr.password}</strong></span>
-                    {mgr.phone && <span>Teléfono: <strong>{mgr.phone}</strong></span>}
-                    {mgr.deviceId && <span>Dispositivo: <strong>{mgr.deviceId}</strong></span>}
-                  </div>
-                </div>
-                <button 
-                  onClick={() => handleRemoveManager(mgr.id || mgr.username)} 
-                  className="text-red-500 hover:text-red-700 hover:bg-red-50 p-2 rounded-lg transition-colors text-xs font-bold flex items-center gap-1"
-                >
-                  <Trash2 size={16} /> Eliminar
-                </button>
-              </div>
-            ))}
-            {(!data.managers || data.managers.length === 0) && (
-              <p className="text-stone-500 text-sm text-center py-6 border border-dashed border-stone-200 rounded-xl">
-                No hay Jefes de Restaurante registrados. Agrega uno arriba para recibir informes de los dependientes.
-              </p>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* KITCHEN TAB */}
-      {activeTab === 'kitchen' && (
-        <div className="bg-white rounded-3xl p-6 md:p-8 border border-stone-100 shadow-sm space-y-8">
-          <div>
-            <h3 className="font-serif text-xl text-stone-900 mb-1 flex items-center gap-2">
-              <ChefHat className="text-dark-green" size={24} /> Gestión de Perfil Único de Cocina
-            </h3>
-            <p className="text-xs text-stone-500">
-              Administra el perfil del responsable de Cocina. Debe existir <strong>como máximo una cuenta activa</strong> en el sistema.
-            </p>
-          </div>
-
-          {/* Current Status Banner */}
-          <div className="p-5 rounded-2xl border flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-stone-50 border-stone-200">
-            <div>
-              <div className="flex items-center gap-3 mb-2">
-                <span className="text-xs font-bold uppercase tracking-wider text-stone-500">Estado de la Cuenta:</span>
-                {activeKitchenUser?.isActive ? (
-                  <span className="bg-green-100 text-green-800 text-xs font-extrabold px-3 py-1 rounded-full flex items-center gap-1.5 border border-green-200">
-                    <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span> ACTIVA
-                  </span>
-                ) : (
-                  <span className="bg-stone-200 text-stone-700 text-xs font-bold px-3 py-1 rounded-full border border-stone-300">
-                    INACTIVA / SIN ASIGNAR
-                  </span>
-                )}
-              </div>
-              {activeKitchenUser?.isActive ? (
-                <div className="text-sm font-medium text-stone-800 space-y-1">
-                  <p><strong>Responsable Activo:</strong> {activeKitchenUser.name}</p>
-                  <p className="text-xs text-stone-500 font-mono">
-                    Usuario: <strong>@{activeKitchenUser.username}</strong> | Teléfono: <strong>{activeKitchenUser.phone || 'N/A'}</strong> | Dispositivo: <strong>{activeKitchenUser.deviceId || 'Sin restricción'}</strong>
-                  </p>
-                </div>
-              ) : (
-                <p className="text-xs text-stone-500">
-                  No hay ningún perfil de cocina activo actualmente. Completa el formulario a continuación para crear o activar un responsable.
-                </p>
-              )}
-            </div>
-
-            {activeKitchenUser?.isActive && (
-              <button
-                onClick={async () => {
-                  if (confirm('¿Seguro que deseas desactivar la cuenta de Cocina activa?')) {
-                    try {
-                      await upsertKitchenUserMutation({
-                        username: activeKitchenUser.username,
-                        name: activeKitchenUser.name,
-                        password: activeKitchenUser.password || 'cocina53ym',
-                        phone: activeKitchenUser.phone || '',
-                        deviceId: activeKitchenUser.deviceId || '',
-                        isActive: false
-                      });
-                      alert('Cuenta de Cocina desactivada.');
-                    } catch (err: any) {
-                      alert(err?.message || 'Error al desactivar la cuenta.');
-                    }
-                  }
-                }}
-                className="bg-red-50 text-red-700 hover:bg-red-100 border border-red-200 px-4 py-2 rounded-xl text-xs font-bold transition-colors shadow-xs"
-              >
-                Desactivar Cuenta Activa
-              </button>
-            )}
-          </div>
-
-          {/* Form */}
-          <form 
-            onSubmit={async (e) => {
-              e.preventDefault();
-              if (!kitchenForm.name.trim()) {
-                alert('El Nombre del Responsable es obligatorio para la cuenta de Cocina.');
-                return;
-              }
-              try {
-                await upsertKitchenUserMutation({
-                  username: kitchenForm.username.trim() || 'cocina_53m',
-                  name: kitchenForm.name.trim(),
-                  password: kitchenForm.password.trim() || 'cocina53ym',
-                  phone: kitchenForm.phone.trim() || '',
-                  deviceId: kitchenForm.deviceId.trim() || 'DVC-KITCHEN-01',
-                  isActive: true
-                });
-                alert('Perfil de Cocina activado/guardado correctamente.');
-              } catch (err: any) {
-                alert(err?.message || 'Error al guardar la cuenta de cocina.');
-              }
-            }} 
-            className="bg-stone-50 p-6 rounded-2xl border border-stone-200 space-y-4"
+      {/* 6. MOBILE LOG DRAWER */}
+      <div className="lg:hidden">
+        {!isLogDrawerOpen ? (
+          <button 
+            onClick={() => setIsLogDrawerOpen(true)}
+            className="fixed bottom-[84px] right-4 z-40 bg-[#0F2E26] text-white p-4 rounded-full shadow-2xl flex items-center gap-2 animate-bounce"
           >
-            <h4 className="font-bold text-sm text-stone-800">
-              {activeKitchenUser?.isActive ? 'Editar Responsable de Cocina' : 'Crear / Activar Perfil de Cocina'}
-            </h4>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-semibold text-stone-600 mb-1">Nombre del Responsable *</label>
-                <input 
-                  type="text" 
-                  placeholder="Ej. Chef Carlos Mendoza" 
-                  value={kitchenForm.name}
-                  onChange={e => setKitchenForm(prev => ({ ...prev, name: e.target.value }))}
-                  className="w-full border-stone-200 rounded-xl text-sm px-3 py-2"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-stone-600 mb-1">Teléfono Móvil (WhatsApp)</label>
-                <input 
-                  type="text" 
-                  placeholder="Ej. 54413935" 
-                  value={kitchenForm.phone}
-                  onChange={e => setKitchenForm(prev => ({ ...prev, phone: e.target.value }))}
-                  className="w-full border-stone-200 rounded-xl text-sm px-3 py-2"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-stone-600 mb-1">Usuario de Acceso *</label>
-                <input 
-                  type="text" 
-                  placeholder="Ej. cocina_53m" 
-                  value={kitchenForm.username}
-                  onChange={e => setKitchenForm(prev => ({ ...prev, username: e.target.value }))}
-                  className="w-full border-stone-200 rounded-xl text-sm px-3 py-2"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-stone-600 mb-1">Contraseña *</label>
-                <input 
-                  type="text" 
-                  placeholder="Ej. cocina53ym" 
-                  value={kitchenForm.password}
-                  onChange={e => setKitchenForm(prev => ({ ...prev, password: e.target.value }))}
-                  className="w-full border-stone-200 rounded-xl text-sm px-3 py-2 font-mono"
-                  required
-                />
-              </div>
-              <div className="md:col-span-2">
-                <label className="block text-xs font-semibold text-stone-600 mb-1">
-                  ID de Dispositivo Asignado (Opcional - Restringe el acceso a este dispositivo)
-                </label>
-                <input 
-                  type="text" 
-                  placeholder="Ej. DVC-KITCHEN-01 o dejar en blanco" 
-                  value={kitchenForm.deviceId}
-                  onChange={e => setKitchenForm(prev => ({ ...prev, deviceId: e.target.value }))}
-                  className="w-full border-stone-200 rounded-xl text-sm px-3 py-2 font-mono uppercase"
-                />
-              </div>
-            </div>
-
-            <button type="submit" className="bg-dark-green text-white px-5 py-2.5 rounded-xl font-bold text-sm hover:bg-stone-800 transition-colors flex items-center gap-2">
-              <ChefHat size={16} /> {activeKitchenUser?.isActive ? 'Guardar Cambios' : 'Crear / Activar Perfil de Cocina'}
-            </button>
-          </form>
-        </div>
-      )}
-
-      {activeTab === 'reservations' && (
-        <>
-          {/* Stats Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-12">
-        <div className="bg-white rounded-2xl p-6 border border-stone-100 shadow-sm flex items-center">
-          <div className="bg-dark-green/10 p-4 rounded-xl mr-4 text-dark-green"><CalendarCheck size={24} /></div>
-          <div>
-            <div className="text-sm text-stone-500 font-medium">Reservas Hoy</div>
-            <div className="text-2xl font-serif text-stone-900">{todayReservations.length}</div>
-          </div>
-        </div>
-        <div className="bg-white rounded-2xl p-6 border border-stone-100 shadow-sm flex items-center">
-          <div className="bg-gold/20 p-4 rounded-xl mr-4 text-gold"><Users size={24} /></div>
-          <div>
-            <div className="text-sm text-stone-500 font-medium">Comensales Hoy</div>
-            <div className="text-2xl font-serif text-stone-900">{todayGuests}</div>
-          </div>
-        </div>
-      </div>
-
-      {/* List */}
-      <div className="bg-white rounded-3xl border border-stone-100 shadow-sm overflow-hidden">
-        <div className="p-6 border-b border-stone-100 bg-stone-50/50">
-          <h3 className="font-serif text-xl text-stone-900">Todas las Reservas</h3>
-        </div>
-        
-        {/* Desktop Table */}
-        <div className="hidden md:block overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-stone-50 text-stone-500 text-xs uppercase tracking-wider">
-                <th className="p-4 font-medium">Fecha</th>
-                <th className="p-4 font-medium">Cliente</th>
-                <th className="p-4 font-medium">Detalles</th>
-                <th className="p-4 font-medium">Estado</th>
-                <th className="p-4 font-medium text-right">Acciones</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-stone-100">
-              {reservations.sort((a,b) => b.createdAt - a.createdAt).map((res, idx) => (
-                <tr key={res.id || `res-${idx}`} className="hover:bg-stone-50/50 transition-colors">
-                  <td className="p-4">
-                    <div className="font-medium text-stone-900">{res.date}</div>
-                    <div className="text-sm text-stone-500">{res.time}</div>
-                  </td>
-                  <td className="p-4">
-                    <div className="font-medium text-stone-900">{res.name}</div>
-                    <div className="text-sm text-stone-500">{res.phone}</div>
-                  </td>
-                  <td className="p-4">
-                    <div className="text-sm text-stone-900">{res.guests} pax</div>
-                    <div className="text-xs text-stone-500">{res.occasion}</div>
-                  </td>
-                  <td className="p-4">
-                    <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${
-                      res.status === 'pending' ? 'bg-amber-100 text-amber-700' :
-                      (res.status === 'paid' || res.status === 'confirmed') ? 'bg-green-100 text-green-700' :
-                      'bg-red-100 text-red-700'
-                    }`}>
-                      {(res.status === 'paid' || res.status === 'confirmed') ? 'Confirmada' : res.status === 'pending' ? 'Pendiente' : 'Cancelada'}
-                    </span>
-                  </td>
-                  <td className="p-4 text-right space-x-2">
-                    {res.status === 'pending' && (
-                      <button onClick={() => handleConfirmReservation(res)} className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors" title="Confirmar Reserva y Notificar">
-                        <Send size={18} />
-                      </button>
-                    )}
-                    {res.status !== 'cancelled' && (
-                      <button onClick={() => updateStatus(res.id, 'cancelled')} className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Cancelar">
-                        <X size={18} />
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Mobile Cards */}
-        <div className="md:hidden divide-y divide-stone-100">
-          {reservations.sort((a,b) => b.createdAt - a.createdAt).map((res, idx) => (
-            <div key={res.id || `res-mob-${idx}`} className="p-6">
-              <div className="flex justify-between items-start mb-4">
-                <div>
-                  <div className="font-medium text-stone-900 text-lg">{res.date} a las {res.time}</div>
+            <Terminal size={24} />
+            <span className="text-xs font-bold">Bitácora</span>
+          </button>
+        ) : (
+          <div className="fixed inset-0 z-50 flex flex-col justify-end">
+            <div className="absolute inset-0 bg-[#0F2E26]/60 backdrop-blur-sm" onClick={() => setIsLogDrawerOpen(false)} />
+            <div className="relative bg-[#0F2E26] rounded-t-[32px] max-h-[80vh] flex flex-col border-t border-white/10 shadow-[0_-8px_32px_rgba(0,0,0,0.4)]">
+              <div className="h-1.5 w-12 bg-white/20 rounded-full mx-auto mt-4 mb-2" />
+              <div className="p-6 overflow-y-auto space-y-6">
+                <div className="flex items-center justify-between">
+                   <h3 className="text-white font-bold text-xl">Bitácora en Vivo</h3>
+                   <span className="bg-[#B8E6C8] text-[#0F4D2A] text-[10px] font-bold px-3 py-1 rounded-full uppercase">LIVE</span>
                 </div>
-                <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider ${
-                  res.status === 'pending' ? 'bg-amber-100 text-amber-700' :
-                  (res.status === 'paid' || res.status === 'confirmed') ? 'bg-green-100 text-green-700' :
-                  'bg-red-100 text-red-700'
-                }`}>
-                  {(res.status === 'paid' || res.status === 'confirmed') ? 'Confirmada' : res.status === 'pending' ? 'Pendiente' : 'Cancelada'}
-                </span>
-              </div>
-              <div className="mb-4 text-sm text-stone-600">
-                <span className="font-medium text-stone-900">{res.name}</span> • {res.guests} pax • {res.occasion}
-              </div>
-              <div className="flex gap-2">
-                {res.status === 'pending' && (
-                  <button onClick={() => handleConfirmReservation(res)} className="flex-1 bg-green-100 text-green-700 py-2 rounded-lg text-sm font-bold flex items-center justify-center">
-                    <Send size={16} className="mr-1" /> Confirmar
-                  </button>
-                )}
-                {res.status !== 'cancelled' && (
-                  <button onClick={() => updateStatus(res.id, 'cancelled')} className="flex-1 border border-red-200 text-red-600 py-2 rounded-lg text-sm font-bold flex items-center justify-center hover:bg-red-50">
-                    <X size={16} className="mr-1" /> Cancelar
-                  </button>
-                )}
+                <div className="space-y-5">
+                   {liveLogs?.slice(0, 20).map((log: any) => (
+                      <div key={log._id} className="flex gap-4 items-start">
+                         <span className="font-mono text-[10px] text-white/40 mt-1">{new Date(log.timestamp).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}</span>
+                         <div className="flex-1 space-y-1">
+                            <span className={`text-[9px] font-bold px-2 py-0.5 rounded uppercase ${
+                              log.userRole === 'admin' ? 'bg-blue-500/20 text-blue-300' :
+                              log.userRole === 'dependent' ? 'bg-amber-500/20 text-amber-300' :
+                              'bg-emerald-500/20 text-emerald-300'
+                            }`}>{log.userRole}</span>
+                            <p className="text-white/90 text-sm leading-relaxed">{log.action}</p>
+                         </div>
+                      </div>
+                   ))}
+                </div>
+                <button onClick={() => setIsLogDrawerOpen(false)} className="w-full bg-white text-[#0F2E26] font-bold py-4 rounded-2xl mt-4 transition-transform active:scale-95">Cerrar</button>
               </div>
             </div>
-          ))}
-        </div>
+          </div>
+        )}
       </div>
-      </>
-      )}
+
+      {/* 7. FLOATING NATIVE APP BUTTON */}
+      <button className="fixed bottom-6 right-6 z-30 bg-[#0F2E26] hover:bg-[#1A3D32] text-white rounded-full pl-3 pr-5 py-3 flex items-center gap-3 shadow-[0_8px_32px_rgba(15,46,38,0.25)] transition-all hover:scale-105 active:scale-95">
+        <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center">
+          <Smartphone size={18} />
+        </div>
+        <span className="text-xs font-bold tracking-wide uppercase">App Nativa S3&M</span>
+      </button>
+
+      <style>{`
+        .scrollbar-thin::-webkit-scrollbar { width: 4px; }
+        .scrollbar-thin::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 99px; }
+        .scrollbar-hide::-webkit-scrollbar { display: none; }
+        .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+      `}</style>
     </div>
   );
 }
