@@ -109,4 +109,12 @@ export default defineSchema({
     bitacora: v.array(v.any()),
     timestamp: v.number(),
   }).index("by_date", ["year", "month", "day"]),
+
+  pushSubscriptions: defineTable({
+    deviceId: v.string(),
+    role: v.string(),
+    subscription: v.any(), // Store the JSON subscription object
+    timestamp: v.number(),
+  }).index("by_deviceId", ["deviceId"])
+    .index("by_role", ["role"]),
 });

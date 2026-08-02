@@ -114,15 +114,48 @@ self.addEventListener('sync', (event) => {
 
 // Notification Push event handler
 self.addEventListener('push', (event) => {
-  const data = event.data ? event.data.json() : { title: 'Restaurante 53&M', body: 'Nueva actualización en tu pedido o reserva' };
+  let data = { title: 'Restaurante 53&M', body: 'Nueva actualización en tu pedido o reserva' };
+  
+  if (event.data) {
+    try {
+      data = event.data.json();
+    } catch (e) {
+      data = { title: 'Restaurante 53&M', body: event.data.text() };
+    }
+  }
+
   const options = {
     body: data.body,
     icon: '/pwa-192.png',
     badge: '/favicon.svg',
     vibrate: [100, 50, 100],
-    data: { url: '/' }
+    data: { url: data.url || '/' },
+    tag: data.tag || 'general-notification',
+    renotify: true
   };
+
   event.waitUntil(
     self.registration.showNotification(data.title, options)
+  );
+});
+
+// Notification Click handler
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const urlToOpen = event.notification.data.url || '/';
+
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
+      // If a window is already open, focus it
+      for (const client of windowClients) {
+        if (client.url === urlToOpen && 'focus' in client) {
+          return client.focus();
+        }
+      }
+      // If no window is open, open a new one
+      if (clients.openWindow) {
+        return clients.openWindow(urlToOpen);
+      }
+    })
   );
 });

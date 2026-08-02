@@ -1,5 +1,6 @@
-import { mutation, query } from "./_generated/server";
+import { mutation, query, internalAction } from "./_generated/server";
 import { v } from "convex/values";
+import { internal } from "./_generated/api";
 
 export const getAllSettings = query({
   args: {},
@@ -32,11 +33,35 @@ export const updateSetting = mutation({
       .withIndex("by_key", (q) => q.eq("key", args.key))
       .first();
 
+    const oldValue = existing ? existing.value : null;
+
     if (existing) {
       await ctx.db.patch(existing._id, { value: args.value });
     } else {
       await ctx.db.insert("settings", { key: args.key, value: args.value });
     }
+
+    // Server-side push delivery trigger for notifications
+    if (args.key === "notifications" && Array.isArray(args.value)) {
+      const newNotifs = args.value;
+      const oldNotifs = Array.isArray(oldValue) ? oldValue : [];
+      
+      // Identify strictly new notifications (by id)
+      const oldIds = new Set(oldNotifs.map((n: any) => n.id));
+      const newlyAdded = newNotifs.filter((n: any) => !oldIds.has(n.id));
+
+      for (const notif of newlyAdded) {
+        // Schedule push delivery for each new notification
+        // Target role can be specific or 'all'
+        await ctx.scheduler.runAfter(0, (internal as any).notifications.sendPushNotificationInternal, {
+          role: notif.targetRole || "all",
+          title: notif.title || "Restaurante 53&M",
+          body: notif.message || "Nueva notificación",
+          tag: notif.id
+        });
+      }
+    }
+
     return { success: true };
   },
 });

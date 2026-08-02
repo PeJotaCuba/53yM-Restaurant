@@ -1,13 +1,29 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { AppData } from '../types';
 import { Bell } from 'lucide-react';
+import { useMutation } from 'convex/react';
+import { api } from '../../convex/_generated/api';
 
 interface SystemNotificationManagerProps {
   data: AppData;
   currentView: string;
+  deviceId: string;
 }
 
-export function SystemNotificationManager({ data, currentView }: SystemNotificationManagerProps) {
+// Utility to convert VAPID key
+function urlBase64ToUint8Array(base64String: string) {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; ++i) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
+}
+
+export function SystemNotificationManager({ data, currentView, deviceId }: SystemNotificationManagerProps) {
+  const saveSubscriptionMutation = useMutation((api as any).notifications.saveSubscription);
   const [permission, setPermission] = useState<NotificationPermission>(
     typeof window !== 'undefined' && 'Notification' in window ? Notification.permission : 'default'
   );
@@ -73,7 +89,7 @@ export function SystemNotificationManager({ data, currentView }: SystemNotificat
           console.warn('[Notifications] Sound synthesis blocked or failed:', err);
         }
 
-        // 2. PWA Notification via Service Worker
+        // 2. PWA Notification via Service Worker (In-app fallback)
         if ('serviceWorker' in navigator && Notification.permission === 'granted') {
           navigator.serviceWorker.ready.then((reg) => {
             reg.showNotification(notif.title, {
@@ -94,6 +110,47 @@ export function SystemNotificationManager({ data, currentView }: SystemNotificat
     }
   }, [data.notifications, activeRole]);
 
+  // Handle re-subscribing if role changes
+  useEffect(() => {
+    if (permission === 'granted' && activeRole !== 'none') {
+      setupPushSubscription();
+    }
+  }, [activeRole, permission]);
+
+  const setupPushSubscription = async () => {
+    if (!('serviceWorker' in navigator)) return;
+    
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      if (!reg.pushManager) return;
+
+      const vapidPublicKey = import.meta.env.VITE_VAPID_PUBLIC_KEY;
+      if (!vapidPublicKey) {
+        console.warn('[Notifications] VITE_VAPID_PUBLIC_KEY is missing in env. Push subscriptions disabled.');
+        return;
+      }
+
+      let sub = await reg.pushManager.getSubscription();
+      if (!sub) {
+        sub = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(vapidPublicKey)
+        });
+      }
+
+      // Sync subscription with Convex
+      await saveSubscriptionMutation({
+        deviceId,
+        role: activeRole,
+        subscription: JSON.parse(JSON.stringify(sub))
+      });
+      
+      console.log('[Notifications] Push subscription registered and synced for role:', activeRole);
+    } catch (err) {
+      console.error('[Notifications] Error setting up push subscription:', err);
+    }
+  };
+
   const handleRequestPermission = async () => {
     if (!('Notification' in window)) {
       alert('Las notificaciones del sistema no están soportadas en este navegador.');
@@ -108,27 +165,7 @@ export function SystemNotificationManager({ data, currentView }: SystemNotificat
 
       if (res === 'granted') {
         console.log('[Notifications] Permission successfully granted by user.');
-        
-        // Push Subscription setup
-        if ('serviceWorker' in navigator) {
-          const reg = await navigator.serviceWorker.ready;
-          if (reg.pushManager) {
-            try {
-              let sub = await reg.pushManager.getSubscription();
-              if (!sub) {
-                sub = await reg.pushManager.subscribe({
-                  userVisibleOnly: true,
-                  applicationServerKey: new Uint8Array([
-                    4, 21, 114, 53, 100, 240, 23, 2, 88, 12, 11, 23, 94, 99, 105, 12, 123, 45, 98, 101, 22, 44, 99
-                  ])
-                }).catch(() => null);
-              }
-              console.log('[Notifications] Push subscription registered:', sub);
-            } catch (err) {
-              console.log('[Notifications] PushManager register bypassed gracefully (PWA notifications active):', err);
-            }
-          }
-        }
+        await setupPushSubscription();
       }
     } catch (err) {
       console.error('[Notifications] Error requesting permission:', err);

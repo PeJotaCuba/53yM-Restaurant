@@ -1294,7 +1294,7 @@ export function DependentPanel({ data, updateData, dependentInfo }: DependentPan
                     }}
                     className="bg-amber-500 hover:bg-amber-600 text-stone-950 font-bold px-4 py-2.5 rounded-xl text-xs transition-colors flex items-center justify-center gap-2 shadow-sm whitespace-nowrap"
                   >
-                    <Edit3 size={15} /> Editar / Agregar Platos
+                    <Edit3 size={15} /> {t('Agregar pedido a la comanda abierta')}
                   </button>
 
                   <button

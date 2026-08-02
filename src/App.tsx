@@ -1061,7 +1061,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen flex flex-col">
-      <SystemNotificationManager data={appData} currentView={currentView} />
+      <SystemNotificationManager data={appData} currentView={currentView} deviceId={deviceId} />
       <Navigation 
         currentView={currentView} 
         setView={setCurrentView} 
