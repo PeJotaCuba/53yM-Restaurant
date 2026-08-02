@@ -34,12 +34,7 @@ export function PWAInstallBanner() {
       )}
 
       {/* Standalone Native Mode Badge Indicator (when running as installed PWA app) */}
-      {isStandalone && (
-        <div className="fixed bottom-3 right-3 z-40 bg-dark-green/90 backdrop-blur-md text-gold text-[11px] font-medium px-3 py-1.5 rounded-full border border-gold/40 shadow-lg flex items-center gap-1.5 animate-fade-in pointer-events-none">
-          <Sparkles className="w-3.5 h-3.5 text-gold" />
-          <span>{t('App Nativa 53&M')}</span>
-        </div>
-      )}
+      {/* App Nativa badge removed as per request */}
 
       {/* Installed Success Toast */}
       {installedSuccess && !isStandalone && (

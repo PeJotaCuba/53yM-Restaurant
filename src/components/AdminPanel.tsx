@@ -73,6 +73,32 @@ export function AdminPanel({ data, updateData, updateStatus, userRole }: AdminPa
   const activeKitchenUser = useQuery(api.users.getActiveKitchenUser);
   const removeUserByUsernameMutation = useMutation(api.users.removeUserByUsername);
   const closeWorkdayAndArchiveMutation = useMutation(api.admin.closeWorkdayAndArchive);
+  const deleteReservationMutation = useMutation(api.reservations.deleteReservation);
+  
+  // User Management state
+  const [showUserModal, setShowUserModal] = useState(false);
+  const [editingUser, setEditingUser] = useState<any>(null);
+  const [userFormType, setUserFormType] = useState<'dependent' | 'manager' | 'kitchen'>('dependent');
+  const [userForm, setUserForm] = useState({
+    username: '',
+    name: '',
+    password: '',
+    phone: '',
+    deviceId: '',
+    tableNumber: '',
+    isActive: true
+  });
+
+  // Admin IDs state
+  const [adminDeviceIds, setAdminDeviceIds] = useState<string[]>(
+    Array.isArray((data.adminConfig as any)?.deviceIds) 
+      ? (data.adminConfig as any).deviceIds 
+      : (data.adminConfig?.username ? [data.adminConfig.username] : [])
+  );
+  const [newAdminId, setNewAdminId] = useState('');
+
+  // Reservation Menu state
+  const [resMenuId, setResMenuId] = useState<string | null>(null);
   
   // Exchange Rate state
   const [usdRate, setUsdRate] = useState<number>(data.exchangeRate?.usdCUP || 320);
@@ -295,28 +321,21 @@ export function AdminPanel({ data, updateData, updateStatus, userRole }: AdminPa
     }
   };
 
-  const handleToggleDependent = async (idOrDeviceId: string, active: boolean) => {
-    const dep = data.dependents.find(d => d.id === idOrDeviceId || d.deviceId === idOrDeviceId);
-    if (dep) {
-      try {
-        await upsertUserMutation({
-          username: dep.username,
-          name: dep.name,
-          role: 'dependent',
-          deviceId: dep.deviceId,
-          isActive: active,
-          password: dep.password || '',
-          phone: dep.phone || '',
-          tableNumber: dep.tableNumber || '',
-        });
-      } catch (err) {
-        console.error('Error toggling dependent on Convex:', err);
-      }
+  const handleToggleUser = async (user: any, role: string, active: boolean) => {
+    try {
+      await upsertUserMutation({
+        username: user.username,
+        name: user.name,
+        role: role as any,
+        deviceId: user.deviceId,
+        isActive: active,
+        password: user.password || '',
+        phone: user.phone || '',
+        tableNumber: user.tableNumber || '',
+      });
+    } catch (err) {
+      console.error('Error toggling user on Convex:', err);
     }
-    const updated = data.dependents.map(d => 
-      (d.id === idOrDeviceId || d.deviceId === idOrDeviceId) ? { ...d, isActive: active } : d
-    );
-    updateData({ dependents: updated });
   };
 
   const handleSaveExchangeRate = (e: React.FormEvent) => {
@@ -404,9 +423,127 @@ export function AdminPanel({ data, updateData, updateStatus, userRole }: AdminPa
       return;
     }
 
-    updateData({ adminConfig: adminCredentials });
-    setAdminSavedMessage('Credenciales de Administrador actualizadas correctamente.');
+    updateData({ 
+      adminConfig: { 
+        ...adminCredentials, 
+        deviceIds: adminDeviceIds 
+      } as any 
+    });
+    setAdminSavedMessage('Credenciales y IDs de Administrador actualizadas correctamente.');
     setTimeout(() => setAdminSavedMessage(''), 4000);
+  };
+
+  const handleAddAdminId = () => {
+    if (!newAdminId.trim()) return;
+    if (adminDeviceIds.length >= 3) {
+      alert('Máximo de 3 IDs de Administrador permitido.');
+      return;
+    }
+    if (adminDeviceIds.includes(newAdminId.trim().toUpperCase())) {
+      alert('Este ID ya está registrado.');
+      return;
+    }
+    setAdminDeviceIds([...adminDeviceIds, newAdminId.trim().toUpperCase()]);
+    setNewAdminId('');
+  };
+
+  const handleRemoveAdminId = (id: string) => {
+    if (adminDeviceIds.length <= 1) {
+      alert('Debe haber al menos un ID de Administrador.');
+      return;
+    }
+    setAdminDeviceIds(adminDeviceIds.filter(i => i !== id));
+  };
+
+  const openUserModal = (type: 'dependent' | 'manager' | 'kitchen', user?: any) => {
+    setUserFormType(type);
+    if (user) {
+      setEditingUser(user);
+      setUserForm({
+        username: user.username || '',
+        name: user.name || '',
+        password: user.password || '',
+        phone: user.phone || '',
+        deviceId: user.deviceId || '',
+        tableNumber: user.tableNumber || '',
+        isActive: user.isActive !== false
+      });
+    } else {
+      setEditingUser(null);
+      setUserForm({
+        username: '',
+        name: '',
+        password: '',
+        phone: '',
+        deviceId: '',
+        tableNumber: '',
+        isActive: true
+      });
+    }
+    setShowUserModal(true);
+  };
+
+  const handleSaveUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!userForm.username || !userForm.password || !userForm.name || !userForm.deviceId) {
+      alert('Por favor complete todos los campos requeridos, incluyendo el ID.');
+      return;
+    }
+
+    try {
+      if (userFormType === 'kitchen') {
+        await upsertKitchenUserMutation({
+          username: userForm.username,
+          name: userForm.name,
+          password: userForm.password,
+          phone: userForm.phone,
+          deviceId: userForm.deviceId,
+          isActive: userForm.isActive
+        });
+      } else {
+        await upsertUserMutation({
+          username: userForm.username,
+          name: userForm.name,
+          role: userFormType,
+          deviceId: userForm.deviceId,
+          isActive: userForm.isActive,
+          password: userForm.password,
+          phone: userForm.phone,
+          tableNumber: userFormType === 'dependent' ? userForm.tableNumber : undefined
+        });
+      }
+
+      // Update local data for immediate feedback if needed, 
+      // but Convex will likely trigger a re-render via App.tsx
+      setShowUserModal(false);
+      alert('Usuario guardado correctamente.');
+    } catch (err: any) {
+      alert(err.message || 'Error al guardar el usuario.');
+    }
+  };
+
+  const handleDeleteUser = async (username: string, role: string) => {
+    if (!confirm(`¿Está seguro de eliminar permanentemente al usuario ${username}?`)) return;
+    try {
+      await removeUserByUsernameMutation({ username, role: role as any });
+      alert('Usuario eliminado.');
+    } catch (err: any) {
+      alert(err.message || 'Error al eliminar el usuario.');
+    }
+  };
+
+  const handleDeleteReservation = async (id: string) => {
+    if (!confirm('¿Desea eliminar permanentemente esta reservación cancelada?')) return;
+    try {
+      await deleteReservationMutation({
+        id: id as any,
+        username: data.adminConfig?.username || 'admin',
+        userRole: 'admin'
+      });
+      setResMenuId(null);
+    } catch (err: any) {
+      alert(err.message || 'Error al eliminar la reservación.');
+    }
   };
 
   const isShiftActive = data.isShiftActive !== false;
@@ -548,7 +685,7 @@ export function AdminPanel({ data, updateData, updateStatus, userRole }: AdminPa
           </div>
 
           {/* 2. RESERVAS DEL DÍA */}
-          <div className="space-y-6">
+          <div id="reservations-section" className="space-y-6">
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
               <div>
                 <h2 className="text-2xl font-bold text-[#1A2E26]">Reservas del Día</h2>
@@ -652,9 +789,30 @@ export function AdminPanel({ data, updateData, updateStatus, userRole }: AdminPa
                             <X size={16} />
                           </button>
                         )}
-                        <button className="text-[#6B7280] hover:text-[#1A2E26] p-2 rounded-full">
-                          <MoreVertical size={20} />
-                        </button>
+                        <div className="relative">
+                          <button 
+                            onClick={() => setResMenuId(resMenuId === res.id ? null : res.id)}
+                            className="text-[#6B7280] hover:text-[#1A2E26] p-2 rounded-full transition-colors"
+                          >
+                            <MoreVertical size={20} />
+                          </button>
+                          {resMenuId === res.id && (
+                            <div className="absolute right-0 bottom-full mb-2 w-48 bg-white border border-[#E8E0D0] rounded-xl shadow-xl z-50 overflow-hidden animate-in fade-in zoom-in duration-200">
+                              {res.status === 'cancelled' ? (
+                                <button 
+                                  onClick={() => handleDeleteReservation(res.id)}
+                                  className="w-full flex items-center gap-3 px-4 py-3 text-sm text-[#C93A3A] hover:bg-red-50 transition-colors text-left"
+                                >
+                                  <Trash2 size={16} /> Eliminar Permanente
+                                </button>
+                              ) : (
+                                <div className="px-4 py-3 text-xs text-[#9A958A] italic">
+                                  No eliminable (debe estar cancelada)
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
                   ))
@@ -684,7 +842,9 @@ export function AdminPanel({ data, updateData, updateStatus, userRole }: AdminPa
                           key={item.id}
                           onClick={() => {
                             setActiveTab(item.id as any);
-                            if (window.innerWidth < 1024) {
+                            if (item.id === 'reservations') {
+                              document.getElementById('reservations-section')?.scrollIntoView({ behavior: 'smooth' });
+                            } else if (window.innerWidth < 1024) {
                               window.scrollTo({ top: document.getElementById('active-module-content')?.offsetTop || 0, behavior: 'smooth' });
                             }
                           }}
@@ -826,34 +986,78 @@ export function AdminPanel({ data, updateData, updateStatus, userRole }: AdminPa
                 )}
 
                 {activeTab === 'security' && (
-                   <div className="max-w-2xl space-y-8">
-                      <div className="flex items-center gap-3">
-                        <div className="p-3 bg-[#F6F2E7] text-[#0F2E26] rounded-xl">
-                          <Shield size={24} />
+                   <div className="max-w-2xl space-y-12">
+                      <div className="space-y-8">
+                        <div className="flex items-center gap-3">
+                          <div className="p-3 bg-[#F6F2E7] text-[#0F2E26] rounded-xl">
+                            <Shield size={24} />
+                          </div>
+                          <div>
+                            <h3 className="font-bold text-xl text-[#1A2E26]">Credenciales Principales</h3>
+                            <p className="text-xs text-[#6B7280]">Modifica el acceso raíz del administrador</p>
+                          </div>
                         </div>
-                        <div>
-                          <h3 className="font-bold text-xl text-[#1A2E26]">Cuenta Administrador</h3>
-                          <p className="text-xs text-[#6B7280]">Modifica credenciales y seguridad</p>
+                        {adminSavedMessage && <div className="bg-green-50 border border-green-200 text-green-700 text-xs rounded-xl p-3 font-bold">{adminSavedMessage}</div>}
+                        <form onSubmit={handleSaveAdminCredentials} className="space-y-5">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                             <div className="space-y-1">
+                                <label className="text-[10px] font-black tracking-widest uppercase text-[#6B7280]">Usuario</label>
+                                <input type="text" value={adminCredentials.username} onChange={e => setAdminCredentials(p => ({...p, username: e.target.value}))} className="w-full bg-[#F6F2E7] border border-[#E8E0D0] rounded-xl px-4 py-2.5 text-sm focus:border-[#0F2E26] outline-none" />
+                             </div>
+                             <div className="space-y-1">
+                                <label className="text-[10px] font-black tracking-widest uppercase text-[#6B7280]">Teléfono</label>
+                                <input type="text" value={adminCredentials.phone} onChange={e => setAdminCredentials(p => ({...p, phone: e.target.value}))} className="w-full bg-[#F6F2E7] border border-[#E8E0D0] rounded-xl px-4 py-2.5 text-sm focus:border-[#0F2E26] outline-none" />
+                             </div>
+                          </div>
+                          <div className="space-y-1">
+                             <label className="text-[10px] font-black tracking-widest uppercase text-[#6B7280]">Nueva Contraseña</label>
+                             <input type="text" value={adminCredentials.password} onChange={e => setAdminCredentials(p => ({...p, password: e.target.value}))} className="w-full bg-[#F6F2E7] border border-[#E8E0D0] rounded-xl px-4 py-2.5 text-sm focus:border-[#0F2E26] outline-none font-mono" />
+                          </div>
+                          <button type="submit" className="bg-[#0F2E26] text-white px-8 py-3 rounded-full font-bold text-sm hover:bg-[#1A3D32] transition-all">Guardar Cambios</button>
+                        </form>
+                      </div>
+
+                      <div className="space-y-8 pt-8 border-t border-[#E8E0D0]">
+                        <div className="flex items-center gap-3">
+                          <div className="p-3 bg-[#F6F2E7] text-[#0F2E26] rounded-xl">
+                            <Smartphone size={24} />
+                          </div>
+                          <div>
+                            <h3 className="font-bold text-xl text-[#1A2E26]">IDs de Dispositivo (Máx 3)</h3>
+                            <p className="text-xs text-[#6B7280]">IDs autorizados para entrar sin credenciales (Auto-Login)</p>
+                          </div>
+                        </div>
+
+                        <div className="space-y-4">
+                          <div className="flex gap-2">
+                            <input 
+                              type="text" 
+                              placeholder="Ej: DVC-12345" 
+                              value={newAdminId}
+                              onChange={e => setNewAdminId(e.target.value)}
+                              className="flex-1 bg-[#F6F2E7] border border-[#E8E0D0] rounded-xl px-4 py-2.5 text-sm focus:border-[#0F2E26] outline-none"
+                            />
+                            <button 
+                              onClick={handleAddAdminId}
+                              disabled={adminDeviceIds.length >= 3}
+                              className="bg-[#0F2E26] text-white px-6 py-2.5 rounded-xl text-xs font-bold disabled:opacity-50"
+                            >
+                              Agregar
+                            </button>
+                          </div>
+
+                          <div className="space-y-2">
+                            {adminDeviceIds.map(id => (
+                              <div key={id} className="flex items-center justify-between p-3 bg-white border border-[#E8E0D0] rounded-xl">
+                                <span className="font-mono text-sm font-bold">{id}</span>
+                                <button onClick={() => handleRemoveAdminId(id)} className="text-[#C93A3A] hover:bg-red-50 p-1.5 rounded-lg transition-colors">
+                                  <Trash2 size={16} />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
                         </div>
                       </div>
-                      {adminSavedMessage && <div className="bg-green-50 border border-green-200 text-green-700 text-xs rounded-xl p-3 font-bold">{adminSavedMessage}</div>}
-                      <form onSubmit={handleSaveAdminCredentials} className="space-y-5">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                           <div className="space-y-1">
-                              <label className="text-[10px] font-black tracking-widest uppercase text-[#6B7280]">Usuario</label>
-                              <input type="text" value={adminCredentials.username} onChange={e => setAdminCredentials(p => ({...p, username: e.target.value}))} className="w-full bg-[#F6F2E7] border border-[#E8E0D0] rounded-xl px-4 py-2.5 text-sm focus:border-[#0F2E26] outline-none" />
-                           </div>
-                           <div className="space-y-1">
-                              <label className="text-[10px] font-black tracking-widest uppercase text-[#6B7280]">Teléfono</label>
-                              <input type="text" value={adminCredentials.phone} onChange={e => setAdminCredentials(p => ({...p, phone: e.target.value}))} className="w-full bg-[#F6F2E7] border border-[#E8E0D0] rounded-xl px-4 py-2.5 text-sm focus:border-[#0F2E26] outline-none" />
-                           </div>
-                        </div>
-                        <div className="space-y-1">
-                           <label className="text-[10px] font-black tracking-widest uppercase text-[#6B7280]">Nueva Contraseña</label>
-                           <input type="text" value={adminCredentials.password} onChange={e => setAdminCredentials(p => ({...p, password: e.target.value}))} className="w-full bg-[#F6F2E7] border border-[#E8E0D0] rounded-xl px-4 py-2.5 text-sm focus:border-[#0F2E26] outline-none font-mono" />
-                        </div>
-                        <button type="submit" className="bg-[#0F2E26] text-white px-8 py-3 rounded-full font-bold text-sm hover:bg-[#1A3D32] transition-all">Guardar Credenciales</button>
-                      </form>
                    </div>
                 )}
 
@@ -861,25 +1065,28 @@ export function AdminPanel({ data, updateData, updateStatus, userRole }: AdminPa
                   <div className="space-y-8">
                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                        <p className="text-sm text-[#6B7280]">Gestión de personal de sala y mesas asignadas.</p>
-                       <button onClick={() => updateData({ dependents: [...data.dependents] })} className="bg-[#0F2E26] text-white px-6 py-2.5 rounded-full text-xs font-bold flex items-center gap-2">
+                       <button onClick={() => openUserModal('dependent')} className="bg-[#0F2E26] text-white px-6 py-2.5 rounded-full text-xs font-bold flex items-center gap-2">
                           <Plus size={16} /> Nuevo Dependiente
                        </button>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       {data.dependents.map(dep => (
-                        <div key={dep.id} className="p-4 border border-[#E8E0D0] rounded-2xl flex items-center justify-between group hover:border-[#0F2E26] transition-colors">
+                        <div key={dep.username || dep.id} className="p-4 border border-[#E8E0D0] rounded-2xl flex items-center justify-between group hover:border-[#0F2E26] transition-colors">
                            <div className="flex items-center gap-3">
-                              <div className="w-10 h-10 rounded-full bg-[#F6F2E7] flex items-center justify-center font-bold text-[#0F2E26]">{dep.tableNumber}</div>
-                              <div>
-                                 <p className="font-bold text-sm">{dep.name}</p>
-                                 <p className="text-[10px] text-[#6B7280] font-mono">@{dep.username} • {dep.deviceId}</p>
+                              <div className="w-10 h-10 rounded-full bg-[#F6F2E7] flex items-center justify-center font-bold text-[#0F2E26]">{dep.tableNumber || '?'}</div>
+                              <div className="cursor-pointer" onClick={() => openUserModal('dependent', dep)}>
+                                 <p className="font-bold text-sm flex items-center gap-2">
+                                   {dep.name}
+                                   <ArrowUpRight size={12} className="opacity-0 group-hover:opacity-100 transition-opacity" />
+                                 </p>
+                                 <p className="text-[10px] text-[#6B7280] font-mono">@{dep.username} • ID: {dep.deviceId}</p>
                               </div>
                            </div>
                            <div className="flex items-center gap-2">
-                              <button onClick={() => handleToggleDependent(dep.id || dep.deviceId, !dep.isActive)} className={`w-8 h-8 rounded-full flex items-center justify-center ${dep.isActive !== false ? 'bg-[#B8E6C8] text-[#0F4D2A]' : 'bg-stone-100 text-[#6B7280]'}`}>
+                              <button onClick={() => handleToggleUser(dep, 'dependent', !dep.isActive)} className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${dep.isActive !== false ? 'bg-[#B8E6C8] text-[#0F4D2A]' : 'bg-stone-100 text-[#6B7280]'}`} title={dep.isActive !== false ? 'Desactivar' : 'Activar'}>
                                  <Power size={14} />
                               </button>
-                              <button onClick={() => handleRemoveDependent(dep.id || dep.deviceId)} className="w-8 h-8 rounded-full bg-red-50 text-[#C93A3A] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                              <button onClick={() => handleDeleteUser(dep.username, 'dependent')} className="w-8 h-8 rounded-full bg-red-50 text-[#C93A3A] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity" title="Eliminar">
                                  <Trash2 size={14} />
                               </button>
                            </div>
@@ -893,25 +1100,33 @@ export function AdminPanel({ data, updateData, updateStatus, userRole }: AdminPa
                   <div className="space-y-8">
                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                        <p className="text-sm text-[#6B7280]">Gestión de Gerentes de Restaurante.</p>
-                       <button onClick={() => updateData({ managers: [...(data.managers || [])] })} className="bg-[#0F2E26] text-white px-6 py-2.5 rounded-full text-xs font-bold flex items-center gap-2">
+                       <button onClick={() => openUserModal('manager')} className="bg-[#0F2E26] text-white px-6 py-2.5 rounded-full text-xs font-bold flex items-center gap-2">
                           <Plus size={16} /> Nuevo Gerente
                        </button>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       {(data.managers || []).map(m => (
-                        <div key={m.id} className="p-4 border border-[#E8E0D0] rounded-2xl flex items-center justify-between group hover:border-[#0F2E26] transition-colors">
+                        <div key={m.username || m.id} className="p-4 border border-[#E8E0D0] rounded-2xl flex items-center justify-between group hover:border-[#0F2E26] transition-colors">
                            <div className="flex items-center gap-3">
                               <div className="w-10 h-10 rounded-full bg-[#F6F2E7] flex items-center justify-center text-[#0F2E26]">
                                  <ShieldCheck size={20} />
                               </div>
-                              <div>
-                                 <p className="font-bold text-sm">{m.name}</p>
-                                 <p className="text-[10px] text-[#6B7280] font-mono">@{m.username}</p>
+                              <div className="cursor-pointer" onClick={() => openUserModal('manager', m)}>
+                                 <p className="font-bold text-sm flex items-center gap-2">
+                                   {m.name}
+                                   <ArrowUpRight size={12} className="opacity-0 group-hover:opacity-100 transition-opacity" />
+                                 </p>
+                                 <p className="text-[10px] text-[#6B7280] font-mono">@{m.username} • ID: {m.deviceId || 'N/A'}</p>
                               </div>
                            </div>
-                           <button onClick={() => handleRemoveManager(m.id)} className="w-8 h-8 rounded-full bg-red-50 text-[#C93A3A] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                              <Trash2 size={14} />
-                           </button>
+                           <div className="flex items-center gap-2">
+                              <button onClick={() => handleToggleUser(m, 'manager', !m.isActive)} className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${m.isActive !== false ? 'bg-[#B8E6C8] text-[#0F4D2A]' : 'bg-stone-100 text-[#6B7280]'}`} title={m.isActive !== false ? 'Desactivar' : 'Activar'}>
+                                 <Power size={14} />
+                              </button>
+                              <button onClick={() => handleDeleteUser(m.username, 'manager')} className="w-8 h-8 rounded-full bg-red-50 text-[#C93A3A] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity" title="Eliminar">
+                                 <Trash2 size={14} />
+                              </button>
+                           </div>
                         </div>
                       ))}
                     </div>
@@ -926,32 +1141,29 @@ export function AdminPanel({ data, updateData, updateStatus, userRole }: AdminPa
                         </div>
                         <div>
                           <h3 className="font-bold text-xl text-[#1A2E26]">Personal de Cocina</h3>
-                          <p className="text-xs text-[#6B7280]">Credenciales de acceso para el módulo de cocina</p>
+                          <p className="text-xs text-[#6B7280]">Acceso directo a la gestión de staff de cocina</p>
                         </div>
                       </div>
-                      <form onSubmit={async (e) => {
-                        e.preventDefault();
-                        try {
-                          await upsertKitchenUserMutation(kitchenForm);
-                          alert('¡Credenciales de cocina actualizadas!');
-                        } catch (err) { alert('Error al guardar.'); }
-                      }} className="space-y-5">
-                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div className="space-y-1">
-                               <label className="text-[10px] font-black tracking-widest uppercase text-[#6B7280]">Nombre</label>
-                               <input type="text" value={kitchenForm.name} onChange={e => setKitchenForm(p => ({...p, name: e.target.value}))} className="w-full bg-[#F6F2E7] border border-[#E8E0D0] rounded-xl px-4 py-2.5 text-sm focus:border-[#0F2E26] outline-none" />
-                            </div>
-                            <div className="space-y-1">
-                               <label className="text-[10px] font-black tracking-widest uppercase text-[#6B7280]">Usuario</label>
-                               <input type="text" value={kitchenForm.username} onChange={e => setKitchenForm(p => ({...p, username: e.target.value}))} className="w-full bg-[#F6F2E7] border border-[#E8E0D0] rounded-xl px-4 py-2.5 text-sm focus:border-[#0F2E26] outline-none" />
-                            </div>
-                         </div>
-                         <div className="space-y-1">
-                            <label className="text-[10px] font-black tracking-widest uppercase text-[#6B7280]">Contraseña</label>
-                            <input type="text" value={kitchenForm.password} onChange={e => setKitchenForm(p => ({...p, password: e.target.value}))} className="w-full bg-[#F6F2E7] border border-[#E8E0D0] rounded-xl px-4 py-2.5 text-sm focus:border-[#0F2E26] outline-none font-mono" />
-                         </div>
-                         <button type="submit" className="bg-[#0F2E26] text-white px-8 py-3 rounded-full font-bold text-sm hover:bg-[#1A3D32] transition-all">Guardar Configuración Cocina</button>
-                      </form>
+                      
+                      <div className="bg-emerald-50 border border-emerald-100 p-6 rounded-3xl space-y-4">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                             <div className="w-12 h-12 rounded-full bg-white flex items-center justify-center text-[#0F2E26]">
+                                <ChefHat size={24} />
+                             </div>
+                             <div>
+                                <p className="font-bold text-dark-green">{activeKitchenUser?.name || 'No configurado'}</p>
+                                <p className="text-xs text-[#6B7280]">ID: {activeKitchenUser?.deviceId || 'Sin ID'}</p>
+                             </div>
+                          </div>
+                          <button 
+                            onClick={() => openUserModal('kitchen', activeKitchenUser)}
+                            className="bg-white text-[#0F2E26] px-4 py-2 rounded-xl text-xs font-bold border border-emerald-200 shadow-sm hover:shadow-md transition-all"
+                          >
+                            Configurar Staff
+                          </button>
+                        </div>
+                      </div>
                   </div>
                 )}
               </div>
@@ -1019,54 +1231,120 @@ export function AdminPanel({ data, updateData, updateStatus, userRole }: AdminPa
       )}
 
       {/* 6. MOBILE LOG DRAWER */}
-      <div className="lg:hidden">
-        {!isLogDrawerOpen ? (
-          <button 
-            onClick={() => setIsLogDrawerOpen(true)}
-            className="fixed bottom-[84px] right-4 z-40 bg-[#0F2E26] text-white p-4 rounded-full shadow-2xl flex items-center gap-2 animate-bounce"
-          >
-            <Terminal size={24} />
-            <span className="text-xs font-bold">Bitácora</span>
-          </button>
-        ) : (
-          <div className="fixed inset-0 z-50 flex flex-col justify-end">
-            <div className="absolute inset-0 bg-[#0F2E26]/60 backdrop-blur-sm" onClick={() => setIsLogDrawerOpen(false)} />
-            <div className="relative bg-[#0F2E26] rounded-t-[32px] max-h-[80vh] flex flex-col border-t border-white/10 shadow-[0_-8px_32px_rgba(0,0,0,0.4)]">
-              <div className="h-1.5 w-12 bg-white/20 rounded-full mx-auto mt-4 mb-2" />
-              <div className="p-6 overflow-y-auto space-y-6">
-                <div className="flex items-center justify-between">
-                   <h3 className="text-white font-bold text-xl">Bitácora en Vivo</h3>
-                   <span className="bg-[#B8E6C8] text-[#0F4D2A] text-[10px] font-bold px-3 py-1 rounded-full uppercase">LIVE</span>
-                </div>
-                <div className="space-y-5">
-                   {liveLogs?.slice(0, 20).map((log: any) => (
-                      <div key={log._id} className="flex gap-4 items-start">
-                         <span className="font-mono text-[10px] text-white/40 mt-1">{new Date(log.timestamp).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}</span>
-                         <div className="flex-1 space-y-1">
-                            <span className={`text-[9px] font-bold px-2 py-0.5 rounded uppercase ${
-                              log.userRole === 'admin' ? 'bg-blue-500/20 text-blue-300' :
-                              log.userRole === 'dependent' ? 'bg-amber-500/20 text-amber-300' :
-                              'bg-emerald-500/20 text-emerald-300'
-                            }`}>{log.userRole}</span>
-                            <p className="text-white/90 text-sm leading-relaxed">{log.action}</p>
-                         </div>
-                      </div>
-                   ))}
-                </div>
-                <button onClick={() => setIsLogDrawerOpen(false)} className="w-full bg-white text-[#0F2E26] font-bold py-4 rounded-2xl mt-4 transition-transform active:scale-95">Cerrar</button>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
 
-      {/* 7. FLOATING NATIVE APP BUTTON */}
-      <button className="fixed bottom-6 right-6 z-30 bg-[#0F2E26] hover:bg-[#1A3D32] text-white rounded-full pl-3 pr-5 py-3 flex items-center gap-3 shadow-[0_8px_32px_rgba(15,46,38,0.25)] transition-all hover:scale-105 active:scale-95">
-        <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center">
-          <Smartphone size={18} />
+      {/* User Management Modal */}
+      {showUserModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+           <div className="bg-white rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl border border-[#E8E0D0] animate-in zoom-in-95 duration-200">
+              <div className="p-6 bg-[#0F2E26] text-white flex items-center justify-between">
+                 <div className="flex items-center gap-3">
+                    <User size={24} className="text-[#B8E6C8]" />
+                    <h3 className="font-serif text-xl font-bold">
+                       {editingUser ? 'Editar' : 'Nuevo'} {userFormType === 'dependent' ? 'Dependiente' : userFormType === 'manager' ? 'Gerente' : 'Staff Cocina'}
+                    </h3>
+                 </div>
+                 <button onClick={() => setShowUserModal(false)} className="p-2 hover:bg-white/10 rounded-full transition-colors">
+                    <X size={20} />
+                 </button>
+              </div>
+              <form onSubmit={handleSaveUser} className="p-8 space-y-6">
+                 <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
+                       <label className="text-[10px] font-black tracking-widest uppercase text-[#6B7280]">Usuario *</label>
+                       <input 
+                         type="text" required 
+                         value={userForm.username} 
+                         disabled={!!editingUser}
+                         onChange={e => setUserForm(p => ({...p, username: e.target.value}))} 
+                         className="w-full bg-[#F6F2E7] border border-[#E8E0D0] rounded-xl px-4 py-3 text-sm focus:border-[#0F2E26] outline-none disabled:opacity-50" 
+                       />
+                    </div>
+                    <div className="space-y-1.5">
+                       <label className="text-[10px] font-black tracking-widest uppercase text-[#6B7280]">ID Dispositivo *</label>
+                       <input 
+                         type="text" required 
+                         value={userForm.deviceId} 
+                         onChange={e => setUserForm(p => ({...p, deviceId: e.target.value.toUpperCase()}))} 
+                         className="w-full bg-[#F6F2E7] border border-[#E8E0D0] rounded-xl px-4 py-3 text-sm focus:border-[#0F2E26] outline-none" 
+                       />
+                    </div>
+                 </div>
+                 
+                 <div className="space-y-1.5">
+                    <label className="text-[10px] font-black tracking-widest uppercase text-[#6B7280]">Nombre Completo *</label>
+                    <input 
+                      type="text" required 
+                      value={userForm.name} 
+                      onChange={e => setUserForm(p => ({...p, name: e.target.value}))} 
+                      className="w-full bg-[#F6F2E7] border border-[#E8E0D0] rounded-xl px-4 py-3 text-sm focus:border-[#0F2E26] outline-none" 
+                    />
+                 </div>
+
+                 <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
+                       <label className="text-[10px] font-black tracking-widest uppercase text-[#6B7280]">Contraseña *</label>
+                       <input 
+                         type="text" required 
+                         value={userForm.password} 
+                         onChange={e => setUserForm(p => ({...p, password: e.target.value}))} 
+                         className="w-full bg-[#F6F2E7] border border-[#E8E0D0] rounded-xl px-4 py-3 text-sm focus:border-[#0F2E26] outline-none font-mono" 
+                       />
+                    </div>
+                    <div className="space-y-1.5">
+                       <label className="text-[10px] font-black tracking-widest uppercase text-[#6B7280]">Teléfono</label>
+                       <input 
+                         type="text" 
+                         value={userForm.phone} 
+                         onChange={e => setUserForm(p => ({...p, phone: e.target.value}))} 
+                         className="w-full bg-[#F6F2E7] border border-[#E8E0D0] rounded-xl px-4 py-3 text-sm focus:border-[#0F2E26] outline-none" 
+                       />
+                    </div>
+                 </div>
+
+                 {userFormType === 'dependent' && (
+                    <div className="space-y-1.5">
+                       <label className="text-[10px] font-black tracking-widest uppercase text-[#6B7280]">Mesa Asignada *</label>
+                       <input 
+                         type="text" required 
+                         value={userForm.tableNumber} 
+                         onChange={e => setUserForm(p => ({...p, tableNumber: e.target.value}))} 
+                         className="w-full bg-[#F6F2E7] border border-[#E8E0D0] rounded-xl px-4 py-3 text-sm focus:border-[#0F2E26] outline-none" 
+                       />
+                    </div>
+                 )}
+
+                 <div className="flex items-center gap-3 pt-2">
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input 
+                        type="checkbox" 
+                        className="sr-only peer" 
+                        checked={userForm.isActive}
+                        onChange={e => setUserForm(p => ({...p, isActive: e.target.checked}))}
+                      />
+                      <div className="w-11 h-6 bg-stone-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#0F2E26]"></div>
+                      <span className="ml-3 text-sm font-medium text-[#1A2E26]">Usuario Activo</span>
+                    </label>
+                 </div>
+
+                 <div className="pt-4 flex gap-3">
+                    <button 
+                      type="button"
+                      onClick={() => setShowUserModal(false)}
+                      className="flex-1 px-6 py-4 border border-[#E8E0D0] text-[#6B7280] font-bold rounded-2xl hover:bg-stone-50 transition-all"
+                    >
+                       Cancelar
+                    </button>
+                    <button 
+                      type="submit"
+                      className="flex-1 px-6 py-4 bg-[#0F2E26] text-white font-bold rounded-2xl hover:bg-[#1A3D32] transition-all shadow-lg"
+                    >
+                       {editingUser ? 'Guardar Cambios' : 'Crear Usuario'}
+                    </button>
+                 </div>
+              </form>
+           </div>
         </div>
-        <span className="text-xs font-bold tracking-wide uppercase">App Nativa S3&M</span>
-      </button>
+      )}
 
       <style>{`
         .scrollbar-thin::-webkit-scrollbar { width: 4px; }
