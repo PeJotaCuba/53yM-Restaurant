@@ -1,0 +1,396 @@
+      {/* MANAGERS TAB */}
+      {activeTab === 'managers' && (
+        <div className="bg-white rounded-3xl p-6 md:p-8 border border-stone-100 shadow-sm space-y-8">
+          <div>
+            <h3 className="font-serif text-xl text-stone-900 mb-1 flex items-center gap-2">
+              <ShieldCheck className="text-dark-green" size={20} /> Gestión de Gerentes de Restaurante
+            </h3>
+            <p className="text-xs text-stone-500">
+              Crea cuentas de Gerente de Restaurante. Ellos recibirán los informes de comandas enviadas por los dependientes, realizarán comparativas con Cocina y ejecutarán el Cierre de Caja.
+            </p>
+          </div>
+
+          <form onSubmit={handleAddManager} className="bg-stone-50 p-6 rounded-2xl border border-stone-200 space-y-4">
+            <h4 className="font-bold text-sm text-stone-800">Agregar Nuevo Gerente de Restaurante</h4>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-semibold text-stone-600 mb-1">Nombre Completo *</label>
+                <input 
+                  type="text" 
+                  placeholder="Ej. Roberto Fernández" 
+                  value={newManager.name}
+                  onChange={e => setNewManager(prev => ({ ...prev, name: e.target.value }))}
+                  className="w-full border-stone-200 rounded-xl text-sm px-3 py-2"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-stone-600 mb-1">Teléfono Móvil (WhatsApp)</label>
+                <input 
+                  type="text" 
+                  placeholder="Ej. 53512345" 
+                  value={newManager.phone}
+                  onChange={e => setNewManager(prev => ({ ...prev, phone: e.target.value }))}
+                  className="w-full border-stone-200 rounded-xl text-sm px-3 py-2"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-stone-600 mb-1">Usuario de Acceso *</label>
+                <input 
+                  type="text" 
+                  placeholder="Ej. gerente_restaurante" 
+                  value={newManager.username}
+                  onChange={e => setNewManager(prev => ({ ...prev, username: e.target.value }))}
+                  className="w-full border-stone-200 rounded-xl text-sm px-3 py-2"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-stone-600 mb-1">Contraseña *</label>
+                <input 
+                  type="text" 
+                  placeholder="Ej. gerente53ym" 
+                  value={newManager.password}
+                  onChange={e => setNewManager(prev => ({ ...prev, password: e.target.value }))}
+                  className="w-full border-stone-200 rounded-xl text-sm px-3 py-2 font-mono"
+                  required
+                />
+              </div>
+              <div className="md:col-span-2">
+                <label className="block text-xs font-semibold text-stone-600 mb-1">
+                  ID de Dispositivo Autorizado (Opcional - Restringe el acceso a este dispositivo)
+                </label>
+                <input 
+                  type="text" 
+                  placeholder="Ej. DVC-U30C5 o dejar en blanco" 
+                  value={newManager.deviceId}
+                  onChange={e => setNewManager(prev => ({ ...prev, deviceId: e.target.value }))}
+                  className="w-full border-stone-200 rounded-xl text-sm px-3 py-2 font-mono uppercase"
+                />
+              </div>
+            </div>
+
+            <button type="submit" className="bg-dark-green text-white px-5 py-2.5 rounded-xl font-bold text-sm hover:bg-stone-800 transition-colors flex items-center gap-2">
+              <Plus size={16} /> Crear Gerente de Restaurante
+            </button>
+          </form>
+
+          {/* List Managers */}
+          <div className="space-y-4">
+            <h4 className="font-bold text-sm text-stone-800 mb-2">
+              Gerentes de Restaurante Creados ({(data.managers || []).length})
+            </h4>
+            {(data.managers || []).map(mgr => (
+              <div key={mgr.id || mgr.username} className="flex flex-col md:flex-row justify-between items-start md:items-center p-4 border border-stone-200 rounded-xl bg-white gap-4 shadow-sm">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-base text-dark-green">{mgr.name}</span>
+                    <span className="text-xs bg-amber-100 text-amber-800 font-bold px-2 py-0.5 rounded-full">Gerente</span>
+                    {mgr.deviceId && (
+                      <span className="text-[11px] bg-stone-100 text-stone-700 font-mono font-bold px-2 py-0.5 rounded-md border border-stone-200">
+                        ID: {mgr.deviceId}
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-xs text-stone-500 flex flex-wrap gap-4 font-mono">
+                    <span>Usuario: <strong>{mgr.username}</strong></span>
+                    <span>Contraseña: <strong>{mgr.password}</strong></span>
+                    {mgr.phone && <span>Teléfono: <strong>{mgr.phone}</strong></span>}
+                    {mgr.deviceId && <span>Dispositivo: <strong>{mgr.deviceId}</strong></span>}
+                  </div>
+                </div>
+                <button 
+                  onClick={() => handleRemoveManager(mgr.id || mgr.username)} 
+                  className="text-red-500 hover:text-red-700 hover:bg-red-50 p-2 rounded-lg transition-colors text-xs font-bold flex items-center gap-1"
+                >
+                  <Trash2 size={16} /> Eliminar
+                </button>
+              </div>
+            ))}
+            {(!data.managers || data.managers.length === 0) && (
+              <p className="text-stone-500 text-sm text-center py-6 border border-dashed border-stone-200 rounded-xl">
+                No hay Jefes de Restaurante registrados. Agrega uno arriba para recibir informes de los dependientes.
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* KITCHEN TAB */}
+      {activeTab === 'kitchen' && (
+        <div className="bg-white rounded-3xl p-6 md:p-8 border border-stone-100 shadow-sm space-y-8">
+          <div>
+            <h3 className="font-serif text-xl text-stone-900 mb-1 flex items-center gap-2">
+              <ChefHat className="text-dark-green" size={24} /> Gestión de Perfil Único de Cocina
+            </h3>
+            <p className="text-xs text-stone-500">
+              Administra el perfil del responsable de Cocina. Debe existir <strong>como máximo una cuenta activa</strong> en el sistema.
+            </p>
+          </div>
+
+          {/* Current Status Banner */}
+          <div className="p-5 rounded-2xl border flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-stone-50 border-stone-200">
+            <div>
+              <div className="flex items-center gap-3 mb-2">
+                <span className="text-xs font-bold uppercase tracking-wider text-stone-500">Estado de la Cuenta:</span>
+                {activeKitchenUser?.isActive ? (
+                  <span className="bg-green-100 text-green-800 text-xs font-extrabold px-3 py-1 rounded-full flex items-center gap-1.5 border border-green-200">
+                    <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span> ACTIVA
+                  </span>
+                ) : (
+                  <span className="bg-stone-200 text-stone-700 text-xs font-bold px-3 py-1 rounded-full border border-stone-300">
+                    INACTIVA / SIN ASIGNAR
+                  </span>
+                )}
+              </div>
+              {activeKitchenUser?.isActive ? (
+                <div className="text-sm font-medium text-stone-800 space-y-1">
+                  <p><strong>Responsable Activo:</strong> {activeKitchenUser.name}</p>
+                  <p className="text-xs text-stone-500 font-mono">
+                    Usuario: <strong>@{activeKitchenUser.username}</strong> | Teléfono: <strong>{activeKitchenUser.phone || 'N/A'}</strong> | Dispositivo: <strong>{activeKitchenUser.deviceId || 'Sin restricción'}</strong>
+                  </p>
+                </div>
+              ) : (
+                <p className="text-xs text-stone-500">
+                  No hay ningún perfil de cocina activo actualmente. Completa el formulario a continuación para crear o activar un responsable.
+                </p>
+              )}
+            </div>
+
+            {activeKitchenUser?.isActive && (
+              <button
+                onClick={async () => {
+                  if (confirm('¿Seguro que deseas desactivar la cuenta de Cocina activa?')) {
+                    try {
+                      await upsertKitchenUserMutation({
+                        username: activeKitchenUser.username,
+                        name: activeKitchenUser.name,
+                        password: activeKitchenUser.password || 'cocina53ym',
+                        phone: activeKitchenUser.phone || '',
+                        deviceId: activeKitchenUser.deviceId || '',
+                        isActive: false
+                      });
+                      alert('Cuenta de Cocina desactivada.');
+                    } catch (err: any) {
+                      alert(err?.message || 'Error al desactivar la cuenta.');
+                    }
+                  }
+                }}
+                className="bg-red-50 text-red-700 hover:bg-red-100 border border-red-200 px-4 py-2 rounded-xl text-xs font-bold transition-colors shadow-xs"
+              >
+                Desactivar Cuenta Activa
+              </button>
+            )}
+          </div>
+
+          {/* Form */}
+          <form 
+            onSubmit={async (e) => {
+              e.preventDefault();
+              if (!kitchenForm.name.trim()) {
+                alert('El Nombre del Responsable es obligatorio para la cuenta de Cocina.');
+                return;
+              }
+              try {
+                await upsertKitchenUserMutation({
+                  username: kitchenForm.username.trim() || 'cocina_53m',
+                  name: kitchenForm.name.trim(),
+                  password: kitchenForm.password.trim() || 'cocina53ym',
+                  phone: kitchenForm.phone.trim() || '',
+                  deviceId: kitchenForm.deviceId.trim() || 'DVC-KITCHEN-01',
+                  isActive: true
+                });
+                alert('Perfil de Cocina activado/guardado correctamente.');
+              } catch (err: any) {
+                alert(err?.message || 'Error al guardar la cuenta de cocina.');
+              }
+            }} 
+            className="bg-stone-50 p-6 rounded-2xl border border-stone-200 space-y-4"
+          >
+            <h4 className="font-bold text-sm text-stone-800">
+              {activeKitchenUser?.isActive ? 'Editar Responsable de Cocina' : 'Crear / Activar Perfil de Cocina'}
+            </h4>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-semibold text-stone-600 mb-1">Nombre del Responsable *</label>
+                <input 
+                  type="text" 
+                  placeholder="Ej. Chef Carlos Mendoza" 
+                  value={kitchenForm.name}
+                  onChange={e => setKitchenForm(prev => ({ ...prev, name: e.target.value }))}
+                  className="w-full border-stone-200 rounded-xl text-sm px-3 py-2"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-stone-600 mb-1">Teléfono Móvil (WhatsApp)</label>
+                <input 
+                  type="text" 
+                  placeholder="Ej. 54413935" 
+                  value={kitchenForm.phone}
+                  onChange={e => setKitchenForm(prev => ({ ...prev, phone: e.target.value }))}
+                  className="w-full border-stone-200 rounded-xl text-sm px-3 py-2"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-stone-600 mb-1">Usuario de Acceso *</label>
+                <input 
+                  type="text" 
+                  placeholder="Ej. cocina_53m" 
+                  value={kitchenForm.username}
+                  onChange={e => setKitchenForm(prev => ({ ...prev, username: e.target.value }))}
+                  className="w-full border-stone-200 rounded-xl text-sm px-3 py-2"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-stone-600 mb-1">Contraseña *</label>
+                <input 
+                  type="text" 
+                  placeholder="Ej. cocina53ym" 
+                  value={kitchenForm.password}
+                  onChange={e => setKitchenForm(prev => ({ ...prev, password: e.target.value }))}
+                  className="w-full border-stone-200 rounded-xl text-sm px-3 py-2 font-mono"
+                  required
+                />
+              </div>
+              <div className="md:col-span-2">
+                <label className="block text-xs font-semibold text-stone-600 mb-1">
+                  ID de Dispositivo Asignado (Opcional - Restringe el acceso a este dispositivo)
+                </label>
+                <input 
+                  type="text" 
+                  placeholder="Ej. DVC-KITCHEN-01 o dejar en blanco" 
+                  value={kitchenForm.deviceId}
+                  onChange={e => setKitchenForm(prev => ({ ...prev, deviceId: e.target.value }))}
+                  className="w-full border-stone-200 rounded-xl text-sm px-3 py-2 font-mono uppercase"
+                />
+              </div>
+            </div>
+
+            <button type="submit" className="bg-dark-green text-white px-5 py-2.5 rounded-xl font-bold text-sm hover:bg-stone-800 transition-colors flex items-center gap-2">
+              <ChefHat size={16} /> {activeKitchenUser?.isActive ? 'Guardar Cambios' : 'Crear / Activar Perfil de Cocina'}
+            </button>
+          </form>
+        </div>
+      )}
+
+      {activeTab === 'reservations' && (
+        <>
+          {/* Stats Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-12">
+        <div className="bg-white rounded-2xl p-6 border border-stone-100 shadow-sm flex items-center">
+          <div className="bg-dark-green/10 p-4 rounded-xl mr-4 text-dark-green"><CalendarCheck size={24} /></div>
+          <div>
+            <div className="text-sm text-stone-500 font-medium">Reservas Hoy</div>
+            <div className="text-2xl font-serif text-stone-900">{todayReservations.length}</div>
+          </div>
+        </div>
+        <div className="bg-white rounded-2xl p-6 border border-stone-100 shadow-sm flex items-center">
+          <div className="bg-gold/20 p-4 rounded-xl mr-4 text-gold"><Users size={24} /></div>
+          <div>
+            <div className="text-sm text-stone-500 font-medium">Comensales Hoy</div>
+            <div className="text-2xl font-serif text-stone-900">{todayGuests}</div>
+          </div>
+        </div>
+      </div>
+
+      {/* List */}
+      <div className="bg-white rounded-3xl border border-stone-100 shadow-sm overflow-hidden">
+        <div className="p-6 border-b border-stone-100 bg-stone-50/50">
+          <h3 className="font-serif text-xl text-stone-900">Todas las Reservas</h3>
+        </div>
+        
+        {/* Desktop Table */}
+        <div className="hidden md:block overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-stone-50 text-stone-500 text-xs uppercase tracking-wider">
+                <th className="p-4 font-medium">Fecha</th>
+                <th className="p-4 font-medium">Cliente</th>
+                <th className="p-4 font-medium">Detalles</th>
+                <th className="p-4 font-medium">Estado</th>
+                <th className="p-4 font-medium text-right">Acciones</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-stone-100">
+              {reservations.sort((a,b) => b.createdAt - a.createdAt).map((res, idx) => (
+                <tr key={res.id || `res-${idx}`} className="hover:bg-stone-50/50 transition-colors">
+                  <td className="p-4">
+                    <div className="font-medium text-stone-900">{res.date}</div>
+                    <div className="text-sm text-stone-500">{res.time}</div>
+                  </td>
+                  <td className="p-4">
+                    <div className="font-medium text-stone-900">{res.name}</div>
+                    <div className="text-sm text-stone-500">{res.phone}</div>
+                  </td>
+                  <td className="p-4">
+                    <div className="text-sm text-stone-900">{res.guests} pax</div>
+                    <div className="text-xs text-stone-500">{res.occasion}</div>
+                  </td>
+                  <td className="p-4">
+                    <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${
+                      res.status === 'pending' ? 'bg-amber-100 text-amber-700' :
+                      (res.status === 'paid' || res.status === 'confirmed') ? 'bg-green-100 text-green-700' :
+                      'bg-red-100 text-red-700'
+                    }`}>
+                      {(res.status === 'paid' || res.status === 'confirmed') ? 'Confirmada' : res.status === 'pending' ? 'Pendiente' : 'Cancelada'}
+                    </span>
+                  </td>
+                  <td className="p-4 text-right space-x-2">
+                    {res.status === 'pending' && (
+                      <button onClick={() => handleConfirmReservation(res)} className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors" title="Confirmar Reserva y Notificar">
+                        <Send size={18} />
+                      </button>
+                    )}
+                    {res.status !== 'cancelled' && (
+                      <button onClick={() => updateStatus(res.id, 'cancelled')} className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Cancelar">
+                        <X size={18} />
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Mobile Cards */}
+        <div className="md:hidden divide-y divide-stone-100">
+          {reservations.sort((a,b) => b.createdAt - a.createdAt).map((res, idx) => (
+            <div key={res.id || `res-mob-${idx}`} className="p-6">
+              <div className="flex justify-between items-start mb-4">
+                <div>
+                  <div className="font-medium text-stone-900 text-lg">{res.date} a las {res.time}</div>
+                </div>
+                <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider ${
+                  res.status === 'pending' ? 'bg-amber-100 text-amber-700' :
+                  (res.status === 'paid' || res.status === 'confirmed') ? 'bg-green-100 text-green-700' :
+                  'bg-red-100 text-red-700'
+                }`}>
+                  {(res.status === 'paid' || res.status === 'confirmed') ? 'Confirmada' : res.status === 'pending' ? 'Pendiente' : 'Cancelada'}
+                </span>
+              </div>
+              <div className="mb-4 text-sm text-stone-600">
+                <span className="font-medium text-stone-900">{res.name}</span> • {res.guests} pax • {res.occasion}
+              </div>
+              <div className="flex gap-2">
+                {res.status === 'pending' && (
+                  <button onClick={() => handleConfirmReservation(res)} className="flex-1 bg-green-100 text-green-700 py-2 rounded-lg text-sm font-bold flex items-center justify-center">
+                    <Send size={16} className="mr-1" /> Confirmar
+                  </button>
+                )}
+                {res.status !== 'cancelled' && (
+                  <button onClick={() => updateStatus(res.id, 'cancelled')} className="flex-1 border border-red-200 text-red-600 py-2 rounded-lg text-sm font-bold flex items-center justify-center hover:bg-red-50">
+                    <X size={16} className="mr-1" /> Cancelar
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+      </>
+      )}
