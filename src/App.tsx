@@ -15,7 +15,7 @@ import { DependentPanel } from './components/DependentPanel';
 import { ManagerPanel } from './components/ManagerPanel';
 import { KitchenPanel } from './components/KitchenPanel';
 import { BitacoraStream } from './components/BitacoraStream';
-import { FloatingWhatsApp } from './components/FloatingWhatsApp';
+import { GestionarMesa } from './components/GestionarMesa';
 import { Services } from './components/Services';
 import { Gallery } from './components/Gallery';
 import { Promotions } from './components/Promotions';
@@ -1122,7 +1122,7 @@ export default function App() {
       )}
 
       {userRole === 'none' && currentView !== 'reservation' && currentView !== 'menu' && currentView !== 'dashboard' && (
-        <FloatingWhatsApp 
+        <GestionarMesa 
           currentView={currentView} 
           onReserve={() => {
             setCurrentView('reservation');

@@ -13,30 +13,19 @@
   "categories": ["food", "lifestyle", "business"],
   "icons": [
     {
-      "src": "/pwa-192.png",
-      "sizes": "192x192",
-      "type": "image/png",
+      "src": "/53M_app_icon_SQUARE.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
       "purpose": "any"
     },
     {
-      "src": "/pwa-512.png",
+      "src": "/53M_app_icon_ROUNDED.svg",
       "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any"
-    },
-    {
-      "src": "/pwa-512.png",
-      "sizes": "512x512",
-      "type": "image/png",
+      "type": "image/svg+xml",
       "purpose": "maskable"
     },
     {
-      "src": "/apple-touch-icon.png",
-      "sizes": "180x180",
-      "type": "image/png"
-    },
-    {
-      "src": "/favicon.svg",
+      "src": "/53M_app_icon_ROUNDED.svg",
       "sizes": "any",
       "type": "image/svg+xml"
     }
@@ -47,14 +36,14 @@
       "short_name": "Menú",
       "description": "Consulta el menú con precios en CUP y USD",
       "url": "/?view=menu",
-      "icons": [{ "src": "/pwa-192.png", "sizes": "192x192" }]
+      "icons": [{ "src": "/53M_app_icon_ROUNDED.svg", "sizes": "512x512" }]
     },
     {
       "name": "Reservar Mesa",
       "short_name": "Reservar",
       "description": "Haz tu reserva online en Restaurante 53&M",
       "url": "/?view=reservation",
-      "icons": [{ "src": "/pwa-192.png", "sizes": "192x192" }]
+      "icons": [{ "src": "/53M_app_icon_ROUNDED.svg", "sizes": "512x512" }]
     }
   ],
   "related_applications": [],

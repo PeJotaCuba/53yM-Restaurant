@@ -9,7 +9,7 @@ interface FloatingReservationProps {
   onOrder?: () => void;
 }
 
-export function FloatingWhatsApp({ currentView, onReserve, onOrder }: FloatingReservationProps) {
+export function GestionarMesa({ currentView, onReserve, onOrder }: FloatingReservationProps) {
   const { t } = useLanguage();
   const [isOpen, setIsOpen] = useState(false);
 

@@ -55,7 +55,7 @@ export function PWAInstallBanner() {
         <div className="fixed bottom-4 left-4 right-4 sm:left-auto sm:right-6 sm:max-w-md z-50 bg-dark-green/95 backdrop-blur-md text-white p-4 rounded-2xl border border-gold/40 shadow-2xl animate-slide-up">
           <div className="flex items-start justify-between gap-3">
             <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-gold to-amber-600 p-0.5 shadow-md flex-shrink-0">
-              <img src="/pwa-192.png" alt="53&M App" className="w-full h-full object-cover rounded-[10px]" />
+              <img src="/53M_app_icon_SQUARE.svg" alt="53&M App" className="w-full h-full object-cover rounded-[10px]" />
             </div>
 
             <div className="flex-grow min-w-0">
@@ -144,7 +144,7 @@ export function PWAInstallBanner() {
 
             <div className="text-center mb-6">
               <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-gold to-amber-600 p-0.5 mx-auto mb-3 shadow-lg">
-                <img src="/pwa-192.png" alt="53&M Logo" className="w-full h-full object-cover rounded-2xl" />
+                <img src="/53M_app_icon_SQUARE.svg" alt="53&M Logo" className="w-full h-full object-cover rounded-2xl" />
               </div>
               <h3 className="font-serif text-lg font-bold text-gold">{t('Instalar 53&M en tu iPhone/iPad')}</h3>
               <p className="text-xs text-stone-300 mt-1">{t('Sigue estos dos sencillos pasos en Safari:')}</p>

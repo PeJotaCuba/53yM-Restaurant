@@ -3,10 +3,10 @@ const STATIC_ASSETS = [
   '/',
   '/index.html',
   '/manifest.json',
-  '/favicon.svg',
-  '/pwa-192.png',
-  '/pwa-512.png',
-  '/apple-touch-icon.png'
+  '/53M_app_icon_SQUARE.svg',
+  '/53M_app_icon_SQUARE.svg',
+  '/53M_app_icon_ROUNDED.svg',
+  '/53M_app_icon_SQUARE.svg'
 ];
 
 // Install Event - Pre-cache core shell
@@ -126,8 +126,8 @@ self.addEventListener('push', (event) => {
 
   const options = {
     body: data.body,
-    icon: '/pwa-192.png',
-    badge: '/favicon.svg',
+    icon: '/53M_app_icon_SQUARE.svg',
+    badge: '/53M_app_icon_SQUARE.svg',
     vibrate: [100, 50, 100],
     data: { url: data.url || '/' },
     tag: data.tag || 'general-notification',
