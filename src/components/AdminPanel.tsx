@@ -203,7 +203,7 @@ export function AdminPanel({ data, updateData, updateStatus, userRole }: AdminPa
     }
 
     const generatedDeviceId = newDep.deviceId.trim() 
-      ? newDep.deviceId.trim().toUpperCase() 
+      ? (newDep.deviceId.trim().toUpperCase().startsWith('DVC-') ? newDep.deviceId.trim().toUpperCase() : `DVC-${newDep.deviceId.trim().toUpperCase()}`)
       : `DVC-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
 
     const createdDependent: DependentConfig = {
@@ -273,7 +273,9 @@ export function AdminPanel({ data, updateData, updateStatus, userRole }: AdminPa
       username: newManager.username.trim(),
       password: newManager.password.trim(),
       phone: newManager.phone || data.adminConfig?.phone || '54413935',
-      deviceId: newManager.deviceId.trim().toUpperCase() || undefined,
+      deviceId: newManager.deviceId.trim() 
+        ? (newManager.deviceId.trim().toUpperCase().startsWith('DVC-') ? newManager.deviceId.trim().toUpperCase() : `DVC-${newManager.deviceId.trim().toUpperCase()}`)
+        : undefined,
       isActive: true
     };
 
@@ -438,17 +440,34 @@ export function AdminPanel({ data, updateData, updateStatus, userRole }: AdminPa
   };
 
   const handleAddAdminId = () => {
-    if (!newAdminId.trim()) return;
+    if (!newAdminId.trim() || newAdminId === 'DVC-') return;
+    const cleanId = newAdminId.trim().toUpperCase().startsWith('DVC-') 
+      ? newAdminId.trim().toUpperCase() 
+      : `DVC-${newAdminId.trim().toUpperCase()}`;
+      
     if (adminDeviceIds.length >= 3) {
       alert('Máximo de 3 IDs de Administrador permitido.');
       return;
     }
-    if (adminDeviceIds.includes(newAdminId.trim().toUpperCase())) {
+    if (adminDeviceIds.includes(cleanId)) {
       alert('Este ID ya está registrado.');
       return;
     }
-    setAdminDeviceIds([...adminDeviceIds, newAdminId.trim().toUpperCase()]);
+    
+    const updatedIds = [...adminDeviceIds, cleanId];
+    setAdminDeviceIds(updatedIds);
     setNewAdminId('');
+    
+    // Auto-save to Convex
+    updateData({ 
+      adminConfig: { 
+        ...data.adminConfig,
+        username: data.adminConfig?.username || 'gestion53ym',
+        password: data.adminConfig?.password || 'adminrestaurant.53yM',
+        phone: data.adminConfig?.phone || '54413935',
+        deviceIds: updatedIds 
+      } as any 
+    });
   };
 
   const handleRemoveAdminId = (id: string) => {
@@ -456,7 +475,19 @@ export function AdminPanel({ data, updateData, updateStatus, userRole }: AdminPa
       alert('Debe haber al menos un ID de Administrador.');
       return;
     }
-    setAdminDeviceIds(adminDeviceIds.filter(i => i !== id));
+    const updatedIds = adminDeviceIds.filter(i => i !== id);
+    setAdminDeviceIds(updatedIds);
+    
+    // Auto-save to Convex
+    updateData({ 
+      adminConfig: { 
+        ...data.adminConfig,
+        username: data.adminConfig?.username || 'gestion53ym',
+        password: data.adminConfig?.password || 'adminrestaurant.53yM',
+        phone: data.adminConfig?.phone || '54413935',
+        deviceIds: updatedIds 
+      } as any 
+    });
   };
 
   const openUserModal = (type: 'dependent' | 'manager' | 'kitchen', user?: any) => {
@@ -495,13 +526,18 @@ export function AdminPanel({ data, updateData, updateStatus, userRole }: AdminPa
     }
 
     try {
+      let finalDeviceId = userForm.deviceId.trim().toUpperCase();
+      if (finalDeviceId && !finalDeviceId.startsWith('DVC-')) {
+        finalDeviceId = `DVC-${finalDeviceId}`;
+      }
+
       if (userFormType === 'kitchen') {
         await upsertKitchenUserMutation({
           username: userForm.username,
           name: userForm.name,
           password: userForm.password,
           phone: userForm.phone,
-          deviceId: userForm.deviceId,
+          deviceId: finalDeviceId,
           isActive: userForm.isActive
         });
       } else {
@@ -509,7 +545,7 @@ export function AdminPanel({ data, updateData, updateStatus, userRole }: AdminPa
           username: userForm.username,
           name: userForm.name,
           role: userFormType,
-          deviceId: userForm.deviceId,
+          deviceId: finalDeviceId,
           isActive: userForm.isActive,
           password: userForm.password,
           phone: userForm.phone,
@@ -1201,13 +1237,20 @@ export function AdminPanel({ data, updateData, updateStatus, userRole }: AdminPa
 
                       <div className="space-y-4">
                         <div className="flex gap-2">
-                          <input 
-                            type="text" 
-                            placeholder="Ej: DVC-12345" 
-                            value={newAdminId}
-                            onChange={e => setNewAdminId(e.target.value)}
-                            className="flex-1 bg-white border border-[#E8E0D0] rounded-xl px-4 py-2.5 text-sm focus:border-[#0F2E26] outline-none"
-                          />
+                          <div className="relative flex-1">
+                            <Smartphone className="absolute left-3 top-1/2 -translate-y-1/2 text-[#9A958A]" size={16} />
+                            <input 
+                              type="text" 
+                              placeholder="DVC-XXXXX" 
+                              value={newAdminId || 'DVC-'}
+                              onChange={e => {
+                                let val = e.target.value.toUpperCase();
+                                if (!val.startsWith('DVC-')) val = 'DVC-' + val.replace(/^DVC-?/, '');
+                                setNewAdminId(val);
+                              }}
+                              className="w-full pl-10 pr-4 py-2.5 bg-white border border-[#E8E0D0] rounded-xl text-sm font-mono font-bold focus:border-[#0F2E26] outline-none"
+                            />
+                          </div>
                           <button 
                             onClick={handleAddAdminId}
                             disabled={adminDeviceIds.length >= 3}
@@ -1371,12 +1414,18 @@ export function AdminPanel({ data, updateData, updateStatus, userRole }: AdminPa
                     </div>
                     <div className="space-y-1.5">
                        <label className="text-[10px] font-black tracking-widest uppercase text-[#6B7280]">ID Dispositivo *</label>
-                       <input 
-                         type="text" required 
-                         value={userForm.deviceId} 
-                         onChange={e => setUserForm(p => ({...p, deviceId: e.target.value.toUpperCase()}))} 
-                         className="w-full bg-[#F6F2E7] border border-[#E8E0D0] rounded-xl px-4 py-3 text-sm focus:border-[#0F2E26] outline-none" 
-                       />
+                       <div className="relative">
+                        <input 
+                          type="text" required 
+                          value={userForm.deviceId || 'DVC-'} 
+                          onChange={e => {
+                            let val = e.target.value.toUpperCase();
+                            if (!val.startsWith('DVC-')) val = 'DVC-' + val.replace(/^DVC-?/, '');
+                            setUserForm(p => ({...p, deviceId: val}));
+                          }} 
+                          className="w-full bg-[#F6F2E7] border border-[#E8E0D0] rounded-xl px-4 py-3 text-sm font-mono font-bold focus:border-[#0F2E26] outline-none" 
+                        />
+                       </div>
                     </div>
                  </div>
                  

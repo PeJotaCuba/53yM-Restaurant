@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { AppData, DependentConfig, ManagerConfig } from '../types';
-import { X, Lock, User, Phone, ShieldCheck, UserCheck, Smartphone } from 'lucide-react';
+import { X, Lock, User, Phone, ShieldCheck, UserCheck, Smartphone, Eye } from 'lucide-react';
 import { Logo } from './Logo';
 import { ADMIN_DEVICE_IDS } from '../utils/deviceUtils';
 import { useLanguage } from '../context/LanguageContext';
@@ -21,6 +21,7 @@ export function LoginModal({ data, isOpen, onClose, onAdminLogin, onDependentLog
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
 
   if (!isOpen) return null;
 
@@ -49,9 +50,12 @@ export function LoginModal({ data, isOpen, onClose, onAdminLogin, onDependentLog
 
     if ((isAdminUsernameMatch || isAdminPhoneMatch) && isAdminPasswordMatch) {
       // Check if current deviceId is authorized for Admin
-      const isAdminDeviceValid = ADMIN_DEVICE_IDS.includes(currentDeviceIdClean); 
+      const authorizedAdminIds = (data.adminConfig as any)?.deviceIds || [];
+      const isAdminDeviceValid = ADMIN_DEVICE_IDS.includes(currentDeviceIdClean) || 
+                                authorizedAdminIds.some((id: string) => id.trim().toUpperCase() === currentDeviceIdClean); 
 
       if (!isAdminDeviceValid) {
+        setError(`Dispositivo no autorizado. El ID '${currentDeviceIdClean}' no está registrado para acceso administrativo.`);
         return;
       }
 
@@ -225,7 +229,6 @@ export function LoginModal({ data, isOpen, onClose, onAdminLogin, onDependentLog
               <User className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400" size={18} />
               <input
                 type="text"
-                placeholder="Ej. gestion53ym, jefe_restaurante o 54413935"
                 value={identifier}
                 onChange={e => setIdentifier(e.target.value)}
                 className="w-full border-stone-200 rounded-xl pl-11 pr-4 py-3 text-sm focus:border-dark-green focus:ring-1 focus:ring-dark-green outline-none"
@@ -240,12 +243,19 @@ export function LoginModal({ data, isOpen, onClose, onAdminLogin, onDependentLog
             <div className="relative">
               <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400" size={18} />
               <input
-                type="password"
+                type={showPassword ? "text" : "password"}
                 placeholder="••••••••"
                 value={password}
                 onChange={e => setPassword(e.target.value)}
-                className="w-full border-stone-200 rounded-xl pl-11 pr-4 py-3 text-sm focus:border-dark-green focus:ring-1 focus:ring-dark-green outline-none"
+                className="w-full border-stone-200 rounded-xl pl-11 pr-12 py-3 text-sm focus:border-dark-green focus:ring-1 focus:ring-dark-green outline-none"
               />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-4 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-600 transition-colors"
+              >
+                {showPassword ? <Eye size={18} className="text-gold" /> : <Smartphone size={18} />}
+              </button>
             </div>
           </div>
 
