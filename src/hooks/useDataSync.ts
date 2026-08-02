@@ -167,6 +167,21 @@ export function useDataSync() {
     fetchData();
   }, []);
 
+  useEffect(() => {
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'appData' && e.newValue) {
+        try {
+          const parsed = JSON.parse(e.newValue);
+          setData(parsed);
+        } catch (err) {
+          console.error('[DataSync] Error parsing storage update:', err);
+        }
+      }
+    };
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, []);
+
   const updateData = (newData: Partial<AppData>) => {
     setData(prev => {
       const updated = { ...prev, ...newData };

@@ -46,7 +46,7 @@ export function KitchenPanel({ data, updateData, kitchenInfo }: KitchenPanelProp
     o.status === 'kitchen_ready' || 
     o.status === 'ready_to_serve' ||
     o.status === 'delivered'
-  );
+  ).sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
 
   const pendingCount = activeKitchenOrders.filter(o => o.status === 'pending' || o.status === 'in_kitchen').length;
   const inProgressCount = activeKitchenOrders.filter(o => o.status === 'kitchen_in_progress' || o.status === 'in_progress').length;

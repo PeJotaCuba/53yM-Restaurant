@@ -99,6 +99,17 @@ export function ClientOrderWorkspace({ data, updateData, onBack }: ClientOrderWo
 
     const updatedComandas = [newAnnexedComanda, ...(data?.comandas || [])];
     
+    const depNotif = {
+      id: `NOTIF-ANX-${Date.now()}`,
+      timestamp: Date.now(),
+      orderId: rootId,
+      tableNumber: clientTable || '',
+      targetRole: 'dependent' as const,
+      title: `➕ Comanda Anexa: ${clientTable}`,
+      message: `El cliente ${rootComanda.customerName || clientName || 'Comensal'} ha iniciado una comanda anexa.`
+    };
+    const updatedNotifications = [depNotif, ...(data?.notifications || [])].slice(0, 50);
+
     const log = {
       id: `LOG-${Date.now()}`,
       timestamp: Date.now(),
@@ -113,6 +124,7 @@ export function ClientOrderWorkspace({ data, updateData, onBack }: ClientOrderWo
     if (updateData) {
       updateData({
         comandas: updatedComandas,
+        notifications: updatedNotifications,
         auditLogs: [log, ...(data?.auditLogs || [])]
       });
     }
@@ -136,6 +148,17 @@ export function ClientOrderWorkspace({ data, updateData, onBack }: ClientOrderWo
       return c;
     });
 
+    const depNotif = {
+      id: `NOTIF-PAY-${Date.now()}`,
+      timestamp: Date.now(),
+      orderId: rootId,
+      tableNumber: clientTable || '',
+      targetRole: 'dependent' as const,
+      title: `💳 Solicitud de Pago: ${clientTable}`,
+      message: `El cliente ${rootComanda.customerName || clientName || 'Comensal'} solicita cerrar la cuenta.`
+    };
+    const updatedNotifications = [depNotif, ...(data?.notifications || [])].slice(0, 50);
+
     const log = {
       id: `LOG-${Date.now()}`,
       timestamp: Date.now(),
@@ -150,6 +173,7 @@ export function ClientOrderWorkspace({ data, updateData, onBack }: ClientOrderWo
     if (updateData) {
       updateData({
         comandas: updatedComandas,
+        notifications: updatedNotifications,
         auditLogs: [log, ...(data?.auditLogs || [])]
       });
     }
@@ -970,30 +994,44 @@ export function ClientOrderWorkspace({ data, updateData, onBack }: ClientOrderWo
                       </div>
                     )}
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
-                      <button
-                        onClick={() => handleClientAddAnnexedOrder(clientRootComanda)}
-                        className="w-full bg-stone-900 hover:bg-stone-800 text-white font-serif font-bold py-3.5 px-4 rounded-2xl text-xs md:text-sm transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer border border-stone-800"
-                      >
-                        <Plus size={18} className="text-gold" />
-                        <span>{t('AGREGAR PEDIDO (Comanda Anexa)')}</span>
-                      </button>
+                    {(() => {
+                      const hasBeenServed = activeGroupOrders.some(o => o.status === 'delivered' || o.status === 'paid' || o.status === 'closed');
+                      
+                      if (!hasBeenServed) {
+                        return (
+                          <div className="bg-stone-50 border border-stone-200 rounded-2xl p-4 text-stone-600 text-xs text-center font-medium animate-pulse">
+                            ⏳ {t('Tus platos están siendo elaborados en cocina. Una vez servidos en la mesa, se habilitará la opción de agregar pedidos anexos o solicitar la cuenta.')}
+                          </div>
+                        );
+                      }
 
-                      <button
-                        onClick={() => handleClientRequestPayment(clientRootComanda)}
-                        disabled={isPaymentRequested}
-                        className={`w-full font-serif font-bold py-3.5 px-4 rounded-2xl text-xs md:text-sm transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer ${
-                          isPaymentRequested
-                            ? 'bg-amber-200 text-amber-900 cursor-not-allowed border border-amber-300'
-                            : 'bg-gold hover:bg-amber-400 text-dark-green border border-amber-300 font-extrabold'
-                        }`}
-                      >
-                        <DollarSign size={18} />
-                        <span>
-                          {isPaymentRequested ? t('✓ Solicitud de Pago Enviada') : t('PAGAR LA CUENTA')}
-                        </span>
-                      </button>
-                    </div>
+                      return (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+                          <button
+                            onClick={() => handleClientAddAnnexedOrder(clientRootComanda)}
+                            className="w-full bg-stone-900 hover:bg-stone-800 text-white font-serif font-bold py-3.5 px-4 rounded-2xl text-xs md:text-sm transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer border border-stone-800"
+                          >
+                            <Plus size={18} className="text-gold" />
+                            <span>{t('AGREGAR PEDIDO (Comanda Anexa)')}</span>
+                          </button>
+
+                          <button
+                            onClick={() => handleClientRequestPayment(clientRootComanda)}
+                            disabled={isPaymentRequested}
+                            className={`w-full font-serif font-bold py-3.5 px-4 rounded-2xl text-xs md:text-sm transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer ${
+                              isPaymentRequested
+                                ? 'bg-amber-200 text-amber-900 cursor-not-allowed border border-amber-300'
+                                : 'bg-gold hover:bg-amber-400 text-dark-green border border-amber-300 font-extrabold'
+                            }`}
+                          >
+                            <DollarSign size={18} />
+                            <span>
+                              {isPaymentRequested ? t('✓ Solicitud de Pago Enviada') : t('PAGAR LA CUENTA')}
+                            </span>
+                          </button>
+                        </div>
+                      );
+                    })()}
                   </div>
                 );
               })()}

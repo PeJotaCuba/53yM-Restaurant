@@ -16,7 +16,9 @@ import {
   Trash2, 
   CheckCircle2, 
   AlertCircle,
-  Database
+  Database,
+  Edit,
+  Edit3
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import { HistoryViewer } from './HistoryViewer';
@@ -59,6 +61,9 @@ export function DependentPanel({ data, updateData, dependentInfo }: DependentPan
 
   // Ready orders modal state for dependent
   const [showReadyModal, setShowReadyModal] = useState<boolean>(false);
+  
+  // Editing state for client pending orders before approval
+  const [editingOrder, setEditingOrder] = useState<Order | null>(null);
 
   const isSameTable = (t1?: string, t2?: string) => {
     if (!t1 || !t2) return false;
@@ -1242,12 +1247,32 @@ export function DependentPanel({ data, updateData, dependentInfo }: DependentPan
                   </div>
                 </div>
 
-                <button
-                  onClick={() => handleApproveClientOrder(ord)}
-                  className="w-full sm:w-auto bg-dark-green hover:bg-stone-800 text-white font-bold px-4 py-2.5 rounded-xl text-xs transition-colors flex items-center justify-center gap-2 shadow-sm whitespace-nowrap"
-                >
-                  <Send size={15} /> Aprobar & Mandar a Cocina (Descargar PDF)
-                </button>
+                <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+                  <button
+                    onClick={() => {
+                      const itemsList = ord.orderItems && ord.orderItems.length > 0
+                        ? ord.orderItems
+                        : (ord.items || []).map(raw => {
+                            const match = raw.match(/^(\d+)\s*x\s*(.+)$/i);
+                            const qty = match ? parseInt(match[1], 10) : 1;
+                            const name = match ? match[2].trim() : raw.trim();
+                            const found = data.menuItems.find(m => m.name.toLowerCase() === name.toLowerCase());
+                            return { name, quantity: qty, priceCUP: found ? found.priceCUP : 150 };
+                          });
+                      setEditingOrder({ ...ord, orderItems: itemsList });
+                    }}
+                    className="bg-amber-500 hover:bg-amber-600 text-stone-950 font-bold px-4 py-2.5 rounded-xl text-xs transition-colors flex items-center justify-center gap-2 shadow-sm whitespace-nowrap"
+                  >
+                    <Edit3 size={15} /> Editar / Agregar Platos
+                  </button>
+
+                  <button
+                    onClick={() => handleApproveClientOrder(ord)}
+                    className="bg-dark-green hover:bg-stone-800 text-white font-bold px-4 py-2.5 rounded-xl text-xs transition-colors flex items-center justify-center gap-2 shadow-sm whitespace-nowrap"
+                  >
+                    <Send size={15} /> Aprobar & Mandar a Cocina (Descargar PDF)
+                  </button>
+                </div>
               </div>
             ))}
           </div>
@@ -1387,6 +1412,8 @@ export function DependentPanel({ data, updateData, dependentInfo }: DependentPan
 
                     {(() => {
                       const effectiveOrders = getComandaOrders(openComanda, data.orders || []);
+                      const groupComs = openComanda ? [openComanda, ...(data.comandas || []).filter(c => c.parentComandaId === openComanda.id)] : [];
+                      const isPaymentRequested = groupComs.some(c => c.paymentRequested);
 
                       const canCloseAndCharge = openComanda && (
                         effectiveOrders.length === 0 || 
@@ -1401,9 +1428,15 @@ export function DependentPanel({ data, updateData, dependentInfo }: DependentPan
                         return (
                           <button
                             onClick={() => handleOpenCloseModal(openComanda)}
-                            className="bg-green-600 hover:bg-green-700 text-white font-bold px-4 py-2.5 rounded-xl text-xs transition-colors shadow-md flex items-center gap-1.5 animate-fade-in"
+                            disabled={!isPaymentRequested}
+                            className={`font-bold px-4 py-2.5 rounded-xl text-xs transition-colors shadow-md flex items-center gap-1.5 ${
+                              isPaymentRequested
+                                ? "bg-green-600 hover:bg-green-700 text-white cursor-pointer"
+                                : "bg-stone-200 text-stone-400 cursor-not-allowed border border-stone-300"
+                            }`}
+                            title={!isPaymentRequested ? t('El cliente aún no ha solicitado el pago') : ''}
                           >
-                            <DollarSign size={16} /> {t('Cerrar & Cobrar Comanda')}
+                            <DollarSign size={16} /> {t('Cerrar & Cobrar Comanda')} {!isPaymentRequested && t(' (Espera Cliente)')}
                           </button>
                         );
                       }
@@ -1484,6 +1517,8 @@ export function DependentPanel({ data, updateData, dependentInfo }: DependentPan
                 <div className="space-y-3">
                   {(() => {
                     const displayOrders = getComandaOrders(openComanda, data.orders || []);
+                    const groupComs = openComanda ? [openComanda, ...(data.comandas || []).filter(c => c.parentComandaId === openComanda.id)] : [];
+                    const isPaymentRequested = groupComs.some(c => c.paymentRequested);
 
                     return (
                       <>
@@ -1515,7 +1550,7 @@ export function DependentPanel({ data, updateData, dependentInfo }: DependentPan
                                     currentStatus === 'kitchen_in_progress' || currentStatus === 'in_progress' ? 'bg-blue-100 text-blue-800 border border-blue-300' :
                                     'bg-amber-100 text-amber-800 border border-amber-300'
                                   }`}>
-                                    {currentStatus === 'delivered' ? '✓ Servido en Mesa · A la espera de cobro' :
+                                    {currentStatus === 'delivered' ? (isPaymentRequested ? '✓ Servido · Pago Solicitado' : '✓ Servido en Mesa') :
                                      currentStatus === 'kitchen_ready' || currentStatus === 'ready_to_serve' ? '🔔 ¡LISTO EN COCINA!' :
                                      currentStatus === 'kitchen_in_progress' || currentStatus === 'in_progress' ? '🔥 En Elaboración' :
                                      '⏳ Enviado a Cocina'}
@@ -1535,11 +1570,24 @@ export function DependentPanel({ data, updateData, dependentInfo }: DependentPan
                                           }
                                           return c;
                                         });
-                                        updateData({ orders: updatedOrders, comandas: updatedComandas });
+
+                                        // Trigger client notification
+                                        const clientNotif = {
+                                          id: `NOTIF-SERVED-${Date.now()}`,
+                                          timestamp: Date.now(),
+                                          orderId: order.id,
+                                          tableNumber: order.tableNumber,
+                                          targetRole: 'client' as const,
+                                          title: '🍽️ ¡Pedido Servido!',
+                                          message: `Tu ración de ${order.orderItems && order.orderItems.length > 0 ? order.orderItems[0].name : "comida"} ha sido servida en la mesa. ¡Buen provecho!`
+                                        };
+                                        const updatedNotifications = [clientNotif, ...(data.notifications || [])].slice(0, 50);
+
+                                        updateData({ orders: updatedOrders, comandas: updatedComandas, notifications: updatedNotifications });
                                       }}
                                       className="bg-emerald-800 hover:bg-stone-900 text-white px-2.5 py-1 rounded-lg text-[10px] font-bold transition-colors shadow-xs"
                                     >
-                                      ✓ Servido en Mesa · A la espera de cobro
+                                      ✓ Servir en Mesa
                                     </button>
                                   )}
                                 </div>
@@ -1921,12 +1969,25 @@ export function DependentPanel({ data, updateData, dependentInfo }: DependentPan
                               }
                               return c;
                             });
-                            updateData({ orders: updatedOrders, comandas: updatedComandas });
+                            
+                            // Client notification
+                            const clientNotif = {
+                              id: `NOTIF-SERVED-${Date.now()}`,
+                              timestamp: Date.now(),
+                              orderId: ord.id,
+                              tableNumber: ord.tableNumber,
+                              targetRole: 'client' as const,
+                              title: '🍽️ ¡Pedido Servido!',
+                              message: `Tu ración de ${ord.orderItems && ord.orderItems.length > 0 ? ord.orderItems[0].name : "comida"} ha sido servida en la mesa. ¡Buen provecho!`
+                            };
+                            const updatedNotifications = [clientNotif, ...(data.notifications || [])].slice(0, 50);
+
+                            updateData({ orders: updatedOrders, comandas: updatedComandas, notifications: updatedNotifications });
                             if (readyKitchenOrders.length <= 1) setShowReadyModal(false);
                           }}
                           className="bg-emerald-700 hover:bg-stone-900 text-white font-bold text-xs px-4 py-2 rounded-xl transition-all shadow-md flex items-center gap-1.5"
                         >
-                          ✓ Servido en Mesa · A la espera de cobro
+                          ✓ Servir en Mesa
                         </button>
                       </div>
                     </div>
@@ -1941,6 +2002,161 @@ export function DependentPanel({ data, updateData, dependentInfo }: DependentPan
                 className="bg-stone-100 hover:bg-stone-200 text-stone-700 font-bold text-xs px-5 py-2.5 rounded-xl"
               >
                 Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* EDIT/ADD PENDING CLIENT ORDER MODAL */}
+      {editingOrder && (
+        <div className="fixed inset-0 bg-stone-900/70 backdrop-blur-xs z-[150] flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 md:p-8 shadow-2xl space-y-6 relative max-h-[90vh] flex flex-col animate-scale-up">
+            <button
+              onClick={() => setEditingOrder(null)}
+              className="absolute top-6 right-6 text-stone-400 hover:text-stone-750 font-bold p-1 bg-stone-100 rounded-full w-8 h-8 flex items-center justify-center hover:bg-stone-200"
+            >
+              ✕
+            </button>
+
+            <div>
+              <h3 className="text-xl font-serif font-bold text-stone-900 flex items-center gap-2">
+                ✏️ Editar / Agregar a Pedido de Cliente
+              </h3>
+              <p className="text-xs text-stone-500 mt-1">
+                Modifica cantidades, elimina platos, o añade nuevos platos del menú antes de enviar a cocina.
+              </p>
+            </div>
+
+            <div className="overflow-y-auto space-y-4 pr-1 flex-grow">
+              {/* List current items */}
+              <div className="space-y-2">
+                <span className="text-[10px] uppercase font-bold text-stone-400 tracking-wider">Platos en el Pedido</span>
+                {(editingOrder.orderItems || []).map((it, idx) => (
+                  <div key={idx} className="flex justify-between items-center bg-stone-50 border border-stone-200 p-3 rounded-xl text-xs">
+                    <span className="font-semibold text-stone-800">{it.name}</span>
+                    <div className="flex items-center gap-3">
+                      <span className="text-stone-500 font-mono">${it.priceCUP} CUP</span>
+                      <div className="flex items-center gap-2 border border-stone-300 rounded-lg p-1 bg-white">
+                        <button
+                          onClick={() => {
+                            const updatedItems = (editingOrder.orderItems || []).map((item, i) => 
+                              i === idx ? { ...item, quantity: Math.max(1, item.quantity - 1) } : item
+                            );
+                            setEditingOrder({ ...editingOrder, orderItems: updatedItems });
+                          }}
+                          className="px-1.5 py-0.5 font-bold hover:bg-stone-100 rounded text-stone-600"
+                        >
+                          -
+                        </button>
+                        <span className="font-bold font-mono px-1">{it.quantity}</span>
+                        <button
+                          onClick={() => {
+                            const updatedItems = (editingOrder.orderItems || []).map((item, i) => 
+                              i === idx ? { ...item, quantity: item.quantity + 1 } : item
+                            );
+                            setEditingOrder({ ...editingOrder, orderItems: updatedItems });
+                          }}
+                          className="px-1.5 py-0.5 font-bold hover:bg-stone-100 rounded text-stone-600"
+                        >
+                          +
+                        </button>
+                      </div>
+                      <button
+                        onClick={() => {
+                          const updatedItems = (editingOrder.orderItems || []).filter((_, i) => i !== idx);
+                          setEditingOrder({ ...editingOrder, orderItems: updatedItems });
+                        }}
+                        className="text-red-500 hover:text-red-700 p-1 font-bold"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  </div>
+                ))}
+                {(!editingOrder.orderItems || editingOrder.orderItems.length === 0) && (
+                  <p className="text-xs text-stone-400 text-center py-4">No hay platos en este pedido. Añade uno abajo.</p>
+                )}
+              </div>
+
+              {/* Add New Item Dropdown */}
+              <div className="bg-stone-50 p-4 rounded-xl border border-stone-200 space-y-2">
+                <span className="text-[10px] uppercase font-bold text-stone-400 tracking-wider">Añadir plato al pedido</span>
+                <div className="grid grid-cols-12 gap-2">
+                  <select
+                    id="edit-order-menu-select"
+                    className="col-span-8 text-xs border border-stone-300 rounded-lg p-2 bg-white outline-none"
+                  >
+                    {data.menuItems.map(item => (
+                      <option key={item.id} value={item.name}>
+                        {item.name} (${item.priceCUP} CUP)
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    onClick={() => {
+                      const selectEl = document.getElementById('edit-order-menu-select') as HTMLSelectElement;
+                      if (!selectEl) return;
+                      const selectedName = selectEl.value;
+                      const menuItem = data.menuItems.find(m => m.name === selectedName);
+                      if (!menuItem) return;
+
+                      const currentItems = editingOrder.orderItems || [];
+                      const existsIdx = currentItems.findIndex(it => it.name === selectedName);
+                      let updatedItems;
+                      if (existsIdx > -1) {
+                        updatedItems = currentItems.map((it, i) => 
+                          i === existsIdx ? { ...it, quantity: it.quantity + 1 } : it
+                        );
+                      } else {
+                        updatedItems = [...currentItems, { name: menuItem.name, quantity: 1, priceCUP: menuItem.priceCUP }];
+                      }
+                      setEditingOrder({ ...editingOrder, orderItems: updatedItems });
+                    }}
+                    className="col-span-4 bg-dark-green hover:bg-stone-800 text-gold font-bold text-xs py-2 px-3 rounded-lg text-center"
+                  >
+                    + Añadir
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="border-t border-stone-100 pt-4 flex justify-end gap-2">
+              <button
+                onClick={() => setEditingOrder(null)}
+                className="px-4 py-2 border border-stone-300 rounded-xl text-stone-600 hover:bg-stone-100 text-xs font-bold"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => {
+                  const newTotalCUP = (editingOrder.orderItems || []).reduce((acc, i) => acc + (i.priceCUP * i.quantity), 0);
+                  const updatedOrders = (data.orders || []).map(o => o.id === editingOrder.id ? {
+                    ...editingOrder,
+                    totalCUP: newTotalCUP,
+                    items: (editingOrder.orderItems || []).map(it => `${it.quantity}x ${it.name}`)
+                  } : o);
+
+                  const log = {
+                    id: `LOG-${Date.now()}`,
+                    timestamp: Date.now(),
+                    timeStr: new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }),
+                    dateStr: new Date().toLocaleDateString('es-ES'),
+                    role: 'Dependiente' as const,
+                    userOrDevice: dependentInfo.username,
+                    action: 'Pedido de Cliente Modificado',
+                    details: `Modificó platos del pedido #${editingOrder.id} antes de enviar a cocina.`
+                  };
+
+                  updateData({
+                    orders: updatedOrders,
+                    auditLogs: [log, ...(data.auditLogs || [])]
+                  });
+                  setEditingOrder(null);
+                }}
+                className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs shadow-md flex items-center gap-1.5"
+              >
+                ✓ Guardar cambios
               </button>
             </div>
           </div>

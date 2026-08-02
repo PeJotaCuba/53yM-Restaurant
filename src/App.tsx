@@ -25,6 +25,7 @@ import { Contact } from './components/Contact';
 import { Logo } from './components/Logo';
 import { LoginModal } from './components/LoginModal';
 import { PWAInstallBanner } from './components/PWAInstallBanner';
+import { SystemNotificationManager } from './components/SystemNotificationManager';
 import { useDeviceId } from './hooks/useDeviceId';
 import { DependentConfig, ManagerConfig, Reservation, AppData } from './types';
 import { ADMIN_DEVICE_IDS } from './utils/deviceUtils';
@@ -83,6 +84,7 @@ export default function App() {
   const liveLandingConfig = useQuery(api.admin.getSetting, { key: "landingConfig" });
   const liveAdminConfig = useQuery(api.admin.getSetting, { key: "adminConfig" });
   const liveComandas = useQuery(api.admin.getSetting, { key: "comandas" });
+  const liveNotifications = useQuery(api.admin.getSetting, { key: "notifications" });
   const liveOrderReports = useQuery(api.admin.getSetting, { key: "orderReports" });
   const liveKitchenReports = useQuery(api.admin.getSetting, { key: "kitchenReports" });
   const liveCashRegisterCloses = useQuery(api.admin.getSetting, { key: "cashRegisterCloses" });
@@ -214,6 +216,7 @@ export default function App() {
       auditLogs: mappedAuditLogs,
       adminConfig: liveAdminConfig || { username: 'gestion53ym', password: 'adminrestaurant.53yM', phone: '54413935' },
       comandas: liveComandas || [],
+      notifications: liveNotifications || [],
       isShiftActive: liveIsShiftActive !== false,
       orderReports: liveOrderReports || [],
       kitchenReports: liveKitchenReports || [],
@@ -231,6 +234,7 @@ export default function App() {
     liveLogs,
     liveAdminConfig,
     liveComandas,
+    liveNotifications,
     liveIsShiftActive,
     liveOrderReports,
     liveKitchenReports,
@@ -285,6 +289,9 @@ export default function App() {
     }
     if (newData.comandas) {
       updateSettingMutation({ key: "comandas", value: newData.comandas }).catch(console.warn);
+    }
+    if (newData.notifications) {
+      updateSettingMutation({ key: "notifications", value: newData.notifications }).catch(console.warn);
     }
     if (newData.orderReports) {
       updateSettingMutation({ key: "orderReports", value: newData.orderReports }).catch(console.warn);
@@ -1054,6 +1061,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen flex flex-col">
+      <SystemNotificationManager data={appData} currentView={currentView} />
       <Navigation 
         currentView={currentView} 
         setView={setCurrentView} 
