@@ -202,3 +202,26 @@ export const updateReservation = mutation({
   },
 });
 
+export const deleteReservation = mutation({
+  args: { 
+    id: v.id("reservations"), 
+    username: v.string(), 
+    userRole: v.string() 
+  },
+  handler: async (ctx, args) => {
+    const res = await ctx.db.get(args.id);
+    if (!res) throw new Error("Reservation not found");
+    if (res.status !== "cancelled") throw new Error("Solo las reservaciones canceladas pueden ser eliminadas.");
+    
+    await ctx.db.delete(args.id);
+    
+    await ctx.db.insert("bitacora", {
+      action: `Reserva de ${res.customerName} ELIMINADA permanentemente por ${args.username}`,
+      userRole: args.userRole,
+      username: args.username,
+      timestamp: Date.now(),
+    });
+    return { success: true };
+  }
+});
+
