@@ -261,4 +261,5 @@ export interface AppData {
   exchangeRate?: ExchangeRateConfig;
   notifications?: AppNotification[];
   history?: any[];
+  gerenteCierreCompleto?: boolean;
 }

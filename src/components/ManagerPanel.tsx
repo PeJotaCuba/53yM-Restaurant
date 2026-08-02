@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { AppData, OrderReport, KitchenReport, ManagerConfig, Reservation, CashRegisterClose } from '../types';
+import { AppData, OrderReport, KitchenReport, ManagerConfig, Reservation, CashRegisterClose, AppNotification } from '../types';
 import { useLanguage } from '../context/LanguageContext';
 import { 
   ShieldCheck, 
@@ -359,10 +359,49 @@ export function ManagerPanel({ data, updateData, managerInfo, updateStatus }: Ma
   };
 
   const handleDownloadManagerZip = async () => {
+    // 1. Validation before closing
+    const cashClose = cashRegisterCloses[0];
+    if (!cashClose || cashClose.status !== 'balanced') {
+      alert('El cuadre de caja no coincide. Revise los datos antes de cerrar.');
+      return;
+    }
+
     try {
       const zip = new JSZip();
 
-      // 1. Informes de Dependientes
+      // 1. Kitchen report
+      if (kitchenReports.length > 0) {
+        const kReport = kitchenReports[0];
+        const doc = new jsPDF();
+        doc.setFillColor(27, 67, 50);
+        doc.rect(0, 0, 210, 35, 'F');
+        doc.setTextColor(255, 255, 255);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(18);
+        doc.text('RESTAURANTE TERRAZA 53&M', 14, 18);
+        doc.setFontSize(11);
+        doc.setFont('helvetica', 'normal');
+        doc.text('Informe Oficial de Cocina', 14, 26);
+        
+        doc.setTextColor(40, 40, 40);
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'bold');
+        doc.text(`Jefe de Cocina: ${kReport.chefName || 'Cocina'}`, 14, 45);
+        doc.text(`Fecha: ${kReport.dateStr}`, 14, 52);
+        doc.text(`Total Platos Preparados: ${kReport.totalDishesPrepared}`, 14, 59);
+        let yPos = 70;
+        doc.text('Desglose de Raciones Preparadas:', 14, yPos);
+        yPos += 8;
+        kReport.dishesSummary.forEach(dish => {
+          doc.setFont('helvetica', 'normal');
+          doc.text(`${dish.count}x ${dish.name}`, 18, yPos);
+          yPos += 6;
+        });
+        
+        zip.file(`Informe_Cocina.pdf`, doc.output('blob'));
+      }
+
+      // 2. Waiter/dependent reports
       reports.forEach(report => {
         const doc = new jsPDF();
         doc.setFillColor(27, 67, 50);
@@ -380,11 +419,12 @@ export function ManagerPanel({ data, updateData, managerInfo, updateStatus }: Ma
         doc.setFont('helvetica', 'bold');
         doc.text(`Dependiente: ${report.dependentName}`, 14, 45);
         doc.text(`Mesa: ${report.tableNumber}`, 14, 52);
+        doc.text(`Recaudación CUP: $${(report.totalAmountCUP || 0).toLocaleString()} CUP`, 14, 59);
         
-        let yPos = 65;
+        let yPos = 70;
         doc.text('Platos & Raciones Entregados:', 14, yPos);
         yPos += 8;
-        report.itemsSummary.forEach((item, i) => {
+        report.itemsSummary.forEach(item => {
           doc.setFont('helvetica', 'normal');
           doc.text(`${item.count}x ${item.name}`, 18, yPos);
           yPos += 6;
@@ -393,32 +433,57 @@ export function ManagerPanel({ data, updateData, managerInfo, updateStatus }: Ma
         zip.file(`Dependiente_${report.dependentName}_${report.tableNumber}.pdf`, doc.output('blob'));
       });
 
-      // 2. Informe de Cocina
+      // 3. Kitchen vs waiter comparison
+      const docComp = new jsPDF();
+      docComp.setFillColor(27, 67, 50);
+      docComp.rect(0, 0, 210, 35, 'F');
+      docComp.setTextColor(255, 255, 255);
+      docComp.setFont('helvetica', 'bold');
+      docComp.setFontSize(18);
+      docComp.text('RESTAURANTE TERRAZA 53&M', 14, 18);
+      docComp.setFontSize(11);
+      docComp.setFont('helvetica', 'normal');
+      docComp.text('Informe Comparativo: Cocina vs Dependientes', 14, 26);
+
+      docComp.setTextColor(40, 40, 40);
+      docComp.setFontSize(10);
+      docComp.setFont('helvetica', 'bold');
+      let yPosComp = 45;
+
       if (kitchenReports.length > 0) {
-        const kReport = kitchenReports[0];
-        const doc = new jsPDF();
-        doc.setFillColor(27, 67, 50);
-        doc.rect(0, 0, 210, 35, 'F');
-        doc.setTextColor(255, 255, 255);
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(18);
-        doc.text('RESTAURANTE TERRAZA 53&M', 14, 18);
-        doc.setFontSize(11);
-        doc.text('Informe de Cocina', 14, 26);
-        
-        doc.setTextColor(40, 40, 40);
-        doc.text(`Total Platos Preparados: ${kReport.totalDishesPrepared}`, 14, 45);
-        let yPos = 55;
-        kReport.dishesSummary.forEach(dish => {
-          doc.setFont('helvetica', 'normal');
-          doc.text(`${dish.count}x ${dish.name}`, 18, yPos);
-          yPos += 6;
+        const kRep = kitchenReports[0];
+        const dependentDishesMap: { [dishName: string]: number } = {};
+        latestReports.forEach(r => {
+          r.itemsSummary.forEach(it => {
+            dependentDishesMap[it.name] = (dependentDishesMap[it.name] || 0) + it.count;
+          });
         });
-        
-        zip.file(`Informe_Cocina.pdf`, doc.output('blob'));
+
+        docComp.text(`Informe de Cocina ID: #${kRep.id.slice(-4)} — ${kRep.chefName}`, 14, yPosComp);
+        yPosComp += 7;
+        docComp.text(`Total Platos Elaborados: ${kRep.totalDishesPrepared}`, 14, yPosComp);
+        yPosComp += 12;
+
+        docComp.setFont('helvetica', 'bold');
+        docComp.text('Plato / Ración | Cocina | Facturados | Estado', 14, yPosComp);
+        yPosComp += 8;
+        docComp.setFont('helvetica', 'normal');
+
+        kRep.dishesSummary.forEach(dItem => {
+          const billedCount = dependentDishesMap[dItem.name] || 0;
+          const diff = billedCount - dItem.count;
+          const isExact = diff === 0;
+          const statusText = isExact ? 'Coincidencia Exacta' : (diff < 0 ? `Faltante: ${diff}` : `Sobrante: +${diff}`);
+          docComp.text(`${dItem.name}: Cocina (${dItem.count}) | Facturados (${billedCount}) | ${statusText}`, 14, yPosComp);
+          yPosComp += 6;
+        });
+      } else {
+        docComp.text('No hay informes de cocina registrados en la jornada.', 14, yPosComp);
       }
 
-      // 3. Cierre de Caja
+      zip.file('Comparativo_Cocina_Dependientes.pdf', docComp.output('blob'));
+
+      // 4. Cash closing report
       if (cashRegisterCloses.length > 0) {
         const caja = cashRegisterCloses[0];
         const doc = new jsPDF();
@@ -429,12 +494,19 @@ export function ManagerPanel({ data, updateData, managerInfo, updateStatus }: Ma
         doc.setFontSize(18);
         doc.text('RESTAURANTE TERRAZA 53&M', 14, 18);
         doc.setFontSize(11);
-        doc.text('Cierre de Caja', 14, 26);
+        doc.setFont('helvetica', 'normal');
+        doc.text('Informe Oficial de Cierre de Caja', 14, 26);
 
         doc.setTextColor(40, 40, 40);
-        doc.text(`Gerente: ${caja.managerName}`, 14, 45);
-        doc.text(`Estado: ${caja.status.toUpperCase()}`, 14, 52);
-        doc.text(`Diferencia CUP: $${caja.differenceCUP}`, 14, 59);
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'bold');
+        doc.text(`Gerente Responsable: ${caja.managerName}`, 14, 45);
+        doc.text(`Fecha: ${caja.dateStr}`, 14, 52);
+        doc.text(`Estado del Cuadre: ${caja.status.toUpperCase()}`, 14, 59);
+        doc.text(`Conteo Efectivo CUP: $${(caja.countedCashCUP || 0).toLocaleString()} CUP`, 14, 66);
+        doc.text(`Conteo Digital CUP: $${(caja.countedDigitalCUP || 0).toLocaleString()} CUP`, 14, 73);
+        doc.text(`Esperado Sistema CUP: $${(caja.systemExpectedCUP || 0).toLocaleString()} CUP`, 14, 80);
+        doc.text(`Diferencia Final CUP: $${caja.differenceCUP || 0}`, 14, 87);
 
         zip.file(`Cierre_Caja.pdf`, doc.output('blob'));
       }
@@ -443,16 +515,47 @@ export function ManagerPanel({ data, updateData, managerInfo, updateStatus }: Ma
       const link = document.createElement('a');
       link.href = URL.createObjectURL(content);
       const todayStr = new Date().toISOString().split('T')[0];
-      link.download = `Informes_Gerente_${todayStr}.zip`;
+      link.download = `Paquete_Cierre_Jornada_${todayStr}.zip`;
       link.click();
-      
+
+      // 4. Notify administrator & Set state
+      const adminNotif: AppNotification = {
+        id: `NOTIF-${Date.now()}`,
+        timestamp: Date.now(),
+        orderId: 'CIERRE',
+        tableNumber: 'Gerencia',
+        title: 'Cierre Completo de Jornada',
+        message: 'El gerente de restaurante ha completado el cierre de jornada. Puede cerrar y archivar la jornada.',
+        targetRole: 'admin',
+        isRead: false,
+      };
+
+      const updatedNotifs = [adminNotif, ...(data.notifications || [])].slice(0, 50);
+
       updateData({
-        downloadsState: { ...(data.downloadsState || { adminAuditLog: false }), managerZip: true }
+        gerenteCierreCompleto: true,
+        notifications: updatedNotifs,
+        downloadsState: { ...(data.downloadsState || { adminAuditLog: false }), managerZip: true },
+        auditLogs: [
+          {
+            id: `LOG-${Date.now()}`,
+            timestamp: Date.now(),
+            timeStr: new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }),
+            dateStr: new Date().toLocaleDateString('es-ES'),
+            role: 'Gerente' as const,
+            userOrDevice: managerInfo?.username || 'gerente',
+            action: 'Cierre Completo de Jornada',
+            details: 'El Gerente de Restaurante ha verificado el cuadre de caja, generado el paquete de informes (ZIP) y notificado al Administrador.'
+          },
+          ...(data.auditLogs || [])
+        ]
       });
+
+      alert('✅ Cierre Completo de Jornada registrado con éxito. Se ha enviado la notificación al Administrador y descargado el paquete de informes.');
 
     } catch (e) {
       console.error(e);
-      alert('Hubo un error al generar el ZIP.');
+      alert('Hubo un error al generar el paquete de cierre.');
     }
   };
 
@@ -535,13 +638,13 @@ export function ManagerPanel({ data, updateData, managerInfo, updateStatus }: Ma
           )}
           <button
             onClick={handleDownloadManagerZip}
-            className="relative bg-amber-600 hover:bg-amber-700 text-white px-4 py-2.5 rounded-2xl font-bold text-xs transition-all shadow-sm flex items-center gap-2"
+            className="relative bg-dark-green hover:bg-stone-800 text-white px-5 py-2.5 rounded-2xl font-bold text-xs transition-all shadow-sm flex items-center gap-2 cursor-pointer"
           >
-            <Download size={16} /> Descargar Informes (ZIP)
+            <CheckCircle2 size={16} className="text-gold" /> Cierre Completo
             {data.downloadsState?.managerZip && (
               <span className="absolute -top-1 -right-1 flex h-3 w-3">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-3 w-3 bg-blue-500"></span>
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
               </span>
             )}
           </button>

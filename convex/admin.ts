@@ -276,10 +276,8 @@ export const closeWorkdayAndArchive = mutation({
       await ctx.db.delete(o._id);
     }
 
-    // 7. Delete active reservations
-    for (const r of reservations) {
-      await ctx.db.delete(r._id);
-    }
+    // 7. Keep active reservations (do NOT delete reservations during workday archive)
+    // Pending, confirmed, and cancelled reservations remain active across shifts.
 
     // 8. Delete active bitacora
     for (const b of bitacora) {
