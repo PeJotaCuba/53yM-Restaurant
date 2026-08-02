@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Reservation, AppData, Order, OrderItem, AppNotification } from '../types';
-import { Clock, CheckCircle2, XCircle, Edit2, Calendar, User, Phone, X, Save, AlertTriangle, MessageCircle, Utensils, Plus, Trash2, Send, ShoppingBag, ShieldAlert, Download, Check } from 'lucide-react';
+import { Clock, CheckCircle2, XCircle, Edit2, Calendar, User, Phone, X, Save, AlertTriangle, Utensils, Plus, Trash2, Send, ShoppingBag, ShieldAlert, Download, Check } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useDeviceId } from '../hooks/useDeviceId';
 import { useLanguage } from '../context/LanguageContext';
@@ -329,16 +329,6 @@ export function UserDashboard({ reservations, data, updateData, onUpdateReservat
         </div>
         
         <div className="flex flex-wrap items-center gap-3">
-          {/* WhatsApp contact */}
-          <a
-            href="https://wa.me/5354413935?text=Hola%2053%26M%2C%20quisiera%20contactar%20con%20el%20administrador%20sobre%20mis%20reservas."
-            target="_blank"
-            rel="noopener noreferrer"
-            className="bg-[#25D366] text-white px-3.5 py-2.5 rounded-2xl text-xs font-bold flex items-center gap-2 hover:bg-[#20ba5a] transition-all shadow-md"
-          >
-            <MessageCircle size={15} /> <span>{t('Contactar por WhatsApp')}</span>
-          </a>
-
           {/* Discrete Device ID */}
           <span className="text-xs text-stone-500 font-mono bg-stone-100 px-3.5 py-2.5 rounded-2xl border border-stone-200 shadow-xs" title="ID de este dispositivo">
             ID: {deviceId || 'DVC-00000'}
@@ -397,22 +387,12 @@ export function UserDashboard({ reservations, data, updateData, onUpdateReservat
           <div className="bg-white p-12 rounded-3xl text-center shadow-sm border border-stone-100">
             <Clock className="w-16 h-16 text-stone-200 mx-auto mb-4" />
             <h3 className="text-xl font-serif text-stone-700 mb-2">{t('No tienes reservas activas')}</h3>
-            <p className="text-stone-400 mb-6">{t('¿Listo para vivir una experiencia diferente?')}</p>
-            <a
-              href="https://wa.me/5354413935?text=Hola%2053%26M%2C%20quisiera%20consultar%20disponibilidad%20para%20reservar%20una%20mesa."
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 bg-[#25D366] text-white px-5 py-3 rounded-2xl text-xs font-bold hover:bg-[#20ba5a] transition-colors shadow-sm"
-            >
-              <MessageCircle size={16} /> {t('Contactar Administrador por WhatsApp')}
-            </a>
+            <p className="text-stone-400 font-medium">{t('¿Listo para vivir una experiencia diferente?')}</p>
           </div>
         ) : (
         <div className="space-y-6">
           {activeReservations.map((res, idx) => {
             const cd = getCountdown(res.date, res.time);
-            const waMsg = `Hola 53&M, quisiera realizar una consulta al administrador referente a mi reserva a nombre de ${res.name} para el ${res.date} a las ${res.time}.`;
-            const waUrl = `https://wa.me/5354413935?text=${encodeURIComponent(waMsg)}`;
             
             return (
               <motion.div 
@@ -462,16 +442,8 @@ export function UserDashboard({ reservations, data, updateData, onUpdateReservat
                       )}
                     </div>
 
-                    {/* Customer Action Buttons: Edit, WhatsApp Admin & Cancel */}
+                    {/* Customer Action Buttons: Edit & Cancel */}
                     <div className="flex flex-wrap gap-2.5 pt-3 border-t border-stone-100">
-                      <a
-                        href={waUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="bg-[#25D366] hover:bg-[#20ba5a] text-white font-bold px-3.5 py-2 rounded-xl text-xs flex items-center gap-1.5 transition-colors shadow-sm"
-                      >
-                        <MessageCircle size={14} /> Contactar WhatsApp
-                      </a>
                       {res.status !== 'cancellation_pending' && (
                         <>
                           <button

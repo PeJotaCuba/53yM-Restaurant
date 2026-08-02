@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Calendar, Users, Wine, ArrowRight, ArrowLeft, Check, QrCode, MessageCircle } from 'lucide-react';
+import { Calendar, Users, Wine, ArrowRight, ArrowLeft, Check, QrCode } from 'lucide-react';
 import { Reservation } from '../types';
 import { useLanguage } from '../context/LanguageContext';
 
@@ -73,27 +73,9 @@ export function ReservationWizard({ initialDish, onComplete, onCancel }: Reserva
     })
   };
 
-  const adminWhatsAppUrl = `https://wa.me/5354413935?text=${encodeURIComponent('Hola 53&M, quisiera realizar una consulta al administrador sobre una reservación.')}`;
-
   return (
     <div className="bg-stone-50 min-h-screen py-12 md:py-24 px-4 sm:px-6 flex items-start md:items-center justify-center overflow-y-auto">
       <div className="max-w-2xl w-full bg-white rounded-3xl shadow-xl border border-stone-100 mt-8 md:mt-0 overflow-hidden">
-        {/* Helper Banner for WhatsApp Contact */}
-        <div className="bg-emerald-50 border-b border-emerald-100 p-3 px-6 flex flex-wrap items-center justify-between text-xs text-stone-700 gap-2">
-          <span className="flex items-center gap-1.5 font-medium text-stone-700">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-            {t('¿Tienes dudas con tu reservación?')}
-          </span>
-          <a
-            href={adminWhatsAppUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 bg-[#25D366] text-white px-3 py-1.5 rounded-xl font-bold hover:bg-[#20ba5a] transition-colors shadow-sm"
-          >
-            <MessageCircle size={14} /> {t('Contactar Administrador por WhatsApp')}
-          </a>
-        </div>
-
         {/* Progress Bar */}
         <div className="bg-stone-100 h-2 w-full">
           <div 
@@ -198,18 +180,6 @@ export function ReservationWizard({ initialDish, onComplete, onCancel }: Reserva
                         {num}
                       </button>
                     ))}
-                  </div>
-
-                  <div className="text-center pt-4 border-t border-stone-100 max-w-lg mx-auto">
-                    <p className="text-xs text-stone-500 mb-2">{t('¿Grupo grande o reserva corporativa?')}</p>
-                    <a
-                      href={`https://wa.me/5354413935?text=${encodeURIComponent('Hola 53&M, desearía solicitar información para una reserva de grupo especial o evento.')}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 text-[#25D366] font-bold text-xs hover:underline"
-                    >
-                      <MessageCircle size={14} /> {t('Solicitar reserva de grupo al Administrador por WhatsApp')}
-                    </a>
                   </div>
                 </motion.div>
               )}
@@ -317,21 +287,6 @@ export function ReservationWizard({ initialDish, onComplete, onCancel }: Reserva
                       >
                         {t('Solo Enviar Reserva')}
                       </button>
-
-
-                      {/* Direct WhatsApp button with administrator */}
-                      <a
-                        href={`https://wa.me/5354413935?text=${encodeURIComponent(`Hola 53&M, deseo comunicarme con el administrador por mi reserva a nombre de ${formData.name || 'Cliente'} para el ${formData.date} a las ${formData.time}.`)}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="w-full bg-[#25D366] text-white py-3.5 rounded-xl font-bold uppercase tracking-wider transition-colors hover:bg-[#20ba5a] flex items-center justify-center gap-2 shadow-sm text-xs sm:text-sm mt-1"
-                      >
-                        <MessageCircle size={18} /> Contactar Administrador por WhatsApp
-                      </a>
-
-                      <p className="text-xs text-center text-stone-400 mt-2">
-                        Serás redirigido a WhatsApp para confirmar los detalles.
-                      </p>
                     </div>
                   </div>
                 </motion.div>

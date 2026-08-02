@@ -398,7 +398,7 @@ export function FullMenu({
                       <Send size={18} /> {pendingReservation ? t('Enviar Reserva y Pedido') : t('Enviar Pedido')}
                     </button>
                     <p className="text-xs text-center text-stone-400 mt-4">
-                      {prefilledTable ? t('Tu comanda se enviará en tiempo real al camarero de tu mesa.') : t('Serás redirigido a WhatsApp para confirmar tu pedido.')}
+                      {t('Tu comanda se enviará en tiempo real al sistema del restaurante.')}
                     </p>
                   </div>
                 </div>
