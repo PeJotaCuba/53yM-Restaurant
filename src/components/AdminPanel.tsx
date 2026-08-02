@@ -75,6 +75,7 @@ export function AdminPanel({ data, updateData, updateStatus, userRole }: AdminPa
   const activeKitchenUser = useQuery(api.users.getActiveKitchenUser);
   const removeUserByUsernameMutation = useMutation(api.users.removeUserByUsername);
   const closeWorkdayAndArchiveMutation = useMutation(api.admin.closeWorkdayAndArchive);
+  const createSnapshotMutation = useMutation(api.admin.createSnapshot);
   const deleteReservationMutation = useMutation(api.reservations.deleteReservation);
   
   // User Management state
@@ -184,15 +185,30 @@ export function AdminPanel({ data, updateData, updateStatus, userRole }: AdminPa
     document.body.removeChild(link);
   };
 
-  const handleExportJson = () => {
-    const jsonString = JSON.stringify(data, null, 2);
-    const blob = new Blob([jsonString], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'excelencia.json';
-    a.click();
-    URL.revokeObjectURL(url);
+  const handleExportJson = async () => {
+    try {
+      // 1. Persist to Convex (Server-side snapshot)
+      await createSnapshotMutation({
+        data: data as any,
+        createdBy: data.adminConfig?.username || 'Administrador',
+        label: `Respaldo Excelencia ${new Date().toLocaleString('es-ES')}`
+      });
+
+      // 2. Local Download
+      const jsonString = JSON.stringify(data, null, 2);
+      const blob = new Blob([jsonString], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `excelencia_backup_${new Date().toISOString().split('T')[0]}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+
+      alert('¡Respaldo Excelencia completado y persistido correctamente!');
+    } catch (err) {
+      console.error('Error during Excellence backup:', err);
+      alert('Error al realizar el respaldo en el servidor, pero el archivo local podría haberse generado.');
+    }
   };
 
   const handleAddDependent = async (e: React.FormEvent) => {
@@ -633,7 +649,7 @@ export function AdminPanel({ data, updateData, updateStatus, userRole }: AdminPa
     <div className="min-h-screen bg-[#F6F2E7] font-[Inter,system-ui,sans-serif] text-[#1A2E26] selection:bg-[#1A3D32] selection:text-white flex flex-col lg:flex-row relative">
       
       {/* Main Content Area */}
-      <div className="flex-1 min-w-0 p-4 md:p-8 space-y-8 pt-24 lg:pt-8 overflow-y-auto">
+      <div className="flex-1 min-w-0 p-4 md:p-8 space-y-8 pt-24 lg:pt-32 overflow-y-auto">
         <div className="max-w-5xl mx-auto space-y-10 pb-20">
           
           {/* Header Title & Global Actions */}
@@ -643,8 +659,12 @@ export function AdminPanel({ data, updateData, updateStatus, userRole }: AdminPa
               <p className="text-[#6B7280] mt-1 text-sm md:text-base">Visión general del negocio y configuración</p>
             </div>
             <div className="flex items-center gap-3">
-              <button onClick={handleExportJson} className="flex items-center gap-2 bg-white border border-[#E8E0D0] text-[#1A2E26] px-4 py-2 rounded-full text-xs font-bold hover:bg-[#F9F5EB] transition-all shadow-sm">
-                <FileText size={14} /> excelencia.json
+              <button 
+                onClick={handleExportJson} 
+                className="flex items-center gap-2 bg-[#0F2E26] text-white px-5 py-2.5 rounded-full text-xs font-bold hover:bg-[#1A3D32] transition-all shadow-md transform hover:-translate-y-0.5 active:scale-95"
+                title="Realizar copia de seguridad completa y persistir en el servidor"
+              >
+                <Database size={14} /> Excelencia
               </button>
               <label className="flex items-center gap-2 bg-white border border-[#E8E0D0] text-[#1A2E26] px-4 py-2 rounded-full text-xs font-bold hover:bg-[#F9F5EB] transition-all shadow-sm cursor-pointer">
                 <RefreshCw size={14} /> Restaurar
@@ -972,7 +992,7 @@ export function AdminPanel({ data, updateData, updateStatus, userRole }: AdminPa
 
       {/* 5. LIVE OPERATION LOG SIDEBAR (Desktop) */}
       <aside className={`hidden lg:flex flex-col w-[320px] bg-[#0F2E26] border-l border-[#1A3D32] sticky top-0 h-screen overflow-hidden z-30 transition-all duration-300 ${!isLogExpanded ? 'w-0 border-none' : ''}`}>
-        <div className="p-6 flex-1 flex flex-col min-h-0">
+        <div className="p-6 pt-24 flex-1 flex flex-col min-h-0">
           <div className="flex items-center justify-between mb-8">
             <div className="space-y-1.5">
               <h3 className="text-white font-bold text-lg flex items-center gap-2">
