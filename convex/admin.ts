@@ -1,5 +1,5 @@
 import { mutation, query, internalAction } from "./_generated/server";
-import { v } from "convex/values";
+import { v, ConvexError } from "convex/values";
 import { internal } from "./_generated/api";
 import { logToBitacora } from "./utils";
 
@@ -354,7 +354,7 @@ export const initializeDatabase = mutation({
   handler: async (ctx, args) => {
     // 1. Identity validation
     if (args.requesterRole !== "admin") {
-      throw new Error("UNAUTHORIZED: Solo el administrador con rol 'admin' puede realizar la inicialización total del sistema.");
+      throw new ConvexError("UNAUTHORIZED: Solo el administrador con rol 'admin' puede realizar la inicialización total del sistema.");
     }
 
     // 2. Shift state validation
@@ -364,7 +364,7 @@ export const initializeDatabase = mutation({
       .first();
 
     if (shiftActiveSetting && shiftActiveSetting.value === true) {
-      throw new Error("CONFLICT: No es posible realizar la inicialización mientras exista una jornada activa. Primero debe cerrar y archivar la jornada.");
+      throw new ConvexError("⚠️ No se puede inicializar el sistema mientras la jornada esté activa. Primero debe cerrar y archivar la jornada.");
     }
 
     // 3. Delete all orders

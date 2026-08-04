@@ -602,7 +602,9 @@ export function AdminPanel({ data, updateData, updateStatus, userRole }: AdminPa
       alert('✅ INICIALIZACIÓN COMPLETADA.\n\nEl sistema ha sido preparado para comenzar desde cero.\nLa jornada permanece cerrada.\nLos datos históricos y operativos anteriores fueron eliminados de la base de datos.');
     } catch (err: any) {
       console.error('Error durante la inicialización:', err);
-      alert(`❌ Error al inicializar la base de datos: ${err.message || 'Error desconocido'}`);
+      const rawMsg = typeof err?.data === 'string' ? err.data : (err?.message || '');
+      const cleanMsg = rawMsg.replace(/^Uncaught ConvexError:\s*/i, '');
+      alert(`❌ Error al inicializar la base de datos:\n\n${cleanMsg || 'Error desconocido'}`);
     } finally {
       setIsInitializing(false);
     }
