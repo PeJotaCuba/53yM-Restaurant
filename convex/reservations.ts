@@ -5,7 +5,9 @@ import { sanitizeObject } from "./utils";
 export const getLiveReservations = query({
   args: {},
   handler: async (ctx) => {
-    return await ctx.db.query("reservations").collect();
+    // Limitamos a las últimas 300 reservas para optimizar rendimiento de operación diaria 
+    // sin borrar los registros físicos históricos.
+    return await ctx.db.query("reservations").order("desc").take(300);
   },
 });
 
@@ -139,7 +141,8 @@ export const updateReservationStatus = mutation({
       v.literal("confirmed"),
       v.literal("paid"),
       v.literal("cancelled"),
-      v.literal("cancellation_pending")
+      v.literal("cancellation_pending"),
+      v.literal("consolidated")
     ),
     username: v.string(),
     userRole: v.string(),

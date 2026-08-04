@@ -16,7 +16,7 @@ export function HistoryViewer({ data, userRole }: HistoryViewerProps) {
   const [selectedMonth, setSelectedMonth] = useState<number | null>(null);
   const [selectedDayStr, setSelectedDayStr] = useState<string | null>(null);
   const [selectedJornadaId, setSelectedJornadaId] = useState<string | null>(null);
-  const [activeSubTab, setActiveSubTab] = useState<'comandas' | 'informes' | 'recibos' | 'bitacora'>('comandas');
+  const [activeSubTab, setActiveSubTab] = useState<'comandas' | 'informes' | 'recibos' | 'bitacora' | 'reservas'>('comandas');
 
   // Group history records by Year -> Month -> Day/DateStr
   const groupedTree = useMemo(() => {
@@ -254,6 +254,15 @@ export function HistoryViewer({ data, userRole }: HistoryViewerProps) {
                   </button>
 
                   <button
+                    onClick={() => setActiveSubTab('reservas')}
+                    className={`flex items-center gap-1.5 px-4 py-2 text-xs font-bold whitespace-nowrap border-b-2 transition-all ${
+                      activeSubTab === 'reservas' ? 'border-stone-900 text-stone-900' : 'border-transparent text-stone-400 hover:text-stone-600'
+                    }`}
+                  >
+                    <Calendar size={14} /> {t('Reservas')} ({(selectedJornada.reservations || []).length})
+                  </button>
+
+                  <button
                     onClick={() => setActiveSubTab('informes')}
                     className={`flex items-center gap-1.5 px-4 py-2 text-xs font-bold whitespace-nowrap border-b-2 transition-all ${
                       activeSubTab === 'informes' ? 'border-stone-900 text-stone-900' : 'border-transparent text-stone-400 hover:text-stone-600'
@@ -287,6 +296,53 @@ export function HistoryViewer({ data, userRole }: HistoryViewerProps) {
 
                 {/* SUB-TABS CONTENT CONTAINER */}
                 <div className="min-h-[300px] border border-stone-100 rounded-2xl p-4 md:p-6 bg-stone-50/50">
+                  {/* RESERVAS SUB-TAB */}
+                  {activeSubTab === 'reservas' && (
+                    <div className="space-y-4">
+                      {(selectedJornada.reservations || []).length === 0 ? (
+                        <p className="text-center text-xs text-stone-400 py-8">{t('No se registraron reservas en esta jornada.')}</p>
+                      ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          {(selectedJornada.reservations || []).map((res: any, idx: number) => (
+                            <div key={idx} className="bg-white rounded-xl p-4 border border-stone-200 shadow-sm">
+                              <div className="flex justify-between items-start mb-2">
+                                <div>
+                                  <h4 className="font-bold text-stone-900 text-sm">{res.customerName || res.name}</h4>
+                                  <div className="text-xs text-stone-500 font-mono mt-0.5">{res.date} • {res.timeSlot || res.time}</div>
+                                </div>
+                                <span className={`px-2 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${
+                                  res.status === 'confirmed' ? 'bg-emerald-100 text-emerald-800' :
+                                  res.status === 'consolidated' ? 'bg-emerald-800 text-white' :
+                                  res.status === 'cancelled' || res.status === 'cancellation_pending' ? 'bg-red-100 text-red-800' :
+                                  'bg-amber-100 text-amber-800'
+                                }`}>
+                                  {res.status === 'confirmed' ? 'Confirmada' : 
+                                   res.status === 'consolidated' ? 'Consolidada' :
+                                   res.status === 'cancelled' ? 'Cancelada' :
+                                   res.status === 'cancellation_pending' ? 'Canc. Pendiente' : 'Pendiente'}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-4 text-xs text-stone-600 mt-3 border-t border-stone-100 pt-3">
+                                <div><span className="font-bold">{t('Personas')}:</span> {res.guests} pax</div>
+                                <div><span className="font-bold">{t('Motivo')}:</span> {res.occasion || res.area || '-'}</div>
+                              </div>
+                              {res.dishes && res.dishes.length > 0 && (
+                                <div className="mt-3 bg-stone-50 p-2 rounded-lg text-xs text-stone-600">
+                                  <div className="font-bold mb-1">{t('Pre-pedido')}:</div>
+                                  <ul className="list-disc list-inside">
+                                    {res.dishes.map((d: any, dIdx: number) => (
+                                      <li key={dIdx}>{d.quantity}x {d.name}</li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   {/* COMANDAS SUB-TAB */}
                   {activeSubTab === 'comandas' && (
                     <div className="space-y-4">

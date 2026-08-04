@@ -14,7 +14,9 @@ import {
   RefreshCw, 
   Layers,
   AlertCircle,
-  Database
+  Database,
+  Calendar,
+  Users
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import { HistoryViewer } from './HistoryViewer';
@@ -34,8 +36,32 @@ export function KitchenPanel({ data, updateData, kitchenInfo }: KitchenPanelProp
   // Live Convex kitchen user query & order mutation
   const activeKitchenUser = useQuery(api.users.getActiveKitchenUser);
   const syncOrUpdateOrderMutation = useMutation(api.orders.syncOrUpdateOrder);
+  const updateReservationStatusMutation = useMutation(api.reservations.updateReservationStatus);
 
   const orders = data.orders || [];
+  const reservations = data.reservations || [];
+  const today = new Date().toISOString().split('T')[0];
+  const todayConfirmedReservations = reservations
+    .filter(r => r.date === today && r.status === 'confirmed')
+    .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+
+  const handleConfirmArrival = async (id: string) => {
+    if (!isShiftActive) {
+      alert(t('⚠️ La jornada no está activa.'));
+      return;
+    }
+    try {
+      await updateReservationStatusMutation({
+        id: id as any,
+        status: 'consolidated',
+        username: activeKitchenUser?.name || kitchenInfo.name || 'Gerente de Cocina',
+        userRole: 'kitchen'
+      });
+    } catch (err) {
+      console.error(err);
+      alert('Error al confirmar llegada.');
+    }
+  };
 
   // Track the last known pending orders count to notify on new arrivals
   const lastPendingCountRef = React.useRef(orders.filter(o => o.status === 'pending' || o.status === 'in_kitchen').length);
@@ -401,6 +427,36 @@ export function KitchenPanel({ data, updateData, kitchenInfo }: KitchenPanelProp
             </button>
           </div>
         </div>
+
+        {/* Reservas Confirmadas del Día */}
+        {todayConfirmedReservations.length > 0 && (
+          <div className="bg-white p-6 rounded-3xl shadow-sm border border-stone-200 mb-6">
+            <h3 className="text-lg font-bold text-stone-900 mb-4 flex items-center gap-2">
+              <Calendar size={20} className="text-[#0F4D2A]" />
+              {t('Reservas Confirmadas para Hoy')}
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {todayConfirmedReservations.map(res => (
+                <div key={res.id} className="bg-stone-50 border border-stone-200 rounded-2xl p-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                  <div>
+                    <h4 className="font-bold text-stone-900">{res.name}</h4>
+                    <div className="text-xs text-stone-500 flex items-center gap-2 mt-1">
+                      <Clock size={12} /> {res.time}
+                      <span className="mx-1">•</span>
+                      <Users size={12} /> {res.guests} pax
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => handleConfirmArrival(res.id)}
+                    className="w-full md:w-auto bg-[#0F4D2A] hover:bg-[#0a361d] text-white px-4 py-2 rounded-xl text-xs font-bold transition-colors flex items-center justify-center gap-2"
+                  >
+                    <CheckCircle2 size={16} /> {t('Confirmar Llegada')}
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Filter Bar */}
         <div className="bg-white p-4 rounded-2xl shadow-sm border border-stone-200 flex flex-wrap items-center justify-between gap-4">

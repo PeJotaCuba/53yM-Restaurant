@@ -361,6 +361,66 @@ export const createSnapshot = mutation({
   },
 });
 
+export const restoreDatabase = mutation({
+  args: {
+    history: v.any(),
+    reservations: v.any(),
+    requesterRole: v.string(),
+    username: v.string(),
+  },
+  handler: async (ctx, args) => {
+    if (args.requesterRole !== "admin") {
+      throw new Error("UNAUTHORIZED: Solo el administrador puede restaurar la base de datos.");
+    }
+
+    const shiftActiveSetting = await ctx.db
+      .query("settings")
+      .withIndex("by_key", (q) => q.eq("key", "isShiftActive"))
+      .first();
+
+    if (shiftActiveSetting && shiftActiveSetting.value === true) {
+      throw new Error("CONFLICT: No se puede restaurar una copia de seguridad mientras la jornada esté activa. Por favor, cierre la jornada primero.");
+    }
+
+    // Restore History (Non-Destructive)
+    const existingHistory = await ctx.db.query("history").collect();
+    const existingHistoryIds = new Set(existingHistory.map(h => h.jornadaId));
+    
+    if (Array.isArray(args.history)) {
+      for (const record of args.history) {
+        if (record.jornadaId && !existingHistoryIds.has(record.jornadaId)) {
+          const { _id, _creationTime, ...cleanRecord } = record;
+          await ctx.db.insert("history", cleanRecord);
+        }
+      }
+    }
+
+    // Restore Reservations (Non-Destructive)
+    const existingReservations = await ctx.db.query("reservations").collect();
+    const existingReservationKeys = new Set(existingReservations.map(r => (r as any).id || r._id.toString()));
+
+    if (Array.isArray(args.reservations)) {
+      for (const record of args.reservations) {
+        const recKey = (record as any).id || (record as any)._id;
+        if (!recKey || !existingReservationKeys.has(recKey)) {
+          const { _id, _creationTime, ...cleanRecord } = record;
+          await ctx.db.insert("reservations", cleanRecord);
+        }
+      }
+    }
+
+    // Log the restoration action in the active bitacora
+    await ctx.db.insert("bitacora", {
+      action: `RESTAURACIÓN HISTÓRICA EXITOSA: El Administrador '${args.username}' ha restaurado el archivo Excelencia.json. Se han recuperado el Historial y las Reservas sin afectar la operativa.`,
+      userRole: "admin",
+      username: args.username,
+      timestamp: Date.now(),
+    });
+
+    return { success: true };
+  }
+});
+
 export const getHistory = query({
   args: {
     requesterRole: v.optional(v.string()),

@@ -201,7 +201,7 @@ export interface AuditLogEntry {
   details: string;
 }
 
-export type ReservationStatus = 'pending' | 'confirmed' | 'paid' | 'cancelled' | 'cancellation_pending';
+export type ReservationStatus = 'pending' | 'confirmed' | 'paid' | 'cancelled' | 'cancellation_pending' | 'consolidated';
 
 export interface ReservedDish {
   name: string;

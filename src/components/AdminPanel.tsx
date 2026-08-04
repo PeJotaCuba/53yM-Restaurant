@@ -58,7 +58,7 @@ export function AdminPanel({ data, updateData, updateStatus, userRole }: AdminPa
   const { t } = useLanguage();
   const [activeTab, setActiveTab] = useState<'reservations' | 'landing' | 'menu' | 'dependents' | 'managers' | 'kitchen' | 'exchange' | 'security' | 'simulator' | 'history'>('reservations');
   const [isLogExpanded, setIsLogExpanded] = useState(true);
-  const [reservationFilter, setReservationFilter] = useState<'Pendientes' | 'Confirmadas' | 'Canceladas'>('Pendientes');
+  const [reservationFilter, setReservationFilter] = useState<'Pendientes' | 'Confirmadas' | 'Canceladas' | 'Consolidadas'>('Pendientes');
   const [isLogDrawerOpen, setIsLogDrawerOpen] = useState(false);
   const [showModuleOverlay, setShowModuleOverlay] = useState(false);
   const [overlayTab, setOverlayTab] = useState<typeof activeTab | null>(null);
@@ -77,6 +77,8 @@ export function AdminPanel({ data, updateData, updateStatus, userRole }: AdminPa
   const closeWorkdayAndArchiveMutation = useMutation(api.admin.closeWorkdayAndArchive);
   const createSnapshotMutation = useMutation(api.admin.createSnapshot);
   const deleteReservationMutation = useMutation(api.reservations.deleteReservation);
+  const addLogMutation = useMutation(api.bitacora.addLog);
+  const restoreDatabaseMutation = useMutation(api.admin.restoreDatabase);
   
   // User Management state
   const [showUserModal, setShowUserModal] = useState(false);
@@ -107,6 +109,13 @@ export function AdminPanel({ data, updateData, updateStatus, userRole }: AdminPa
   const [usdRate, setUsdRate] = useState<number>(data.exchangeRate?.usdCUP || 320);
   const [eurRate, setEurRate] = useState<number>(data.exchangeRate?.eurCUP || 350);
   const [exchangeSavedMessage, setExchangeSavedMessage] = useState('');
+
+  // Close Workday Modal state
+  const [showCloseWorkdayModal, setShowCloseWorkdayModal] = useState(false);
+  const [closeWorkdayPhase, setCloseWorkdayPhase] = useState<1 | 2 | 3>(1);
+  const [bitacoraDownloaded, setBitacoraDownloaded] = useState(false);
+  const [excelenciaDownloaded, setExcelenciaDownloaded] = useState(false);
+  const [managerConfirmationChecked, setManagerConfirmationChecked] = useState(false);
 
   // Kitchen form state
   const [kitchenForm, setKitchenForm] = useState({
@@ -438,19 +447,41 @@ export function AdminPanel({ data, updateData, updateStatus, userRole }: AdminPa
     });
   };
 
-  const handleCloseWorkday = async () => {
-    const isManagerClosed = !!data.gerenteCierreCompleto;
-
-    let proceed = false;
-    if (isManagerClosed) {
-      proceed = confirm('⚠️ ADVERTENCIA: ¿Está seguro de cerrar y archivar la jornada actual?');
-    } else {
-      proceed = confirm(
-        'El gerente de restaurante aún no ha completado el cierre de jornada. Puede continuar bajo responsabilidad administrativa.\n\n¿Desea continuar con el cierre y archivo de la jornada de todos modos?'
-      );
+  const startCloseWorkday = () => {
+    if (!data.isShiftActive) {
+      alert('La jornada ya está inactiva.');
+      return;
     }
+    setCloseWorkdayPhase(1);
+    setBitacoraDownloaded(false);
+    setExcelenciaDownloaded(false);
+    setManagerConfirmationChecked(false);
+    setShowCloseWorkdayModal(true);
+  };
 
-    if (!proceed) return;
+  const handleContinuePhase1 = async () => {
+    if (!data.gerenteCierreCompleto) {
+      setManagerConfirmationChecked(true);
+      try {
+        await addLogMutation({
+          action: 'CIERRE DE JORNADA INICIADO: Administrador decidió continuar sin confirmación del Gerente de Restaurante.',
+          userRole: 'admin',
+          username: data.adminConfig?.username || 'Administrador',
+        });
+      } catch (err) {
+        console.warn('Convex addLog error:', err);
+      }
+    } else {
+      setManagerConfirmationChecked(true);
+    }
+    setCloseWorkdayPhase(2);
+  };
+
+  const finalizeCloseWorkday = async () => {
+    if (!bitacoraDownloaded || !excelenciaDownloaded) {
+      alert('Debe descargar ambos archivos (Bitácora y Excelencia.json) antes de finalizar el cierre.');
+      return;
+    }
 
     // Build complete history snapshot for safe archiving (Bitácora Protection)
     const now = Date.now();
@@ -485,7 +516,6 @@ export function AdminPanel({ data, updateData, updateStatus, userRole }: AdminPa
 
     // Update local state: move data to history, reset active operational logs, but PRESERVE RESERVATIONS!
     const updatedHistory = [historyRecord, ...(data.history || [])];
-
     updateData({
       orders: [],
       comandas: [],
@@ -507,11 +537,12 @@ export function AdminPanel({ data, updateData, updateStatus, userRole }: AdminPa
           role: 'Administrador' as const,
           userOrDevice: data.adminConfig?.username || 'Administrador',
           action: 'Cierre y Archivo de Jornada',
-          details: `Jornada archivada exitosamente por el Administrador. ${isManagerClosed ? 'Cierre de gerencia verificado.' : 'Realizado bajo responsabilidad administrativa sin cierre previo de gerencia.'}`
+          details: `Jornada archivada exitosamente por el Administrador. ${data.gerenteCierreCompleto ? 'Cierre de gerencia verificado.' : 'Realizado bajo responsabilidad administrativa sin cierre previo de gerencia.'}`
         }
       ]
     });
 
+    setShowCloseWorkdayModal(false);
     alert('✅ ¡Jornada cerrada y archivada exitosamente! Los datos han sido respaldados en el Historial.');
   };
 
@@ -718,6 +749,7 @@ export function AdminPanel({ data, updateData, updateStatus, userRole }: AdminPa
     .filter(r => {
       if (reservationFilter === 'Canceladas') return r.status === 'cancelled';
       if (reservationFilter === 'Confirmadas') return r.status === 'confirmed';
+      if (reservationFilter === 'Consolidadas') return r.status === 'consolidated';
       return r.status === 'pending' || r.status === 'cancellation_pending';
     })
     .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
@@ -749,21 +781,46 @@ export function AdminPanel({ data, updateData, updateStatus, userRole }: AdminPa
                   type="file" 
                   accept=".json" 
                   className="hidden" 
-                  onChange={(e) => {
+                  onChange={async (e) => {
                     const file = e.target.files?.[0];
                     if (!file) return;
+                    
+                    if (data.isShiftActive) {
+                      alert('❌ ERROR: No se puede restaurar una copia de seguridad mientras la jornada esté activa. Por favor, cierre la jornada primero para evitar sobrescribir datos operativos en curso.');
+                      e.target.value = '';
+                      return;
+                    }
+
                     const reader = new FileReader();
-                    reader.onload = (event) => {
+                    reader.onload = async (event) => {
                       try {
                         const json = JSON.parse(event.target?.result as string);
-                        if (confirm('¿Restaurar base de datos desde este archivo? Se sobrescribirán todos los datos.')) {
-                          updateData(json);
+                        
+                        if (!json.history && !json.reservations) {
+                           alert('El archivo JSON no parece ser un respaldo válido de Excelencia. Falta información histórica.');
+                           return;
+                        }
+
+                        if (confirm('⚠️ ATENCIÓN: ¿Restaurar base de datos desde este archivo?\n\nEsta acción reconstruirá el historial de jornadas y reservas pasadas desde el respaldo.')) {
+                          try {
+                            await restoreDatabaseMutation({
+                               history: json.history || [],
+                               reservations: json.reservations || [],
+                               requesterRole: 'admin',
+                               username: data.adminConfig?.username || 'Administrador',
+                            });
+                            alert('✅ Respaldo restaurado con éxito. El historial y las reservas han sido recuperadas.');
+                            // The real-time Convex subscriptions will automatically update the UI
+                          } catch (err: any) {
+                             alert(`Error al restaurar en base de datos: ${err.message || 'Error desconocido'}`);
+                          }
                         }
                       } catch (err) {
                         alert('Error al leer el archivo JSON.');
                       }
                     };
                     reader.readAsText(file);
+                    e.target.value = '';
                   }}
                 />
               </label>
@@ -798,7 +855,7 @@ export function AdminPanel({ data, updateData, updateStatus, userRole }: AdminPa
                   </button>
                 ) : (
                   <button 
-                    onClick={handleCloseWorkday}
+                    onClick={startCloseWorkday}
                     className="w-full md:w-auto bg-[#C93A3A] hover:bg-[#B82E2E] text-white font-bold rounded-full px-8 py-3.5 flex items-center justify-center gap-2 transition-all shadow-[0_4px_12px_rgba(201,58,58,0.2)] cursor-pointer"
                   >
                     <Archive size={20} />
@@ -816,12 +873,12 @@ export function AdminPanel({ data, updateData, updateStatus, userRole }: AdminPa
                 <h2 className="text-2xl font-bold text-[#1A2E26]">Reservas</h2>
                 <p className="text-sm text-[#6B7280]">Gestión de solicitudes y confirmaciones</p>
               </div>
-              <div className="flex bg-white rounded-full p-1 border border-[#E8E0D0] w-fit shadow-sm">
-                {['Pendientes', 'Confirmadas', 'Canceladas'].map((filter) => (
+              <div className="flex bg-white rounded-full p-1 border border-[#E8E0D0] w-fit shadow-sm overflow-x-auto max-w-full">
+                {['Pendientes', 'Confirmadas', 'Consolidadas', 'Canceladas'].map((filter) => (
                   <button
                     key={filter}
                     onClick={() => setReservationFilter(filter as any)}
-                    className={`px-5 py-1.5 rounded-full text-xs font-bold transition-all ${
+                    className={`px-5 py-1.5 rounded-full text-xs font-bold transition-all whitespace-nowrap ${
                       reservationFilter === filter 
                         ? 'bg-[#0F2E26] text-white shadow-sm' 
                         : 'text-[#6B7280] hover:text-[#1A2E26]'
@@ -884,10 +941,11 @@ export function AdminPanel({ data, updateData, updateStatus, userRole }: AdminPa
                           )}
                           <div className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${
                             res.status === 'confirmed' ? 'bg-[#B8E6C8] text-[#0F4D2A]' : 
+                            res.status === 'consolidated' ? 'bg-[#0F4D2A] text-white' : 
                             res.status === 'cancellation_pending' ? 'bg-[#FDE8E8] text-[#C93A3A]' : 
                             'bg-[#FEF3D6] text-[#7A5A10]'
                           }`}>
-                            {res.status === 'confirmed' ? 'Confirmada' : res.status === 'cancellation_pending' ? 'Cancelación Pendiente' : 'Pendiente'}
+                            {res.status === 'confirmed' ? 'Confirmada' : res.status === 'consolidated' ? 'Consolidada' : res.status === 'cancellation_pending' ? 'Cancelación Pendiente' : 'Pendiente'}
                           </div>
                         </div>
                       </div>
@@ -944,11 +1002,13 @@ export function AdminPanel({ data, updateData, updateStatus, userRole }: AdminPa
                         <div className="flex justify-start md:justify-center">
                           <span className={`text-[9px] font-bold px-2.5 py-1 rounded-full border uppercase tracking-wider ${
                             res.status === 'confirmed' ? 'bg-[#B8E6C8] text-[#0F4D2A] border-[#B8E6C8]' :
+                            res.status === 'consolidated' ? 'bg-[#0F4D2A] text-white border-[#0F4D2A]' :
                             res.status === 'cancelled' ? 'bg-[#FDE8E8] text-[#C93A3A] border-[#FDE8E8]' :
                             res.status === 'cancellation_pending' ? 'bg-[#FDE8E8] text-[#C93A3A] border-[#FDE8E8]' :
                             'bg-[#FEF3D6] text-[#7A5A10] border-[#FEF3D6]'
                           }`}>
                             {res.status === 'confirmed' ? 'Confirmada' : 
+                             res.status === 'consolidated' ? 'Consolidada' :
                              res.status === 'cancelled' ? 'Cancelada' : 
                              res.status === 'cancellation_pending' ? 'Cancelación Pendiente' : 'Pendiente'}
                           </span>
@@ -1482,6 +1542,135 @@ export function AdminPanel({ data, updateData, updateStatus, userRole }: AdminPa
               )}
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Close Workday Modal */}
+      {showCloseWorkdayModal && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
+           <div className="bg-white rounded-3xl w-full max-w-2xl overflow-hidden shadow-2xl relative animate-in zoom-in-95 duration-200 flex flex-col">
+              <div className="p-8 bg-[#0F2E26] text-white flex items-center justify-between shrink-0">
+                 <div className="flex items-center gap-4">
+                    <Archive size={32} className="text-[#B8E6C8]" />
+                    <div>
+                       <h2 className="text-2xl font-black tracking-tight">Cierre de Jornada</h2>
+                       <p className="text-[#B8E6C8]/80 text-sm">Proceso de archivo seguro (Paso {closeWorkdayPhase} de 3)</p>
+                    </div>
+                 </div>
+                 <button onClick={() => setShowCloseWorkdayModal(false)} className="text-white/50 hover:text-white transition-colors bg-white/5 hover:bg-white/10 p-2 rounded-full">
+                    <X size={24} />
+                 </button>
+              </div>
+
+              <div className="p-8 flex-1 overflow-y-auto">
+                 {/* Progress Indicator */}
+                 <div className="flex items-center gap-4 mb-8">
+                    {[1, 2, 3].map((step) => (
+                       <div key={step} className="flex-1">
+                          <div className={`h-2 rounded-full ${closeWorkdayPhase >= step ? 'bg-[#0F2E26]' : 'bg-gray-200'}`} />
+                          <div className={`text-[10px] uppercase font-bold mt-2 text-center ${closeWorkdayPhase >= step ? 'text-[#0F2E26]' : 'text-gray-400'}`}>
+                             {step === 1 ? 'Confirmación' : step === 2 ? 'Bitácora' : 'Respaldo'}
+                          </div>
+                       </div>
+                    ))}
+                 </div>
+
+                 {closeWorkdayPhase === 1 && (
+                    <div className="space-y-6">
+                       <div className="bg-amber-50 border border-amber-200 rounded-2xl p-6">
+                          <h3 className="font-bold text-amber-900 mb-2 flex items-center gap-2">
+                             <AlertCircle size={20} className="text-amber-600" />
+                             Fase 1: Confirmación del Gerente
+                          </h3>
+                          <p className="text-amber-800 text-sm mb-4 leading-relaxed">
+                             La jornada operativa está a punto de ser cerrada y archivada en el Historial de forma inmutable.
+                          </p>
+                          {data.gerenteCierreCompleto ? (
+                             <div className="bg-white/60 p-4 rounded-xl border border-amber-200/50 flex items-center gap-3">
+                                <Check size={20} className="text-green-600" />
+                                <span className="text-sm font-semibold text-green-800">El Gerente de Restaurante ha completado y verificado el cierre.</span>
+                             </div>
+                          ) : (
+                             <div className="bg-white/60 p-4 rounded-xl border border-amber-200/50">
+                                <p className="text-sm font-semibold text-red-700 mb-1">El Gerente de Restaurante AÚN NO ha completado el cierre.</p>
+                                <p className="text-xs text-amber-700">Puede continuar bajo su responsabilidad. Esta acción quedará registrada en la Bitácora de Auditoría de forma automática.</p>
+                             </div>
+                          )}
+                       </div>
+                       <button onClick={handleContinuePhase1} className="w-full bg-[#0F2E26] hover:bg-[#1A3D32] text-white py-4 rounded-xl font-bold transition-all shadow-lg">
+                          Continuar a Descargas
+                       </button>
+                    </div>
+                 )}
+
+                 {closeWorkdayPhase === 2 && (
+                    <div className="space-y-6">
+                       <div className="bg-blue-50 border border-blue-200 rounded-2xl p-6">
+                          <h3 className="font-bold text-blue-900 mb-2 flex items-center gap-2">
+                             <Terminal size={20} className="text-blue-600" />
+                             Fase 2: Descarga Obligatoria de Bitácora
+                          </h3>
+                          <p className="text-blue-800 text-sm mb-4 leading-relaxed">
+                             Antes de cerrar la jornada, es obligatorio descargar el registro de acciones (Bitácora) en formato PDF para garantizar el cumplimiento de auditoría.
+                          </p>
+                          <button 
+                             onClick={() => {
+                               handleDownloadAuditLog();
+                               setBitacoraDownloaded(true);
+                             }} 
+                             className="w-full bg-blue-600 hover:bg-blue-700 text-white py-4 rounded-xl font-bold transition-all shadow-lg flex items-center justify-center gap-2"
+                          >
+                             <Download size={20} />
+                             {bitacoraDownloaded ? 'Bitácora Descargada - Descargar de Nuevo' : 'Descargar Bitácora en PDF'}
+                          </button>
+                       </div>
+                       
+                       <button 
+                          onClick={() => setCloseWorkdayPhase(3)} 
+                          disabled={!bitacoraDownloaded}
+                          className={`w-full py-4 rounded-xl font-bold transition-all shadow-lg ${bitacoraDownloaded ? 'bg-[#0F2E26] hover:bg-[#1A3D32] text-white' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
+                       >
+                          Continuar
+                       </button>
+                    </div>
+                 )}
+
+                 {closeWorkdayPhase === 3 && (
+                    <div className="space-y-6">
+                       <div className="bg-purple-50 border border-purple-200 rounded-2xl p-6">
+                          <h3 className="font-bold text-purple-900 mb-2 flex items-center gap-2">
+                             <Database size={20} className="text-purple-600" />
+                             Fase 3: Descarga Obligatoria de Respaldo Integral
+                          </h3>
+                          <p className="text-purple-800 text-sm mb-4 leading-relaxed">
+                             Descargue el archivo <strong>Excelencia.json</strong>. Este archivo constituye el respaldo integral de la jornada y contiene datos históricos para una posible recuperación frente a desastres.
+                          </p>
+                          <button 
+                             onClick={() => {
+                               handleExportJson();
+                               setExcelenciaDownloaded(true);
+                             }} 
+                             className="w-full bg-purple-600 hover:bg-purple-700 text-white py-4 rounded-xl font-bold transition-all shadow-lg flex items-center justify-center gap-2"
+                          >
+                             <Download size={20} />
+                             {excelenciaDownloaded ? 'Respaldo Descargado - Descargar de Nuevo' : 'Descargar Excelencia.json'}
+                          </button>
+                       </div>
+
+                       <div className="pt-4 border-t border-gray-200">
+                          <button 
+                             onClick={finalizeCloseWorkday}
+                             disabled={!excelenciaDownloaded}
+                             className={`w-full py-4 flex items-center justify-center gap-2 rounded-xl font-bold transition-all shadow-lg ${excelenciaDownloaded ? 'bg-[#C93A3A] hover:bg-[#B82E2E] text-white' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
+                          >
+                             <Archive size={20} />
+                             CONFIRMAR CIERRE DEFINITIVO
+                          </button>
+                       </div>
+                    </div>
+                 )}
+              </div>
+           </div>
         </div>
       )}
 

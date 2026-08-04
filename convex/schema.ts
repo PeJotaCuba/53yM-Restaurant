@@ -55,7 +55,8 @@ export default defineSchema({
       v.literal("confirmed"),
       v.literal("paid"),
       v.literal("cancelled"),
-      v.literal("cancellation_pending")
+      v.literal("cancellation_pending"),
+      v.literal("consolidated")
     ),
     createdAt: v.number(),
     phone: v.optional(v.string()),
