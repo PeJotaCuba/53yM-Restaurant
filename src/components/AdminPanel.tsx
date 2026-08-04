@@ -81,14 +81,12 @@ export function AdminPanel({ data, updateData, updateStatus, userRole }: AdminPa
   const deleteReservationMutation = useMutation(api.reservations.deleteReservation);
   const addLogMutation = useMutation(api.bitacora.addLog);
   const restoreDatabaseMutation = useMutation(api.admin.restoreDatabase);
-  const masterResetMutation = useMutation(api.admin.masterReset);
+  const initializeDatabaseMutation = useMutation(api.admin.initializeDatabase);
   
-  // Master Reset state
-  const [showMasterResetModal, setShowMasterResetModal] = useState(false);
-  const [masterResetConfirmText, setMasterResetConfirmText] = useState('');
-  const [isMasterResetting, setIsMasterResetting] = useState(false);
-  
-  // User Management state
+  // Initialization modal state
+  const [showInitModal, setShowInitModal] = useState(false);
+  const [initConfirmChecked, setInitConfirmChecked] = useState(false);
+  const [isInitializing, setIsInitializing] = useState(false);
   const [showUserModal, setShowUserModal] = useState(false);
   const [editingUser, setEditingUser] = useState<any>(null);
   const [userFormType, setUserFormType] = useState<'dependent' | 'manager' | 'kitchen'>('dependent');
@@ -225,50 +223,6 @@ export function AdminPanel({ data, updateData, updateStatus, userRole }: AdminPa
     } catch (err) {
       console.error('Error during Excellence backup:', err);
       alert('Error al realizar el respaldo en el servidor, pero el archivo local podría haberse generado.');
-    }
-  };
-
-  const handleMasterReset = async () => {
-    if (masterResetConfirmText.trim().toUpperCase() !== 'INICIALIZAR') {
-      alert('Por favor escriba la palabra exacta INICIALIZAR para confirmar.');
-      return;
-    }
-    setIsMasterResetting(true);
-    try {
-      await masterResetMutation({
-        requesterRole: 'admin',
-        username: data.adminConfig?.username || 'Administrador'
-      });
-      // Reset local state in AppData
-      updateData({
-        reservations: [],
-        orders: [],
-        comandas: [],
-        orderReports: [],
-        kitchenReports: [],
-        cashRegisterCloses: [],
-        auditLogs: [{
-          id: `log-${Date.now()}`,
-          timestamp: Date.now(),
-          timeStr: new Date().toLocaleTimeString('es-ES'),
-          dateStr: new Date().toLocaleDateString('es-ES'),
-          role: 'Administrador',
-          userOrDevice: data.adminConfig?.username || 'Administrador',
-          action: 'INICIALIZACIÓN TOTAL DEL SISTEMA',
-          details: `El Administrador '${data.adminConfig?.username || 'Administrador'}' ha reiniciado la base de datos a cero.`
-        }],
-        dependents: [],
-        managers: [],
-        notifications: [],
-        isShiftActive: false
-      });
-      alert('✅ INICIALIZACIÓN TOTAL COMPLETADA: Se han borrado todos los datos operativos de prueba y el sistema ha sido reseteado a cero para la nueva implementación real.');
-      setShowMasterResetModal(false);
-      setMasterResetConfirmText('');
-    } catch (err: any) {
-      alert(`Error durante la inicialización: ${err?.message || 'Error desconocido'}`);
-    } finally {
-      setIsMasterResetting(false);
     }
   };
 
@@ -598,6 +552,62 @@ export function AdminPanel({ data, updateData, updateStatus, userRole }: AdminPa
     alert('✅ ¡Jornada cerrada y archivada exitosamente! Los datos han sido respaldados en el Historial.');
   };
 
+  const handleOpenInitModal = () => {
+    if (data.isShiftActive) {
+      alert('❌ OPERACIÓN BLOQUEADA: No es posible realizar la inicialización mientras exista una jornada activa. Primero debe cerrar y archivar la jornada.');
+      return;
+    }
+    setInitConfirmChecked(false);
+    setShowInitModal(true);
+  };
+
+  const handleExecuteInitialization = async () => {
+    if (data.isShiftActive) {
+      alert('❌ OPERACIÓN BLOQUEADA: No es posible realizar la inicialización mientras exista una jornada activa. Primero debe cerrar y archivar la jornada.');
+      setShowInitModal(false);
+      return;
+    }
+
+    if (!initConfirmChecked) {
+      alert('Debe marcar la casilla de confirmación para proceder con la inicialización.');
+      return;
+    }
+
+    setIsInitializing(true);
+
+    try {
+      await initializeDatabaseMutation({
+        requesterRole: 'admin',
+        username: data.adminConfig?.username || 'Administrador',
+      });
+
+      // Clear local storage cache and reset local app data state
+      localStorage.removeItem('appData');
+      updateData({
+        orders: [],
+        comandas: [],
+        reservations: [],
+        orderReports: [],
+        kitchenReports: [],
+        cashRegisterCloses: [],
+        history: [],
+        auditLogs: [],
+        dependents: [],
+        managers: [],
+        gerenteCierreCompleto: false,
+        isShiftActive: false,
+      });
+
+      setShowInitModal(false);
+      alert('✅ INICIALIZACIÓN COMPLETADA.\n\nEl sistema ha sido preparado para comenzar desde cero.\nLa jornada permanece cerrada.\nLos datos históricos y operativos anteriores fueron eliminados de la base de datos.');
+    } catch (err: any) {
+      console.error('Error durante la inicialización:', err);
+      alert(`❌ Error al inicializar la base de datos: ${err.message || 'Error desconocido'}`);
+    } finally {
+      setIsInitializing(false);
+    }
+  };
+
   const handleSaveAdminCredentials = (e: React.FormEvent) => {
     e.preventDefault();
     if (!adminCredentials.username || !adminCredentials.password || !adminCredentials.phone) {
@@ -876,6 +886,13 @@ export function AdminPanel({ data, updateData, updateStatus, userRole }: AdminPa
                   }}
                 />
               </label>
+              <button 
+                onClick={handleOpenInitModal} 
+                className="flex items-center gap-2 bg-[#8B1E1E] text-white px-5 py-2.5 rounded-full text-xs font-bold hover:bg-[#721818] transition-all shadow-md transform hover:-translate-y-0.5 active:scale-95 cursor-pointer"
+                title="Inicialización total del sistema (Restringido a Administrador cuando la jornada esté cerrada)"
+              >
+                <Trash2 size={14} /> Inicialización
+              </button>
             </div>
           </div>
 
@@ -1484,34 +1501,6 @@ export function AdminPanel({ data, updateData, updateStatus, userRole }: AdminPa
                         </div>
                       </div>
                     </div>
-
-                    <div className="space-y-6 pt-8 border-t border-red-200">
-                      <div className="flex items-center gap-3">
-                        <div className="p-3 bg-red-100 border border-red-300 text-[#C93A3A] rounded-xl shadow-sm">
-                          <AlertTriangle size={24} />
-                        </div>
-                        <div>
-                          <h3 className="font-bold text-xl text-red-900">Inicialización Total del Sistema</h3>
-                          <p className="text-xs text-stone-500">Reinicia la base de datos a cero borrando datos operativos e historiales de prueba</p>
-                        </div>
-                      </div>
-
-                      <div className="bg-red-50/80 border border-red-200 rounded-2xl p-6 space-y-4">
-                        <p className="text-xs text-red-900 leading-relaxed">
-                          <strong>⚠️ ATENCIÓN:</strong> La <strong>Inicialización Total</strong> elimina permanentemente todas las reservas, comandas, informes, cuentas de personal secundarias e historiales acumulados durante la fase de pruebas. Deja el sistema completamente limpio para iniciar la nueva implementación real desde cero.
-                        </p>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setMasterResetConfirmText('');
-                            setShowMasterResetModal(true);
-                          }}
-                          className="bg-[#C93A3A] hover:bg-[#B82E2E] text-white px-6 py-3 rounded-xl font-bold text-xs flex items-center gap-2 shadow-md transition-all active:scale-95"
-                        >
-                          <Trash2 size={16} /> Inicialización Total (Reiniciar a Cero)
-                        </button>
-                      </div>
-                    </div>
                  </div>
               )}
 
@@ -1935,56 +1924,150 @@ export function AdminPanel({ data, updateData, updateStatus, userRole }: AdminPa
         </div>
       )}
 
-      {/* Modal Confirmación Inicialización Total */}
-      {showMasterResetModal && (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-white rounded-3xl w-full max-w-md p-6 border border-red-200 shadow-2xl space-y-5 animate-in zoom-in-95 duration-200">
-            <div className="flex items-center justify-between border-b border-red-100 pb-4">
-              <div className="flex items-center gap-3 text-[#C93A3A]">
-                <AlertTriangle size={24} />
-                <h3 className="font-serif text-lg font-bold">Confirmar Inicialización Total</h3>
+      {/* Modal de Inicialización Total del Sistema */}
+      {showInitModal && (
+        <div className="fixed inset-0 z-[80] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200 overflow-y-auto">
+          <div className="bg-white rounded-3xl w-full max-w-xl overflow-hidden shadow-2xl border border-[#E8E0D0] my-8 animate-in zoom-in-95 duration-200">
+            {/* Header */}
+            <div className="p-6 bg-[#8B1E1E] text-white flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <AlertTriangle size={26} className="text-red-200 animate-pulse" />
+                <div>
+                  <h3 className="font-serif text-xl font-bold">INICIALIZACIÓN TOTAL DEL SISTEMA</h3>
+                  <p className="text-xs text-red-100 font-medium">Restauración a estado de instalación limpia</p>
+                </div>
               </div>
               <button 
-                onClick={() => setShowMasterResetModal(false)}
-                className="p-1 text-stone-400 hover:text-stone-600 rounded-full"
+                onClick={() => !isInitializing && setShowInitModal(false)} 
+                disabled={isInitializing}
+                className="p-2 hover:bg-white/10 rounded-full transition-colors text-white disabled:opacity-50"
               >
                 <X size={20} />
               </button>
             </div>
 
-            <p className="text-xs text-stone-600 leading-relaxed">
-              Esta acción <strong>borrará de forma irrecuperable</strong> todas las reservas, comandas, bitácoras, historiales y usuarios de prueba. El sistema quedará reseteado a cero para su uso real.
-            </p>
+            <div className="p-6 md:p-8 space-y-6">
+              {/* Shift status verification badge */}
+              <div className="flex items-center justify-between bg-stone-100 p-4 rounded-2xl border border-stone-200">
+                <span className="text-xs font-bold text-stone-700">Estado de la Jornada Operativa:</span>
+                <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider ${
+                  data.isShiftActive 
+                    ? 'bg-red-100 text-red-800 border border-red-200' 
+                    : 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                }`}>
+                  <span className={`w-2 h-2 rounded-full ${data.isShiftActive ? 'bg-red-600' : 'bg-emerald-600'}`} />
+                  {data.isShiftActive ? 'JORNADA ACTIVA (BLOQUEADO)' : 'JORNADA CERRADA (PERMITIDO)'}
+                </span>
+              </div>
 
-            <div className="space-y-2 bg-red-50 p-4 rounded-xl border border-red-200">
-              <label className="text-[10px] font-black uppercase tracking-wider text-red-900 block">
-                Escriba "INICIALIZAR" para confirmar:
-              </label>
-              <input
-                type="text"
-                placeholder="INICIALIZAR"
-                value={masterResetConfirmText}
-                onChange={(e) => setMasterResetConfirmText(e.target.value)}
-                className="w-full bg-white border border-red-300 rounded-xl px-4 py-2 text-sm font-mono font-bold text-red-900 focus:outline-none focus:ring-2 focus:ring-red-500"
-              />
-            </div>
+              {data.isShiftActive ? (
+                <div className="bg-red-50 border-2 border-red-300 rounded-2xl p-5 text-red-900 space-y-2">
+                  <h4 className="font-bold text-sm flex items-center gap-2 text-red-800">
+                    <AlertCircle size={18} /> OPERACIÓN BLOQUEADA
+                  </h4>
+                  <p className="text-xs leading-relaxed">
+                    No es posible realizar la inicialización mientras exista una jornada activa. Por favor, primero realice el <strong>Cierre y Archivo de Jornada</strong> para asegurar los datos actuales.
+                  </p>
+                </div>
+              ) : (
+                <>
+                  {/* Danger Notice */}
+                  <div className="bg-amber-50 border border-amber-300 rounded-2xl p-5 space-y-3">
+                    <h4 className="font-bold text-amber-900 text-sm flex items-center gap-2">
+                      <AlertTriangle size={18} className="text-amber-600" />
+                      ALTO RIESGO: Eliminación Permanente de Datos
+                    </h4>
+                    <p className="text-xs text-amber-900 leading-relaxed">
+                      Esta operación eliminará de forma irreversible todos los datos operativos e históricos del restaurante para comenzar desde cero. Se eliminarán:
+                    </p>
+                    <ul className="text-xs text-amber-950 space-y-1.5 font-medium pl-1">
+                      <li className="flex items-start gap-2">
+                        <span className="text-red-600 font-bold">✕</span>
+                        <span>Todas las jornadas pasadas y sus históricos de reportes</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <span className="text-red-600 font-bold">✕</span>
+                        <span>Todas las reservaciones de clientes (pendientes, confirmadas y canceladas)</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <span className="text-red-600 font-bold">✕</span>
+                        <span>Todas las comandas, órdenes y cierres financieros de caja</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <span className="text-red-600 font-bold">✕</span>
+                        <span>La bitácora completa de eventos de auditoría</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <span className="text-red-600 font-bold">✕</span>
+                        <span>Cuentas de personal operativo (dependientes, gerentes y cocina)</span>
+                      </li>
+                    </ul>
+                  </div>
 
-            <div className="flex gap-3 pt-2">
-              <button
-                type="button"
-                onClick={() => setShowMasterResetModal(false)}
-                className="flex-1 py-3 px-4 rounded-xl border border-stone-300 font-bold text-xs text-stone-700 hover:bg-stone-50 transition-colors"
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                disabled={masterResetConfirmText.trim().toUpperCase() !== 'INICIALIZAR' || isMasterResetting}
-                onClick={handleMasterReset}
-                className="flex-1 py-3 px-4 rounded-xl bg-[#C93A3A] hover:bg-[#B82E2E] text-white font-bold text-xs shadow-md transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-              >
-                {isMasterResetting ? 'Inicializando...' : 'Confirmar Reinicio'}
-              </button>
+                  {/* Backup Advice Box */}
+                  <div className="bg-purple-50 border border-purple-200 rounded-2xl p-5 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h4 className="font-bold text-purple-900 text-xs flex items-center gap-2">
+                        <Database size={16} className="text-purple-600" />
+                        RESPALDO PREVIO RECOMENDADO
+                      </h4>
+                      <button 
+                        type="button"
+                        onClick={handleExportJson}
+                        className="text-[11px] font-bold bg-purple-600 text-white px-3 py-1.5 rounded-lg hover:bg-purple-700 transition-colors flex items-center gap-1 shadow-sm"
+                      >
+                        <Download size={13} /> Descargar Excelencia.json
+                      </button>
+                    </div>
+                    <p className="text-xs text-purple-800 leading-relaxed">
+                      Antes de inicializar, asegúrese de haber descargado y conservado el archivo <strong>Excelencia.json</strong> y la <strong>Bitácora</strong> si desea conservar un respaldo para el futuro.
+                    </p>
+                  </div>
+
+                  {/* Explicit Checkbox Confirmation */}
+                  <div className="bg-stone-50 border border-stone-200 rounded-2xl p-4">
+                    <label className="flex items-start gap-3 cursor-pointer select-none">
+                      <input 
+                        type="checkbox" 
+                        checked={initConfirmChecked}
+                        onChange={e => setInitConfirmChecked(e.target.checked)}
+                        disabled={isInitializing}
+                        className="mt-1 w-4 h-4 text-[#8B1E1E] rounded border-stone-300 focus:ring-[#8B1E1E]"
+                      />
+                      <span className="text-xs font-bold text-[#1A2E26] leading-snug">
+                        Sí, entiendo que esta operación eliminará todos los datos operativos e históricos y deseo continuar con la inicialización total.
+                      </span>
+                    </label>
+                  </div>
+                </>
+              )}
+
+              {/* Actions */}
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowInitModal(false)}
+                  disabled={isInitializing}
+                  className="flex-1 px-5 py-3.5 border border-[#E8E0D0] text-[#6B7280] font-bold rounded-xl text-xs hover:bg-stone-50 transition-colors disabled:opacity-50"
+                >
+                  Cancelar / Volver
+                </button>
+                {!data.isShiftActive && (
+                  <button
+                    type="button"
+                    onClick={handleExecuteInitialization}
+                    disabled={!initConfirmChecked || isInitializing}
+                    className={`flex-1 px-5 py-3.5 rounded-xl font-bold text-xs text-white shadow-lg transition-all flex items-center justify-center gap-2 ${
+                      initConfirmChecked && !isInitializing
+                        ? 'bg-[#8B1E1E] hover:bg-[#721818] cursor-pointer'
+                        : 'bg-stone-300 cursor-not-allowed text-stone-500 shadow-none'
+                    }`}
+                  >
+                    <Trash2 size={16} />
+                    {isInitializing ? 'INICIALIZANDO...' : 'CONFIRMAR INICIALIZACIÓN TOTAL'}
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </div>

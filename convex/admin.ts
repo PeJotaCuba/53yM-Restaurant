@@ -343,8 +343,106 @@ export const closeWorkdayAndArchive = mutation({
     }
 
     return { success: true, jornadaId };
+  },
+});
 
-    return { success: true, jornadaId };
+export const initializeDatabase = mutation({
+  args: {
+    requesterRole: v.string(),
+    username: v.string(),
+  },
+  handler: async (ctx, args) => {
+    // 1. Identity validation
+    if (args.requesterRole !== "admin") {
+      throw new Error("UNAUTHORIZED: Solo el administrador con rol 'admin' puede realizar la inicialización total del sistema.");
+    }
+
+    // 2. Shift state validation
+    const shiftActiveSetting = await ctx.db
+      .query("settings")
+      .withIndex("by_key", (q) => q.eq("key", "isShiftActive"))
+      .first();
+
+    if (shiftActiveSetting && shiftActiveSetting.value === true) {
+      throw new Error("CONFLICT: No es posible realizar la inicialización mientras exista una jornada activa. Primero debe cerrar y archivar la jornada.");
+    }
+
+    // 3. Delete all orders
+    const orders = await ctx.db.query("orders").collect();
+    for (const o of orders) {
+      await ctx.db.delete(o._id);
+    }
+
+    // 4. Delete all reservations (all statuses)
+    const reservations = await ctx.db.query("reservations").collect();
+    for (const r of reservations) {
+      await ctx.db.delete(r._id);
+    }
+
+    // 5. Delete all history
+    const history = await ctx.db.query("history").collect();
+    for (const h of history) {
+      await ctx.db.delete(h._id);
+    }
+
+    // 6. Delete all bitacora entries
+    const logs = await ctx.db.query("bitacora").collect();
+    for (const l of logs) {
+      await ctx.db.delete(l._id);
+    }
+
+    // 7. Delete all snapshots
+    const snapshots = await ctx.db.query("snapshots").collect();
+    for (const s of snapshots) {
+      await ctx.db.delete(s._id);
+    }
+
+    // 8. Delete all pushSubscriptions
+    const pushSubs = await ctx.db.query("pushSubscriptions").collect();
+    for (const ps of pushSubs) {
+      await ctx.db.delete(ps._id);
+    }
+
+    // 9. Reset operational settings keys
+    const operationalKeys = [
+      "orderReports",
+      "kitchenReports",
+      "cashRegisterCloses",
+      "comandas",
+      "notifications",
+      "gerenteCierreCompleto"
+    ];
+
+    for (const key of operationalKeys) {
+      const existing = await ctx.db
+        .query("settings")
+        .withIndex("by_key", (q) => q.eq("key", key))
+        .first();
+      if (existing) {
+        if (key === "gerenteCierreCompleto") {
+          await ctx.db.patch(existing._id, { value: false });
+        } else {
+          await ctx.db.patch(existing._id, { value: [] });
+        }
+      }
+    }
+
+    // Ensure isShiftActive is set to false
+    if (shiftActiveSetting) {
+      await ctx.db.patch(shiftActiveSetting._id, { value: false });
+    } else {
+      await ctx.db.insert("settings", { key: "isShiftActive", value: false });
+    }
+
+    // 10. Delete non-admin users (dependents, managers, kitchen)
+    const users = await ctx.db.query("users").collect();
+    for (const u of users) {
+      if (u.role !== "admin") {
+        await ctx.db.delete(u._id);
+      }
+    }
+
+    return { success: true };
   },
 });
 
@@ -533,92 +631,5 @@ export const getHistory = query({
       return [];
     }
     return await ctx.db.query("history").order("desc").collect();
-  },
-});
-
-export const masterReset = mutation({
-  args: {
-    requesterRole: v.string(),
-    username: v.string(),
-  },
-  handler: async (ctx, args) => {
-    if (args.requesterRole !== "admin") {
-      throw new Error("UNAUTHORIZED: Solo el administrador puede realizar la Inicialización Total.");
-    }
-
-    // 1. Delete all orders
-    const orders = await ctx.db.query("orders").collect();
-    for (const o of orders) {
-      await ctx.db.delete(o._id);
-    }
-
-    // 2. Delete all reservations
-    const reservations = await ctx.db.query("reservations").collect();
-    for (const r of reservations) {
-      await ctx.db.delete(r._id);
-    }
-
-    // 3. Delete all history records (past shifts)
-    const history = await ctx.db.query("history").collect();
-    for (const h of history) {
-      await ctx.db.delete(h._id);
-    }
-
-    // 4. Delete non-admin users
-    const users = await ctx.db.query("users").collect();
-    for (const u of users) {
-      if (u.role !== "admin") {
-        await ctx.db.delete(u._id);
-      }
-    }
-
-    // 5. Delete active bitacora logs
-    const bitacora = await ctx.db.query("bitacora").collect();
-    for (const b of bitacora) {
-      await ctx.db.delete(b._id);
-    }
-
-    // 6. Delete snapshots
-    const snapshots = await ctx.db.query("snapshots").collect();
-    for (const s of snapshots) {
-      await ctx.db.delete(s._id);
-    }
-
-    // 7. Clear operational settings
-    const settingsToClear = ["orderReports", "kitchenReports", "cashRegisterCloses", "comandas", "notifications", "gerenteCierreCompleto"];
-    for (const key of settingsToClear) {
-      const setting = await ctx.db
-        .query("settings")
-        .withIndex("by_key", (q) => q.eq("key", key))
-        .first();
-      if (setting) {
-        if (key === "gerenteCierreCompleto") {
-          await ctx.db.patch(setting._id, { value: false });
-        } else {
-          await ctx.db.patch(setting._id, { value: [] });
-        }
-      }
-    }
-
-    // 8. Reset isShiftActive to false
-    const shiftActiveSetting = await ctx.db
-      .query("settings")
-      .withIndex("by_key", (q) => q.eq("key", "isShiftActive"))
-      .first();
-    if (shiftActiveSetting) {
-      await ctx.db.patch(shiftActiveSetting._id, { value: false });
-    } else {
-      await ctx.db.insert("settings", { key: "isShiftActive", value: false });
-    }
-
-    // 9. Add single initial log entry in Bitacora
-    await ctx.db.insert("bitacora", {
-      action: `INICIALIZACIÓN TOTAL: El Administrador '${args.username}' ha reiniciado la base de datos a cero para iniciar la nueva etapa operativa del restaurante.`,
-      userRole: "admin",
-      username: args.username,
-      timestamp: Date.now(),
-    });
-
-    return { success: true };
   },
 });
