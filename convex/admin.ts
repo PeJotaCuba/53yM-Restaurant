@@ -352,97 +352,113 @@ export const initializeDatabase = mutation({
     username: v.string(),
   },
   handler: async (ctx, args) => {
-    // 1. Identity validation
-    if (args.requesterRole !== "admin") {
-      throw new ConvexError("UNAUTHORIZED: Solo el administrador con rol 'admin' puede realizar la inicialización total del sistema.");
-    }
+    try {
+      // 1. Identity validation
+      if (args.requesterRole !== "admin") {
+        return {
+          success: false,
+          blocked: true,
+          reason: "UNAUTHORIZED: Solo el administrador con rol 'admin' puede realizar la inicialización total del sistema."
+        };
+      }
 
-    // 2. Shift state validation
-    const shiftActiveSetting = await ctx.db
-      .query("settings")
-      .withIndex("by_key", (q) => q.eq("key", "isShiftActive"))
-      .first();
-
-    if (shiftActiveSetting && shiftActiveSetting.value === true) {
-      throw new ConvexError("⚠️ No se puede inicializar el sistema mientras la jornada esté activa. Primero debe cerrar y archivar la jornada.");
-    }
-
-    // 3. Delete all orders
-    const orders = await ctx.db.query("orders").collect();
-    for (const o of orders) {
-      await ctx.db.delete(o._id);
-    }
-
-    // 4. Delete all reservations (all statuses)
-    const reservations = await ctx.db.query("reservations").collect();
-    for (const r of reservations) {
-      await ctx.db.delete(r._id);
-    }
-
-    // 5. Delete all history
-    const history = await ctx.db.query("history").collect();
-    for (const h of history) {
-      await ctx.db.delete(h._id);
-    }
-
-    // 6. Delete all bitacora entries
-    const logs = await ctx.db.query("bitacora").collect();
-    for (const l of logs) {
-      await ctx.db.delete(l._id);
-    }
-
-    // 7. Delete all snapshots
-    const snapshots = await ctx.db.query("snapshots").collect();
-    for (const s of snapshots) {
-      await ctx.db.delete(s._id);
-    }
-
-    // 8. Delete all pushSubscriptions
-    const pushSubs = await ctx.db.query("pushSubscriptions").collect();
-    for (const ps of pushSubs) {
-      await ctx.db.delete(ps._id);
-    }
-
-    // 9. Reset operational settings keys
-    const operationalKeys = [
-      "orderReports",
-      "kitchenReports",
-      "cashRegisterCloses",
-      "comandas",
-      "notifications",
-      "gerenteCierreCompleto"
-    ];
-
-    for (const key of operationalKeys) {
-      const existing = await ctx.db
+      // 2. Shift state validation
+      const shiftActiveSetting = await ctx.db
         .query("settings")
-        .withIndex("by_key", (q) => q.eq("key", key))
+        .withIndex("by_key", (q) => q.eq("key", "isShiftActive"))
         .first();
-      if (existing) {
-        if (key === "gerenteCierreCompleto") {
-          await ctx.db.patch(existing._id, { value: false });
-        } else {
-          await ctx.db.patch(existing._id, { value: [] });
+
+      if (shiftActiveSetting && shiftActiveSetting.value === true) {
+        return {
+          success: false,
+          blocked: true,
+          reason: "⚠️ No se puede realizar la Inicialización Total mientras la jornada esté activa. Primero debe cerrar y archivar la jornada."
+        };
+      }
+
+      // 3. Delete all orders
+      const orders = await ctx.db.query("orders").collect();
+      for (const o of orders) {
+        await ctx.db.delete(o._id);
+      }
+
+      // 4. Delete all reservations (all statuses)
+      const reservations = await ctx.db.query("reservations").collect();
+      for (const r of reservations) {
+        await ctx.db.delete(r._id);
+      }
+
+      // 5. Delete all history
+      const history = await ctx.db.query("history").collect();
+      for (const h of history) {
+        await ctx.db.delete(h._id);
+      }
+
+      // 6. Delete all bitacora entries
+      const logs = await ctx.db.query("bitacora").collect();
+      for (const l of logs) {
+        await ctx.db.delete(l._id);
+      }
+
+      // 7. Delete all snapshots
+      const snapshots = await ctx.db.query("snapshots").collect();
+      for (const s of snapshots) {
+        await ctx.db.delete(s._id);
+      }
+
+      // 8. Delete all pushSubscriptions
+      const pushSubs = await ctx.db.query("pushSubscriptions").collect();
+      for (const ps of pushSubs) {
+        await ctx.db.delete(ps._id);
+      }
+
+      // 9. Reset operational settings keys
+      const operationalKeys = [
+        "orderReports",
+        "kitchenReports",
+        "cashRegisterCloses",
+        "comandas",
+        "notifications",
+        "gerenteCierreCompleto"
+      ];
+
+      for (const key of operationalKeys) {
+        const existing = await ctx.db
+          .query("settings")
+          .withIndex("by_key", (q) => q.eq("key", key))
+          .first();
+        if (existing) {
+          if (key === "gerenteCierreCompleto") {
+            await ctx.db.patch(existing._id, { value: false });
+          } else {
+            await ctx.db.patch(existing._id, { value: [] });
+          }
         }
       }
-    }
 
-    // Ensure isShiftActive is set to false
-    if (shiftActiveSetting) {
-      await ctx.db.patch(shiftActiveSetting._id, { value: false });
-    } else {
-      await ctx.db.insert("settings", { key: "isShiftActive", value: false });
-    }
-
-    // 10. Delete non-admin users (dependents, managers, kitchen)
-    const users = await ctx.db.query("users").collect();
-    for (const u of users) {
-      if (u.role !== "admin") {
-        await ctx.db.delete(u._id);
+      // Ensure isShiftActive is set to false
+      if (shiftActiveSetting) {
+        await ctx.db.patch(shiftActiveSetting._id, { value: false });
+      } else {
+        await ctx.db.insert("settings", { key: "isShiftActive", value: false });
       }
-    }
 
-    return { success: true };
+      // 10. Delete non-admin users (dependents, managers, kitchen)
+      const users = await ctx.db.query("users").collect();
+      for (const u of users) {
+        if (u.role !== "admin") {
+          await ctx.db.delete(u._id);
+        }
+      }
+
+      return { success: true };
+    } catch (err: any) {
+      console.error("Error in initializeDatabase:", err);
+      return {
+        success: false,
+        reason: err?.message || "Error al ejecutar la inicialización en la base de datos."
+      };
+    }
   },
 });
 
@@ -475,6 +491,15 @@ export const restoreDatabase = mutation({
   args: {
     history: v.any(),
     reservations: v.any(),
+    users: v.optional(v.any()),
+    dependents: v.optional(v.any()),
+    managers: v.optional(v.any()),
+    menuItems: v.optional(v.any()),
+    exchangeRate: v.optional(v.any()),
+    landingConfig: v.optional(v.any()),
+    adminConfig: v.optional(v.any()),
+    kitchenConfig: v.optional(v.any()),
+    pwaConfig: v.optional(v.any()),
     requesterRole: v.string(),
     username: v.string(),
   },
@@ -492,118 +517,318 @@ export const restoreDatabase = mutation({
       throw new Error("CONFLICT: No se puede restaurar una copia de seguridad mientras la jornada esté activa. Por favor, cierre la jornada primero.");
     }
 
-    // Restore History (Non-Destructive)
+    // 1. Validation - Fail Fast & Safe
+    if (!Array.isArray(args.history) && !Array.isArray(args.reservations)) {
+      throw new Error("INVALID_BACKUP: El archivo de respaldo no contiene datos de historial ni de reservas válidos.");
+    }
+
+    // 2. RESTORE STAFF & USERS (Dependent, Kitchen, Manager, Admin)
+    const existingUsers = await ctx.db.query("users").collect();
+    const existingUserMap = new Map(existingUsers.map(u => [u.username, u]));
+
+    const usersToRestore: any[] = [];
+    if (Array.isArray(args.users)) {
+      for (const u of args.users) {
+        if (u && typeof u === "object" && u.username) {
+          usersToRestore.push(u);
+        }
+      }
+    }
+    if (Array.isArray(args.dependents)) {
+      for (const d of args.dependents) {
+        if (d && typeof d === "object" && d.username) {
+          if (!usersToRestore.some(u => u.username === d.username)) {
+            usersToRestore.push({ ...d, role: "dependent" });
+          }
+        }
+      }
+    }
+    if (Array.isArray(args.managers)) {
+      for (const m of args.managers) {
+        if (m && typeof m === "object" && m.username) {
+          if (!usersToRestore.some(u => u.username === m.username)) {
+            usersToRestore.push({ ...m, role: "manager" });
+          }
+        }
+      }
+    }
+
+    for (const u of usersToRestore) {
+      const username = String(u.username);
+      const name = typeof u.name === "string" ? u.name : "Usuario";
+      const role = typeof u.role === "string" ? u.role : "dependent";
+      const deviceId = typeof u.deviceId === "string" ? u.deviceId : "";
+      const isActive = typeof u.isActive === "boolean" ? u.isActive : true;
+      const loginTime = typeof u.loginTime === "number" ? u.loginTime : Date.now();
+
+      const matched = existingUserMap.get(username);
+      const cleanUser: any = {
+        username,
+        name,
+        role: role as any,
+        deviceId,
+        isActive,
+        loginTime,
+      };
+
+      if (u.password !== undefined) cleanUser.password = String(u.password);
+      if (u.phone !== undefined) cleanUser.phone = String(u.phone);
+      if (u.tableNumber !== undefined) cleanUser.tableNumber = String(u.tableNumber);
+      if (Array.isArray(u.authorizedAdminIds)) cleanUser.authorizedAdminIds = u.authorizedAdminIds;
+
+      if (matched) {
+        await ctx.db.patch(matched._id, cleanUser);
+      } else {
+        await ctx.db.insert("users", cleanUser);
+      }
+    }
+
+    // 3. RESTORE MENU ITEMS
+    const existingMenuItems = await ctx.db.query("menuItems").collect();
+    if (Array.isArray(args.menuItems)) {
+      for (const item of args.menuItems) {
+        if (item && typeof item === "object" && item.name) {
+          const itemName = String(item.name).trim();
+          const matched = existingMenuItems.find(ex => ex.name.trim().toLowerCase() === itemName.toLowerCase());
+          
+          const cleanItem: any = {
+            name: itemName,
+            category: typeof item.category === "string" ? item.category : "Otros",
+            priceCUP: typeof item.priceCUP === "number" ? item.priceCUP : 0,
+            priceUSD: typeof item.priceUSD === "number" ? item.priceUSD : 0,
+            isAvailable: typeof item.isAvailable === "boolean" ? item.isAvailable : true,
+          };
+
+          const img = item.image || item.imageUrl;
+          if (typeof img === "string" && img.trim()) {
+            cleanItem.image = img.trim();
+          }
+
+          if (matched) {
+            await ctx.db.patch(matched._id, cleanItem);
+          } else {
+            await ctx.db.insert("menuItems", cleanItem);
+          }
+        }
+      }
+    }
+
+    // 4. RESTORE CONFIGURATIONS (Settings)
+    const settingKeysToRestore = [
+      "exchangeRate",
+      "landingConfig",
+      "adminConfig",
+      "kitchenConfig",
+      "pwaConfig"
+    ];
+    for (const key of settingKeysToRestore) {
+      if (args[key] !== undefined && args[key] !== null) {
+        const existing = await ctx.db
+          .query("settings")
+          .withIndex("by_key", (q) => q.eq("key", key))
+          .first();
+        if (existing) {
+          await ctx.db.patch(existing._id, { value: args[key] });
+        } else {
+          await ctx.db.insert("settings", { key, value: args[key] });
+        }
+      }
+    }
+
+    // 5. SECURE OPERATIONAL STATE (Force closed workday, clear operational tables)
+    // Always keep isShiftActive and gerenteCierreCompleto in false
+    if (shiftActiveSetting) {
+      await ctx.db.patch(shiftActiveSetting._id, { value: false });
+    } else {
+      await ctx.db.insert("settings", { key: "isShiftActive", value: false });
+    }
+
+    const gerenteCierre = await ctx.db
+      .query("settings")
+      .withIndex("by_key", (q) => q.eq("key", "gerenteCierreCompleto"))
+      .first();
+    if (gerenteCierre) {
+      await ctx.db.patch(gerenteCierre._id, { value: false });
+    } else {
+      await ctx.db.insert("settings", { key: "gerenteCierreCompleto", value: false });
+    }
+
+    // Reset shift-specific operational reports / transient keys
+    const operationalSettingsKeys = [
+      "orderReports",
+      "kitchenReports",
+      "cashRegisterCloses",
+      "comandas",
+      "notifications"
+    ];
+    for (const key of operationalSettingsKeys) {
+      const existing = await ctx.db
+        .query("settings")
+        .withIndex("by_key", (q) => q.eq("key", key))
+        .first();
+      if (existing) {
+        await ctx.db.patch(existing._id, { value: [] });
+      } else {
+        await ctx.db.insert("settings", { key, value: [] });
+      }
+    }
+
+    // Delete active operational shift orders to keep operational state clean
+    const activeOrders = await ctx.db.query("orders").collect();
+    for (const o of activeOrders) {
+      await ctx.db.delete(o._id);
+    }
+
+    // 6. RESTORE HISTORY (Journals Snapshot - Idempotent & Non-Destructive)
     const existingHistory = await ctx.db.query("history").collect();
     const existingHistoryIds = new Set(existingHistory.map(h => h.jornadaId));
     
     if (Array.isArray(args.history)) {
       for (const record of args.history) {
-        if (record.jornadaId && !existingHistoryIds.has(record.jornadaId)) {
-          const { _id, _creationTime, ...cleanRecord } = record;
-          await ctx.db.insert("history", cleanRecord);
+        if (record && typeof record === "object" && record.jornadaId) {
+          const jId = String(record.jornadaId);
+          if (!existingHistoryIds.has(jId)) {
+            // Clean and map record to conform strictly to the history table schema
+            const cleanHistoryRecord: any = {
+              jornadaId: jId,
+              dateStr: typeof record.dateStr === "string" ? record.dateStr : "01/01/2026",
+              year: typeof record.year === "number" ? record.year : 2026,
+              month: typeof record.month === "number" ? record.month : 1,
+              day: typeof record.day === "number" ? record.day : 1,
+              orders: Array.isArray(record.orders) ? record.orders : [],
+              reservations: Array.isArray(record.reservations) ? record.reservations : [],
+              orderReports: Array.isArray(record.orderReports) ? record.orderReports : [],
+              kitchenReports: Array.isArray(record.kitchenReports) ? record.kitchenReports : [],
+              cashRegisterCloses: Array.isArray(record.cashRegisterCloses) ? record.cashRegisterCloses : [],
+              bitacora: Array.isArray(record.bitacora) ? record.bitacora : (Array.isArray(record.auditLogs) ? record.auditLogs : []),
+              timestamp: typeof record.timestamp === "number" ? record.timestamp : Date.now(),
+            };
+
+            if (Array.isArray(record.comandas)) {
+              cleanHistoryRecord.comandas = record.comandas;
+            }
+
+            try {
+              await ctx.db.insert("history", cleanHistoryRecord);
+              existingHistoryIds.add(jId);
+            } catch (insertErr: any) {
+              console.error(`Error inserting history record ${jId} during restoration:`, insertErr);
+              throw new Error(`VALIDATION_ERROR: No se pudo restaurar el registro de jornada ${jId}. Detalles: ${insertErr.message || insertErr}`);
+            }
+          }
         }
       }
     }
 
-    // Restore Reservations (Non-Destructive)
+    // 7. RESTORE OPERATIONAL RESERVATIONS (Idempotent)
     const existingReservations = await ctx.db.query("reservations").collect();
-    const existingReservationKeys = new Set(existingReservations.map(r => (r as any).id || r._id.toString()));
-    for (const r of existingReservations) {
-      const compositeKey = `${r.customerName}_${r.date}_${r.timeSlot}_${r.createdAt || ''}`;
-      existingReservationKeys.add(compositeKey);
-    }
+    const existingCreatedAts = new Set(existingReservations.map(r => r.createdAt));
+    const existingCompositeKeys = new Set(existingReservations.map(r => 
+      `${r.customerName.trim().toLowerCase()}_${r.date}_${r.timeSlot}_${r.createdAt}`
+    ));
+
+    const processAndInsertReservation = async (record: any) => {
+      if (!record || typeof record !== "object") return;
+
+      const cName = typeof record.customerName === "string" && record.customerName.trim() ? record.customerName.trim() : (typeof record.name === "string" && record.name.trim() ? record.name.trim() : "Cliente");
+      const rDate = typeof record.date === "string" && record.date.trim() ? record.date.trim() : new Date().toISOString().split('T')[0];
+      const rTime = typeof record.timeSlot === "string" && record.timeSlot.trim() ? record.timeSlot.trim() : (typeof record.time === "string" && record.time.trim() ? record.time.trim() : "12:00");
+      const rCreatedAt = typeof record.createdAt === "number" && !isNaN(record.createdAt) ? record.createdAt : (Number(record.createdAt) || Date.now());
+
+      // Duplication Check
+      if (rCreatedAt > 0 && existingCreatedAts.has(rCreatedAt)) {
+        return;
+      }
+      const compositeKey = `${cName.trim().toLowerCase()}_${rDate}_${rTime}_${rCreatedAt}`;
+      if (existingCompositeKeys.has(compositeKey)) {
+        return;
+      }
+
+      const allowedStatuses = ["pending", "confirmed", "paid", "cancelled", "cancellation_pending", "consolidated"];
+      let rawStatus = String(record.status || "pending");
+      if (!allowedStatuses.includes(rawStatus)) {
+        rawStatus = "pending";
+      }
+
+      let formattedDishes: Array<{ name: string; quantity: number; priceCUP?: number }> | undefined = undefined;
+      if (Array.isArray(record.dishes) && record.dishes.length > 0) {
+        const tempDishes: Array<{ name: string; quantity: number; priceCUP?: number }> = [];
+        for (const d of record.dishes) {
+          if (d && typeof d === "object") {
+            const item: { name: string; quantity: number; priceCUP?: number } = {
+              name: typeof d.name === "string" && d.name.trim() ? d.name.trim() : (typeof d.title === "string" && d.title.trim() ? d.title.trim() : "Plato"),
+              quantity: typeof d.quantity === "number" && !isNaN(d.quantity) && d.quantity > 0 ? d.quantity : (Math.max(1, Number(d.quantity) || 1)),
+            };
+            if (typeof d.priceCUP === "number" && !isNaN(d.priceCUP)) {
+              item.priceCUP = d.priceCUP;
+            } else if (d.priceCUP !== undefined && d.priceCUP !== null && !isNaN(Number(d.priceCUP))) {
+              item.priceCUP = Number(d.priceCUP);
+            }
+            tempDishes.push(item);
+          }
+        }
+        if (tempDishes.length > 0) {
+          formattedDishes = tempDishes;
+        }
+      }
+
+      const cleanRecord: any = {
+        customerName: cName,
+        date: rDate,
+        timeSlot: rTime,
+        area: typeof record.area === "string" && record.area.trim() ? record.area.trim() : (typeof record.occasion === "string" && record.occasion.trim() ? record.occasion.trim() : "Principal"),
+        guests: typeof record.guests === "number" && !isNaN(record.guests) && record.guests > 0 ? record.guests : Math.max(1, Number(record.guests) || 2),
+        status: rawStatus as any,
+        createdAt: rCreatedAt,
+      };
+
+      const phoneVal = typeof record.phone === "string" ? record.phone : (typeof record.phone === "number" ? String(record.phone) : undefined);
+      if (phoneVal && phoneVal.trim()) cleanRecord.phone = phoneVal.trim();
+
+      const emailVal = typeof record.email === "string" ? record.email : undefined;
+      if (emailVal && emailVal.trim()) cleanRecord.email = emailVal.trim();
+
+      const occasionVal = typeof record.occasion === "string" ? record.occasion : undefined;
+      if (occasionVal && occasionVal.trim()) cleanRecord.occasion = occasionVal.trim();
+
+      const dishRefVal = typeof record.dishReference === "string" ? record.dishReference : undefined;
+      if (dishRefVal && dishRefVal.trim()) cleanRecord.dishReference = dishRefVal.trim();
+
+      const tableVal = typeof record.tableNumber === "string" ? record.tableNumber : (typeof record.tableNumber === "number" ? String(record.tableNumber) : undefined);
+      if (tableVal && tableVal.trim()) cleanRecord.tableNumber = tableVal.trim();
+
+      if (formattedDishes) cleanRecord.dishes = formattedDishes;
+
+      try {
+        await ctx.db.insert("reservations", cleanRecord);
+        existingCreatedAts.add(rCreatedAt);
+        existingCompositeKeys.add(compositeKey);
+      } catch (insertErr: any) {
+        console.error("Error inserting reservation during restoration:", insertErr, cleanRecord);
+        throw new Error(`VALIDATION_ERROR: No se pudo restaurar la reserva para ${cleanRecord.customerName}. Detalles: ${insertErr.message || insertErr}`);
+      }
+    };
 
     if (Array.isArray(args.reservations)) {
       for (const record of args.reservations) {
-        const recKey = (record as any).id || (record as any)._id;
-        const compositeKey = `${record.customerName || record.name || ''}_${record.date || ''}_${record.timeSlot || record.time || ''}_${record.createdAt || ''}`;
-        if ((!recKey || !existingReservationKeys.has(recKey)) && !existingReservationKeys.has(compositeKey)) {
-          const { _id, _creationTime, ...cleanRecord } = record;
-          await ctx.db.insert("reservations", cleanRecord);
-          if (recKey) existingReservationKeys.add(recKey);
-          existingReservationKeys.add(compositeKey);
-        }
+        await processAndInsertReservation(record);
       }
     }
 
-    // Also extract active operational reservations (pending, cancellation_pending, confirmed, paid) from history snapshots
+    // 8. Extract active operational reservations (pending, cancellation_pending, confirmed, paid) from history snapshots
     if (Array.isArray(args.history)) {
       for (const hDoc of args.history) {
-        if (Array.isArray(hDoc?.reservations)) {
+        if (hDoc && typeof hDoc === "object" && Array.isArray(hDoc.reservations)) {
           for (const record of hDoc.reservations) {
-            if (!record || typeof record !== "object") continue;
-            const status = record.status;
-            if (
-              status === "pending" ||
-              status === "cancellation_pending" ||
-              status === "confirmed" ||
-              status === "paid"
-            ) {
-              const recKey = record._id ? String(record._id) : (record.id ? String(record.id) : null);
-              const compositeKey = `${record.customerName || record.name || ''}_${record.date || ''}_${record.timeSlot || record.time || ''}_${record.createdAt || ''}`;
-              if ((!recKey || !existingReservationKeys.has(recKey)) && !existingReservationKeys.has(compositeKey)) {
-                const allowedStatuses = ["pending", "confirmed", "paid", "cancelled", "cancellation_pending", "consolidated"];
-                let rawStatus = String(record.status || "pending");
-                if (!allowedStatuses.includes(rawStatus)) {
-                  rawStatus = "pending";
-                }
-
-                let formattedDishes: Array<{ name: string; quantity: number; priceCUP?: number }> | undefined = undefined;
-                if (Array.isArray(record.dishes) && record.dishes.length > 0) {
-                  const tempDishes: Array<{ name: string; quantity: number; priceCUP?: number }> = [];
-                  for (const d of record.dishes) {
-                    if (d && typeof d === "object") {
-                      const item: { name: string; quantity: number; priceCUP?: number } = {
-                        name: typeof d.name === "string" && d.name.trim() ? d.name.trim() : (typeof d.title === "string" && d.title.trim() ? d.title.trim() : "Plato"),
-                        quantity: typeof d.quantity === "number" && !isNaN(d.quantity) && d.quantity > 0 ? d.quantity : (Math.max(1, Number(d.quantity) || 1)),
-                      };
-                      if (typeof d.priceCUP === "number" && !isNaN(d.priceCUP)) {
-                        item.priceCUP = d.priceCUP;
-                      } else if (d.priceCUP !== undefined && d.priceCUP !== null && !isNaN(Number(d.priceCUP))) {
-                        item.priceCUP = Number(d.priceCUP);
-                      }
-                      tempDishes.push(item);
-                    }
-                  }
-                  if (tempDishes.length > 0) {
-                    formattedDishes = tempDishes;
-                  }
-                }
-
-                const cleanRecord: any = {
-                  customerName: typeof record.customerName === "string" && record.customerName.trim() ? record.customerName.trim() : (typeof record.name === "string" && record.name.trim() ? record.name.trim() : "Cliente"),
-                  date: typeof record.date === "string" && record.date.trim() ? record.date.trim() : new Date().toISOString().split('T')[0],
-                  timeSlot: typeof record.timeSlot === "string" && record.timeSlot.trim() ? record.timeSlot.trim() : (typeof record.time === "string" && record.time.trim() ? record.time.trim() : "12:00"),
-                  area: typeof record.area === "string" && record.area.trim() ? record.area.trim() : (typeof record.occasion === "string" && record.occasion.trim() ? record.occasion.trim() : "Principal"),
-                  guests: typeof record.guests === "number" && !isNaN(record.guests) && record.guests > 0 ? record.guests : Math.max(1, Number(record.guests) || 2),
-                  status: rawStatus as any,
-                  createdAt: typeof record.createdAt === "number" && !isNaN(record.createdAt) ? record.createdAt : (Number(record.createdAt) || Date.now()),
-                };
-
-                const phoneVal = typeof record.phone === "string" ? record.phone : (typeof record.phone === "number" ? String(record.phone) : undefined);
-                if (phoneVal && phoneVal.trim()) cleanRecord.phone = phoneVal.trim();
-
-                const emailVal = typeof record.email === "string" ? record.email : undefined;
-                if (emailVal && emailVal.trim()) cleanRecord.email = emailVal.trim();
-
-                const occasionVal = typeof record.occasion === "string" ? record.occasion : undefined;
-                if (occasionVal && occasionVal.trim()) cleanRecord.occasion = occasionVal.trim();
-
-                const dishRefVal = typeof record.dishReference === "string" ? record.dishReference : undefined;
-                if (dishRefVal && dishRefVal.trim()) cleanRecord.dishReference = dishRefVal.trim();
-
-                const tableVal = typeof record.tableNumber === "string" ? record.tableNumber : (typeof record.tableNumber === "number" ? String(record.tableNumber) : undefined);
-                if (tableVal && tableVal.trim()) cleanRecord.tableNumber = tableVal.trim();
-
-                if (formattedDishes) cleanRecord.dishes = formattedDishes;
-
-                try {
-                  await ctx.db.insert("reservations", cleanRecord);
-                  if (recKey) existingReservationKeys.add(recKey);
-                  existingReservationKeys.add(compositeKey);
-                } catch (insertErr) {
-                  console.warn("Error inserting recovered reservation in restoreDatabase:", insertErr, cleanRecord);
-                }
+            if (record && typeof record === "object") {
+              const status = record.status;
+              if (
+                status === "pending" ||
+                status === "cancellation_pending" ||
+                status === "confirmed" ||
+                status === "paid"
+              ) {
+                await processAndInsertReservation(record);
               }
             }
           }
@@ -613,7 +838,7 @@ export const restoreDatabase = mutation({
 
     // Log the restoration action in the active bitacora
     await logToBitacora(ctx, {
-      action: `RESTAURACIÓN HISTÓRICA EXITOSA: El Administrador '${args.username}' ha restaurado el archivo Excelencia.json. Se han recuperado el Historial y las Reservas sin afectar la operativa.`,
+      action: `RESTAURACIÓN HISTÓRICA EXITOSA: El Administrador '${args.username}' ha restaurado el archivo Excelencia.json. Se han recuperado el Historial, las Cuentas, las Configuraciones y las Reservas sin afectar la operativa.`,
       userRole: "admin",
       username: args.username,
     });

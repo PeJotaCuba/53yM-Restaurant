@@ -563,7 +563,7 @@ export function AdminPanel({ data, updateData, updateStatus, userRole }: AdminPa
 
   const handleExecuteInitialization = async () => {
     if (data.isShiftActive) {
-      alert('❌ OPERACIÓN BLOQUEADA: No es posible realizar la inicialización mientras exista una jornada activa. Primero debe cerrar y archivar la jornada.');
+      alert('⚠️ No se puede realizar la Inicialización Total mientras la jornada esté activa. Primero debe cerrar y archivar la jornada.');
       setShowInitModal(false);
       return;
     }
@@ -576,10 +576,20 @@ export function AdminPanel({ data, updateData, updateStatus, userRole }: AdminPa
     setIsInitializing(true);
 
     try {
-      await initializeDatabaseMutation({
+      const res = await initializeDatabaseMutation({
         requesterRole: 'admin',
         username: data.adminConfig?.username || 'Administrador',
       });
+
+      if (res && res.success === false) {
+        if (res.blocked || (res.reason && res.reason.includes('jornada'))) {
+          alert('⚠️ No se puede realizar la Inicialización Total mientras la jornada esté activa. Primero debe cerrar y archivar la jornada.');
+          setShowInitModal(false);
+          return;
+        }
+        alert(`❌ Error al inicializar la base de datos:\n\n${res.reason || 'Error desconocido'}`);
+        return;
+      }
 
       // Clear local storage cache and reset local app data state
       localStorage.removeItem('appData');
@@ -603,8 +613,12 @@ export function AdminPanel({ data, updateData, updateStatus, userRole }: AdminPa
     } catch (err: any) {
       console.error('Error durante la inicialización:', err);
       const rawMsg = typeof err?.data === 'string' ? err.data : (err?.message || '');
-      const cleanMsg = rawMsg.replace(/^Uncaught ConvexError:\s*/i, '');
-      alert(`❌ Error al inicializar la base de datos:\n\n${cleanMsg || 'Error desconocido'}`);
+      if (rawMsg.includes('jornada') || rawMsg.includes('activa')) {
+        alert('⚠️ No se puede realizar la Inicialización Total mientras la jornada esté activa. Primero debe cerrar y archivar la jornada.');
+      } else {
+        const cleanMsg = rawMsg.replace(/^Uncaught ConvexError:\s*/i, '');
+        alert(`❌ Error inesperado al intentar inicializar la base de datos:\n\n${cleanMsg || 'Error de servidor'}`);
+      }
     } finally {
       setIsInitializing(false);
     }
@@ -870,6 +884,15 @@ export function AdminPanel({ data, updateData, updateStatus, userRole }: AdminPa
                             await restoreDatabaseMutation({
                                history: json.history || [],
                                reservations: json.reservations || [],
+                               users: json.users || [],
+                               dependents: json.dependents || [],
+                               managers: json.managers || [],
+                               menuItems: json.menuItems || [],
+                               exchangeRate: json.exchangeRate || null,
+                               landingConfig: json.landingConfig || null,
+                               adminConfig: json.adminConfig || null,
+                               kitchenConfig: json.kitchenConfig || null,
+                               pwaConfig: json.pwaConfig || null,
                                requesterRole: 'admin',
                                username: data.adminConfig?.username || 'Administrador',
                             });
