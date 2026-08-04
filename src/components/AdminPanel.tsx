@@ -23,6 +23,7 @@ import {
   Power, 
   RefreshCw, 
   AlertCircle, 
+  AlertTriangle,
   ChefHat, 
   Database,
   Archive,
@@ -59,6 +60,7 @@ export function AdminPanel({ data, updateData, updateStatus, userRole }: AdminPa
   const [activeTab, setActiveTab] = useState<'reservations' | 'landing' | 'menu' | 'dependents' | 'managers' | 'kitchen' | 'exchange' | 'security' | 'simulator' | 'history'>('reservations');
   const [isLogExpanded, setIsLogExpanded] = useState(true);
   const [reservationFilter, setReservationFilter] = useState<'Pendientes' | 'Confirmadas' | 'Canceladas' | 'Consolidadas'>('Pendientes');
+  const [resToCancel, setResToCancel] = useState<Reservation | null>(null);
   const [isLogDrawerOpen, setIsLogDrawerOpen] = useState(false);
   const [showModuleOverlay, setShowModuleOverlay] = useState(false);
   const [overlayTab, setOverlayTab] = useState<typeof activeTab | null>(null);
@@ -932,7 +934,7 @@ export function AdminPanel({ data, updateData, updateStatus, userRole }: AdminPa
                           )}
                           {res.status === 'cancellation_pending' && (
                             <button 
-                              onClick={() => updateStatus(res.id, 'cancelled')}
+                              onClick={() => setResToCancel(res)}
                               className="bg-[#C93A3A] text-white px-3 py-1.5 rounded-full text-xs font-bold hover:bg-[#B82E2E] transition-colors flex items-center gap-1.5 shadow-sm"
                               title="Confirmar cancelación"
                             >
@@ -1027,7 +1029,7 @@ export function AdminPanel({ data, updateData, updateStatus, userRole }: AdminPa
                         )}
                         {res.status === 'cancellation_pending' && (
                           <button 
-                            onClick={() => updateStatus(res.id, 'cancelled')}
+                            onClick={() => setResToCancel(res)}
                             className="bg-[#C93A3A] text-white px-3.5 py-2 rounded-full text-xs font-bold hover:bg-[#B82E2E] transition-colors flex items-center gap-1.5 shadow-sm"
                             title="Confirmar cancelación"
                           >
@@ -1037,7 +1039,7 @@ export function AdminPanel({ data, updateData, updateStatus, userRole }: AdminPa
                         )}
                         {res.status !== 'cancelled' && res.status !== 'cancellation_pending' && (
                           <button 
-                            onClick={() => updateStatus(res.id, 'cancelled')}
+                            onClick={() => setResToCancel(res)}
                             className="bg-white border border-[#E8E0D0] text-[#C93A3A] p-2 rounded-full hover:bg-red-50 transition-colors"
                             title="Cancelar"
                           >
@@ -1791,6 +1793,67 @@ export function AdminPanel({ data, updateData, updateStatus, userRole }: AdminPa
                  </div>
               </form>
            </div>
+        </div>
+      )}
+
+      {/* Modal de Confirmación de Cancelación para el Administrador */}
+      {resToCancel && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 md:p-8 shadow-2xl border border-[#E8E0D0] animate-in zoom-in-95 duration-200">
+            <div className="w-12 h-12 rounded-full bg-red-100 text-[#C93A3A] flex items-center justify-center mx-auto mb-4">
+              <AlertTriangle size={24} />
+            </div>
+
+            <h3 className="text-xl font-bold text-[#1A2E26] text-center mb-2 font-serif">
+              ¿Está seguro de que desea cancelar esta reserva?
+            </h3>
+
+            <p className="text-sm text-[#6B7280] text-center mb-6 leading-relaxed">
+              Esta acción cancelará la reserva del cliente.
+            </p>
+
+            {/* Summary details of the reservation to be cancelled */}
+            <div className="bg-[#F9F5EB] rounded-2xl p-4 border border-[#E8E0D0] mb-6 space-y-2 text-xs text-[#1A2E26]">
+              <div className="flex justify-between font-bold">
+                <span>Cliente:</span>
+                <span>{resToCancel.name}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Fecha y Hora:</span>
+                <span>{resToCancel.date} • {resToCancel.time}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Comensales:</span>
+                <span>{resToCancel.guests} personas</span>
+              </div>
+              {resToCancel.phone && (
+                <div className="flex justify-between">
+                  <span>Teléfono:</span>
+                  <span>{resToCancel.phone}</span>
+                </div>
+              )}
+            </div>
+
+            <div className="flex flex-col sm:flex-row gap-3">
+              <button
+                type="button"
+                onClick={() => setResToCancel(null)}
+                className="flex-1 px-5 py-3 rounded-xl border border-[#E8E0D0] text-[#1A2E26] font-bold text-xs hover:bg-[#F9F5EB] transition-colors"
+              >
+                Cancelar / Volver
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  updateStatus(resToCancel.id, 'cancelled');
+                  setResToCancel(null);
+                }}
+                className="flex-1 px-5 py-3 rounded-xl bg-[#C93A3A] hover:bg-[#B82E2E] text-white font-bold text-xs shadow-md transition-colors"
+              >
+                Confirmar cancelación
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

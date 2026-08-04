@@ -1,5 +1,6 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
+import { logToBitacora } from "./utils";
 
 /**
  * Authorize or activate a user session instantly for a given deviceId
@@ -44,11 +45,10 @@ export const authorizeUser = mutation({
     }
 
     // Insert log into Bitacora
-    await ctx.db.insert("bitacora", {
+    await logToBitacora(ctx, {
       action: `Sesión autorizada/activada para el usuario '${args.username}' (Rol: ${args.role})`,
       userRole: args.role,
       username: args.username,
-      timestamp: now,
     });
 
     return { success: true, deviceId: args.deviceId, role: args.role };
@@ -93,11 +93,10 @@ export const deactivateUser = mutation({
     if (user) {
       await ctx.db.patch(user._id, { isActive: false });
 
-      await ctx.db.insert("bitacora", {
+      await logToBitacora(ctx, {
         action: `Cierre de sesión / desactivación para usuario '${user.username}'`,
         userRole: user.role,
         username: user.username,
-        timestamp: Date.now(),
       });
     }
 
@@ -193,11 +192,10 @@ export const upsertUser = mutation({
       actText = `Usuario '${args.username}' (Rol: ${args.role.toUpperCase()}) CREADO y ${args.isActive ? 'ACTIVADO' : 'DESACTIVADO'}`;
     }
 
-    await ctx.db.insert("bitacora", {
+    await logToBitacora(ctx, {
       action: actText,
       userRole: "admin",
       username: "Administrador",
-      timestamp: now,
     });
 
     return { success: true };
@@ -253,11 +251,10 @@ export const upsertKitchenUser = mutation({
         loginTime: now,
       });
 
-      await ctx.db.insert("bitacora", {
+      await logToBitacora(ctx, {
         action: `Perfil de Cocina ('${args.name}') ${args.isActive ? 'ACTIVADO / MODIFICADO' : 'DESACTIVADO'}`,
         userRole: "admin",
         username: "Administrador",
-        timestamp: now,
       });
       return { success: true, id: existing._id };
     } else {
@@ -272,11 +269,10 @@ export const upsertKitchenUser = mutation({
         loginTime: now,
       });
 
-      await ctx.db.insert("bitacora", {
+      await logToBitacora(ctx, {
         action: `Perfil de Cocina ('${args.name}') CREADO y ${args.isActive ? 'ACTIVADO' : 'DESACTIVADO'}`,
         userRole: "admin",
         username: "Administrador",
-        timestamp: now,
       });
       return { success: true, id: newId };
     }
@@ -307,11 +303,10 @@ export const removeUserByUsername = mutation({
 
     if (user) {
       await ctx.db.delete(user._id);
-      await ctx.db.insert("bitacora", {
+      await logToBitacora(ctx, {
         action: `Usuario '${args.username}' (Rol: ${args.role.toUpperCase()}) ELIMINADO`,
         userRole: "admin",
         username: "Administrador",
-        timestamp: Date.now(),
       });
     }
     return { success: true };

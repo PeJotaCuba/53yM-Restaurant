@@ -1,6 +1,7 @@
 import { mutation, query, internalAction } from "./_generated/server";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
+import { logToBitacora } from "./utils";
 
 export const getAllSettings = query({
   args: {},
@@ -93,11 +94,10 @@ export const resetWorkday = mutation({
     }
     // Note: cashRegisterCloses (comprobantes de pago / recibos) are preserved
 
-    await ctx.db.insert("bitacora", {
+    await logToBitacora(ctx, {
       action: "Jornada reiniciada por el Administrador. Datos operativos y comandas limpiados.",
       userRole: "admin",
       username: "Administrador",
-      timestamp: Date.now(),
     });
     return { success: true };
   },
@@ -128,11 +128,10 @@ export const appendOrderReport = mutation({
     }
 
     // Insert audit log to bitacora
-    await ctx.db.insert("bitacora", {
+    await logToBitacora(ctx, {
       action: `INFORME ENVIADO: El dependiente '${args.report.dependentName}' (@${args.report.dependentUsername}) envió su informe de turno ($${args.report.totalAmountCUP.toLocaleString()} CUP)`,
       userRole: "dependent",
       username: args.report.dependentName || "dependiente",
-      timestamp: Date.now(),
     });
 
     return { success: true };
@@ -164,11 +163,10 @@ export const appendKitchenReport = mutation({
     }
 
     // Insert audit log to bitacora
-    await ctx.db.insert("bitacora", {
+    await logToBitacora(ctx, {
       action: `INFORME ENVIADO: Cocina envió su informe de turno (${args.report.totalDishesPrepared} platos preparados)`,
       userRole: "kitchen",
       username: args.report.chefName || "Cocina",
-      timestamp: Date.now(),
     });
 
     return { success: true };
@@ -191,19 +189,31 @@ export const toggleShiftActive = mutation({
       .withIndex("by_key", (q) => q.eq("key", "isShiftActive"))
       .first();
 
-    if (existing) {
-      await ctx.db.patch(existing._id, { value: args.isActive });
-    } else {
-      await ctx.db.insert("settings", { key: "isShiftActive", value: args.isActive });
-    }
-
     const actionText = args.isActive ? "JORNADA ABIERTA" : "JORNADA DETENIDA";
-    await ctx.db.insert("bitacora", {
-      action: `${actionText}: El Administrador '${args.username}' ${args.isActive ? 'abrió oficialmente la jornada de operaciones' : 'detuvo temporalmente la jornada de operaciones'}.`,
-      userRole: "admin",
-      username: args.username,
-      timestamp: Date.now(),
-    });
+    if (args.isActive) {
+      if (existing) {
+        await ctx.db.patch(existing._id, { value: true });
+      } else {
+        await ctx.db.insert("settings", { key: "isShiftActive", value: true });
+      }
+      await ctx.db.insert("bitacora", {
+        action: `JORNADA ABIERTA: El Administrador '${args.username}' abrió oficialmente la jornada de operaciones.`,
+        userRole: "admin",
+        username: args.username,
+        timestamp: Date.now(),
+      });
+    } else {
+      await logToBitacora(ctx, {
+        action: `JORNADA DETENIDA: El Administrador '${args.username}' detuvo temporalmente la jornada de operaciones.`,
+        userRole: "admin",
+        username: args.username,
+      });
+      if (existing) {
+        await ctx.db.patch(existing._id, { value: false });
+      } else {
+        await ctx.db.insert("settings", { key: "isShiftActive", value: false });
+      }
+    }
 
     return { success: true };
   },
@@ -230,8 +240,11 @@ export const closeWorkdayAndArchive = mutation({
     // 1. Gather all active orders
     const orders = await ctx.db.query("orders").collect();
 
-    // 2. Gather all active reservations
+    // 2. Gather active reservations and filter completed/finished ones for the historical archive
     const reservations = await ctx.db.query("reservations").collect();
+    const finishedReservations = reservations.filter(
+      (r) => r.status === "cancelled" || r.status === "consolidated"
+    );
 
     // 3. Gather reports from settings
     const orderReportsSetting = await ctx.db
@@ -261,7 +274,7 @@ export const closeWorkdayAndArchive = mutation({
     // 4. Gather active bitacora logs
     const bitacora = await ctx.db.query("bitacora").collect();
 
-    // 5. Insert snapshot into history table
+    // 5. Insert snapshot into history table (Historial Integral del Administrador)
     await ctx.db.insert("history", {
       jornadaId,
       dateStr,
@@ -269,7 +282,7 @@ export const closeWorkdayAndArchive = mutation({
       month,
       day,
       orders,
-      reservations,
+      reservations: finishedReservations,
       orderReports,
       kitchenReports,
       cashRegisterCloses,
@@ -283,8 +296,13 @@ export const closeWorkdayAndArchive = mutation({
       await ctx.db.delete(o._id);
     }
 
-    // 7. Keep active reservations (do NOT delete reservations during workday archive)
-    // Pending, confirmed, and cancelled reservations remain active across shifts.
+    // 7. Process reservations upon shift archive:
+    // CANCELLED and CONSOLIDATED reservations are archived by removing them from the active `reservations` table
+    // (since they are fully captured in the `history` snapshot).
+    // PENDING, CANCELLATION_PENDING, CONFIRMED, and PAID reservations remain active in `reservations`.
+    for (const r of finishedReservations) {
+      await ctx.db.delete(r._id);
+    }
 
     // 8. Delete active bitacora
     for (const b of bitacora) {
@@ -324,13 +342,7 @@ export const closeWorkdayAndArchive = mutation({
       await ctx.db.insert("settings", { key: "isShiftActive", value: false });
     }
 
-    // 11. Write the start log for the next jornada in the cleared bitacora
-    await ctx.db.insert("bitacora", {
-      action: `JORNADA CERRADA Y ARCHIVADA: El Administrador '${args.username}' cerró la jornada anterior de forma exitosa.`,
-      userRole: "admin",
-      username: args.username,
-      timestamp: Date.now(),
-    });
+    return { success: true, jornadaId };
 
     return { success: true, jornadaId };
   },
@@ -398,23 +410,114 @@ export const restoreDatabase = mutation({
     // Restore Reservations (Non-Destructive)
     const existingReservations = await ctx.db.query("reservations").collect();
     const existingReservationKeys = new Set(existingReservations.map(r => (r as any).id || r._id.toString()));
+    for (const r of existingReservations) {
+      const compositeKey = `${r.customerName}_${r.date}_${r.timeSlot}_${r.createdAt || ''}`;
+      existingReservationKeys.add(compositeKey);
+    }
 
     if (Array.isArray(args.reservations)) {
       for (const record of args.reservations) {
         const recKey = (record as any).id || (record as any)._id;
-        if (!recKey || !existingReservationKeys.has(recKey)) {
+        const compositeKey = `${record.customerName || record.name || ''}_${record.date || ''}_${record.timeSlot || record.time || ''}_${record.createdAt || ''}`;
+        if ((!recKey || !existingReservationKeys.has(recKey)) && !existingReservationKeys.has(compositeKey)) {
           const { _id, _creationTime, ...cleanRecord } = record;
           await ctx.db.insert("reservations", cleanRecord);
+          if (recKey) existingReservationKeys.add(recKey);
+          existingReservationKeys.add(compositeKey);
+        }
+      }
+    }
+
+    // Also extract active operational reservations (pending, cancellation_pending, confirmed, paid) from history snapshots
+    if (Array.isArray(args.history)) {
+      for (const hDoc of args.history) {
+        if (Array.isArray(hDoc?.reservations)) {
+          for (const record of hDoc.reservations) {
+            if (!record || typeof record !== "object") continue;
+            const status = record.status;
+            if (
+              status === "pending" ||
+              status === "cancellation_pending" ||
+              status === "confirmed" ||
+              status === "paid"
+            ) {
+              const recKey = record._id ? String(record._id) : (record.id ? String(record.id) : null);
+              const compositeKey = `${record.customerName || record.name || ''}_${record.date || ''}_${record.timeSlot || record.time || ''}_${record.createdAt || ''}`;
+              if ((!recKey || !existingReservationKeys.has(recKey)) && !existingReservationKeys.has(compositeKey)) {
+                const allowedStatuses = ["pending", "confirmed", "paid", "cancelled", "cancellation_pending", "consolidated"];
+                let rawStatus = String(record.status || "pending");
+                if (!allowedStatuses.includes(rawStatus)) {
+                  rawStatus = "pending";
+                }
+
+                let formattedDishes: Array<{ name: string; quantity: number; priceCUP?: number }> | undefined = undefined;
+                if (Array.isArray(record.dishes) && record.dishes.length > 0) {
+                  const tempDishes: Array<{ name: string; quantity: number; priceCUP?: number }> = [];
+                  for (const d of record.dishes) {
+                    if (d && typeof d === "object") {
+                      const item: { name: string; quantity: number; priceCUP?: number } = {
+                        name: typeof d.name === "string" && d.name.trim() ? d.name.trim() : (typeof d.title === "string" && d.title.trim() ? d.title.trim() : "Plato"),
+                        quantity: typeof d.quantity === "number" && !isNaN(d.quantity) && d.quantity > 0 ? d.quantity : (Math.max(1, Number(d.quantity) || 1)),
+                      };
+                      if (typeof d.priceCUP === "number" && !isNaN(d.priceCUP)) {
+                        item.priceCUP = d.priceCUP;
+                      } else if (d.priceCUP !== undefined && d.priceCUP !== null && !isNaN(Number(d.priceCUP))) {
+                        item.priceCUP = Number(d.priceCUP);
+                      }
+                      tempDishes.push(item);
+                    }
+                  }
+                  if (tempDishes.length > 0) {
+                    formattedDishes = tempDishes;
+                  }
+                }
+
+                const cleanRecord: any = {
+                  customerName: typeof record.customerName === "string" && record.customerName.trim() ? record.customerName.trim() : (typeof record.name === "string" && record.name.trim() ? record.name.trim() : "Cliente"),
+                  date: typeof record.date === "string" && record.date.trim() ? record.date.trim() : new Date().toISOString().split('T')[0],
+                  timeSlot: typeof record.timeSlot === "string" && record.timeSlot.trim() ? record.timeSlot.trim() : (typeof record.time === "string" && record.time.trim() ? record.time.trim() : "12:00"),
+                  area: typeof record.area === "string" && record.area.trim() ? record.area.trim() : (typeof record.occasion === "string" && record.occasion.trim() ? record.occasion.trim() : "Principal"),
+                  guests: typeof record.guests === "number" && !isNaN(record.guests) && record.guests > 0 ? record.guests : Math.max(1, Number(record.guests) || 2),
+                  status: rawStatus as any,
+                  createdAt: typeof record.createdAt === "number" && !isNaN(record.createdAt) ? record.createdAt : (Number(record.createdAt) || Date.now()),
+                };
+
+                const phoneVal = typeof record.phone === "string" ? record.phone : (typeof record.phone === "number" ? String(record.phone) : undefined);
+                if (phoneVal && phoneVal.trim()) cleanRecord.phone = phoneVal.trim();
+
+                const emailVal = typeof record.email === "string" ? record.email : undefined;
+                if (emailVal && emailVal.trim()) cleanRecord.email = emailVal.trim();
+
+                const occasionVal = typeof record.occasion === "string" ? record.occasion : undefined;
+                if (occasionVal && occasionVal.trim()) cleanRecord.occasion = occasionVal.trim();
+
+                const dishRefVal = typeof record.dishReference === "string" ? record.dishReference : undefined;
+                if (dishRefVal && dishRefVal.trim()) cleanRecord.dishReference = dishRefVal.trim();
+
+                const tableVal = typeof record.tableNumber === "string" ? record.tableNumber : (typeof record.tableNumber === "number" ? String(record.tableNumber) : undefined);
+                if (tableVal && tableVal.trim()) cleanRecord.tableNumber = tableVal.trim();
+
+                if (formattedDishes) cleanRecord.dishes = formattedDishes;
+
+                try {
+                  await ctx.db.insert("reservations", cleanRecord);
+                  if (recKey) existingReservationKeys.add(recKey);
+                  existingReservationKeys.add(compositeKey);
+                } catch (insertErr) {
+                  console.warn("Error inserting recovered reservation in restoreDatabase:", insertErr, cleanRecord);
+                }
+              }
+            }
+          }
         }
       }
     }
 
     // Log the restoration action in the active bitacora
-    await ctx.db.insert("bitacora", {
+    await logToBitacora(ctx, {
       action: `RESTAURACIÓN HISTÓRICA EXITOSA: El Administrador '${args.username}' ha restaurado el archivo Excelencia.json. Se han recuperado el Historial y las Reservas sin afectar la operativa.`,
       userRole: "admin",
       username: args.username,
-      timestamp: Date.now(),
     });
 
     return { success: true };

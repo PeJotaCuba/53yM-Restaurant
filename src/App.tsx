@@ -98,6 +98,18 @@ export default function App() {
   const liveMenuItems = useQuery(api.menuItems.getLiveMenuItems);
   const convexUsers = useQuery(api.users.getAllUsers) || [];
 
+  const recoverHistoricalReservationsMutation = useMutation(api.reservations.recoverHistoricalReservations);
+  const hasRecoveredReservationsRef = useRef(false);
+
+  useEffect(() => {
+    if (!hasRecoveredReservationsRef.current) {
+      hasRecoveredReservationsRef.current = true;
+      recoverHistoricalReservationsMutation().catch(err => {
+        console.warn('Notice recovering historical reservations:', err);
+      });
+    }
+  }, [recoverHistoricalReservationsMutation]);
+
   const mappedReservations = useMemo(() => {
     return (liveReservations || []).map((lr: any) => ({
       id: lr._id || lr.id,
@@ -659,8 +671,8 @@ export default function App() {
         timestamp: Date.now(),
         orderId: id,
         tableNumber: 'Reserva',
-        title: 'Cancelación de Reserva Confirmada',
-        message: `La cancelación de tu reserva para el ${targetRes.date} (${targetRes.time}) ha sido confirmada por el administrador.`,
+        title: 'Reserva Cancelada',
+        message: `Tu reserva ha sido cancelada. Para más información, por favor contacta con el administrador.`,
         targetRole: 'client',
         isRead: false,
       };

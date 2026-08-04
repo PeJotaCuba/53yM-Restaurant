@@ -1,5 +1,6 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
+import { logToBitacora } from "./utils";
 
 /**
  * Generic sync or update for orders from frontend
@@ -74,59 +75,51 @@ export const syncOrUpdateOrder = mutation({
           if (args.status === 'in_kitchen' || args.status === 'pending') {
             if (oldStatus === 'pending_dependent' || oldStatus === 'client_pending') {
               // Waiter received/approved client comanda and sent to kitchen
-              await ctx.db.insert("bitacora", {
+              await logToBitacora(ctx, {
                 action: `PEDIDO RECIBIDO POR DEPENDIENTE: El dependiente '${userStr}' recibió/aceptó el pedido entrante de Mesa #${args.tableNumber}`,
                 userRole: userRoleStr,
                 username: userStr,
-                timestamp: Date.now(),
               });
             }
-            await ctx.db.insert("bitacora", {
+            await logToBitacora(ctx, {
               action: `PEDIDO ENVIADO A COCINA: El dependiente '${userStr}' envió la comanda de Mesa #${args.tableNumber} a Cocina`,
               userRole: userRoleStr,
               username: userStr,
-              timestamp: Date.now(),
             });
           } else if (args.status === 'kitchen_in_progress' || args.status === 'in_progress') {
-            await ctx.db.insert("bitacora", {
+            await logToBitacora(ctx, {
               action: `PEDIDO EN ELABORACIÓN: Cocina inició la elaboración del pedido de Mesa #${args.tableNumber}`,
               userRole: "kitchen",
               username: userStr,
-              timestamp: Date.now(),
             });
           } else if (args.status === 'kitchen_ready' || args.status === 'ready_to_serve') {
-            await ctx.db.insert("bitacora", {
+            await logToBitacora(ctx, {
               action: `PEDIDO LISTO: Cocina marcó el pedido de Mesa #${args.tableNumber} como LISTO`,
               userRole: "kitchen",
               username: userStr,
-              timestamp: Date.now(),
             });
-            await ctx.db.insert("bitacora", {
+            await logToBitacora(ctx, {
               action: `PEDIDO LISTO / AVISO A DEPENDIENTE: Se notificó al dependiente asignado para servir el pedido de Mesa #${args.tableNumber}`,
               userRole: "kitchen",
               username: userStr,
-              timestamp: Date.now(),
             });
           } else if (args.status === 'delivered') {
-            await ctx.db.insert("bitacora", {
+            await logToBitacora(ctx, {
               action: `PEDIDO ENTREGADO: El dependiente '${userStr}' entregó el pedido a Mesa #${args.tableNumber}`,
               userRole: userRoleStr,
               username: userStr,
-              timestamp: Date.now(),
             });
           } else if (args.status === 'paid' || args.status === 'closed') {
-            await ctx.db.insert("bitacora", {
+            await logToBitacora(ctx, {
               action: `PEDIDO COBRADO Y CERRADO: Pedido de Mesa #${args.tableNumber} cobrado y cerrado por ${userStr} ($${args.totalCUP} CUP)`,
               userRole: userRoleStr,
               username: userStr,
-              timestamp: Date.now(),
             });
           } else {
-            await ctx.db.insert("bitacora", {
+            await logToBitacora(ctx, {
               action: `Pedido de Mesa #${args.tableNumber} cambió de estado a '${args.status.toUpperCase()}'`,
               userRole: userRoleStr,
               username: userStr,
-              timestamp: Date.now(),
             });
           }
         }
@@ -138,11 +131,10 @@ export const syncOrUpdateOrder = mutation({
     const newId = await ctx.db.insert("orders", data);
     const creator = args.username || "Cliente";
     
-    await ctx.db.insert("bitacora", {
+    await logToBitacora(ctx, {
       action: `PEDIDO CREADO: Nuevo pedido en Mesa #${args.tableNumber} por ${creator} ($${args.totalCUP} CUP)`,
       userRole: args.userRole || "cliente",
       username: creator,
-      timestamp: Date.now(),
     });
 
     return newId;
@@ -220,11 +212,10 @@ export const sendToKitchen = mutation({
     });
 
     // Auto-insert audit log into Bitacora
-    await ctx.db.insert("bitacora", {
+    await logToBitacora(ctx, {
       action: `PEDIDO ENVIADO A COCINA: El dependiente '${args.username}' envió la comanda de Mesa #${order.tableNumber} a Cocina`,
       userRole: args.userRole,
       username: args.username,
-      timestamp: now,
     });
 
     return { success: true };
@@ -249,18 +240,16 @@ export const markAsReady = mutation({
     });
 
     // Auto-insert audit log into Bitacora
-    await ctx.db.insert("bitacora", {
+    await logToBitacora(ctx, {
       action: `PEDIDO LISTO: Cocina marcó el pedido de Mesa #${order.tableNumber} como LISTO`,
       userRole: "kitchen",
       username: args.username || "Cocina",
-      timestamp: now,
     });
 
-    await ctx.db.insert("bitacora", {
+    await logToBitacora(ctx, {
       action: `PEDIDO LISTO / AVISO A DEPENDIENTE: Se notificó al dependiente asignado para servir el pedido de Mesa #${order.tableNumber}`,
       userRole: "kitchen",
       username: args.username || "Cocina",
-      timestamp: now,
     });
 
     return { success: true };
@@ -286,11 +275,10 @@ export const closeOrder = mutation({
     });
 
     // Auto-insert audit log into Bitacora
-    await ctx.db.insert("bitacora", {
+    await logToBitacora(ctx, {
       action: `PEDIDO COBRADO Y CERRADO: Pedido de Mesa #${order.tableNumber} cobrado y cerrado por ${args.username} ($${order.totalCUP} CUP)`,
       userRole: args.userRole,
       username: args.username,
-      timestamp: now,
     });
 
     return { success: true };

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Reservation, AppData, Order, OrderItem, AppNotification } from '../types';
-import { Clock, CheckCircle2, XCircle, Edit2, Calendar, User, Phone, X, Save, AlertTriangle, Utensils, Plus, Trash2, Send, ShoppingBag, ShieldAlert, Download, Check } from 'lucide-react';
+import { Clock, CheckCircle2, XCircle, Edit2, Calendar, User, Phone, X, Save, AlertTriangle, Utensils, Plus, Trash2, Send, ShoppingBag, ShieldAlert, Download, Check, MessageCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useDeviceId } from '../hooks/useDeviceId';
 import { useLanguage } from '../context/LanguageContext';
@@ -70,8 +70,19 @@ export function UserDashboard({ reservations, data, updateData, onUpdateReservat
   const [dishRations, setDishRations] = useState<number>(1);
   const [cartItems, setCartItems] = useState<{ dishName: string; quantity: number; priceCUP: number }[]>([]);
 
-  // Real-time reservation confirmation notification states
+  // Real-time reservation notification states
   const [confirmedReservationAlert, setConfirmedReservationAlert] = useState<any | null>(null);
+  const [cancelledReservationAlert, setCancelledReservationAlert] = useState<any | null>(null);
+
+  const getAdminWhatsAppLink = (resInfo?: any) => {
+    const rawPhone = (data?.adminConfig?.phone || '54413935').replace(/\D/g, '');
+    const cleanPhone = rawPhone.length === 8 ? `53${rawPhone}` : rawPhone;
+    const clientName = resInfo?.name || resInfo?.customerName;
+    const text = clientName
+      ? `Hola, me comunico respecto a la cancelación de mi reserva a nombre de ${clientName}${resInfo?.date ? ` del ${resInfo.date}` : ''}.`
+      : `Hola, me comunico respecto a la cancelación de mi reserva en 53&M.`;
+    return `https://wa.me/${cleanPhone}?text=${encodeURIComponent(text)}`;
+  };
 
   useEffect(() => {
     if (data?.menuItems && data.menuItems.length > 0 && !selectedDishName) {
@@ -90,30 +101,40 @@ export function UserDashboard({ reservations, data, updateData, onUpdateReservat
     return () => clearInterval(interval);
   }, []);
 
-  const activeReservations = reservations.filter(r => r.status !== 'cancelled').sort((a, b) => b.createdAt - a.createdAt);
+  const activeReservations = [...(reservations || [])].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
 
   const prevReservationsRef = React.useRef<any[]>([]);
 
   useEffect(() => {
-    const currentReservations = activeReservations || [];
+    const currentReservations = reservations || [];
     const prevReservations = prevReservationsRef.current;
 
     if (prevReservations.length > 0) {
       currentReservations.forEach(current => {
         const prev = prevReservations.find(p => p.id === current.id);
-        if (prev && prev.status === 'pending' && (current.status === 'confirmed' || current.status === 'paid')) {
-          setConfirmedReservationAlert(current);
-          if ('Notification' in window && Notification.permission === 'granted') {
-            new Notification("Reserva Confirmada 🎉", {
-              body: `Tu reserva para el ${formatDateFriendly(current.date)} ha sido confirmada.`
-            });
+        if (prev) {
+          if (prev.status === 'pending' && (current.status === 'confirmed' || current.status === 'paid')) {
+            setConfirmedReservationAlert(current);
+            if ('Notification' in window && Notification.permission === 'granted') {
+              new Notification("Reserva Confirmada 🎉", {
+                body: `Tu reserva para el ${formatDateFriendly(current.date)} ha sido confirmada.`
+              });
+            }
+          }
+          if (prev.status !== 'cancelled' && current.status === 'cancelled') {
+            setCancelledReservationAlert(current);
+            if ('Notification' in window && Notification.permission === 'granted') {
+              new Notification("Reserva Cancelada ⚠️", {
+                body: `Tu reserva ha sido cancelada. Para más información, por favor contacta con el administrador.`
+              });
+            }
           }
         }
       });
     }
 
     prevReservationsRef.current = currentReservations;
-  }, [activeReservations]);
+  }, [reservations]);
 
   const usdCUP = data?.exchangeRate?.usdCUP || 320;
   const eurCUP = data?.exchangeRate?.eurCUP || 350;
@@ -380,6 +401,46 @@ export function UserDashboard({ reservations, data, updateData, onUpdateReservat
         </div>
       )}
 
+      {/* Client Reservation Cancelled Alert */}
+      {cancelledReservationAlert && (
+        <div className="bg-stone-900 text-white rounded-3xl p-6 mb-8 shadow-2xl border-2 border-red-500/80 flex flex-col sm:flex-row items-center justify-between gap-4 animate-fade-in relative">
+          <button 
+            onClick={() => setCancelledReservationAlert(null)}
+            className="absolute top-4 right-4 text-white/70 hover:text-white font-bold p-1"
+            aria-label="Cerrar notificación"
+          >
+            ✕
+          </button>
+          <div className="flex items-center gap-4">
+            <div className="p-3 bg-red-900/80 rounded-2xl text-3xl shrink-0 border border-red-500/40">
+              ⚠️
+            </div>
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <span className="bg-red-500 text-white font-black text-[10px] uppercase px-2.5 py-0.5 rounded-full tracking-wider">
+                  Reserva Cancelada
+                </span>
+                <span className="text-[11px] text-red-300 font-mono">En tiempo real</span>
+              </div>
+              <h4 className="font-serif font-bold text-lg text-white">
+                Tu reserva ha sido cancelada.
+              </h4>
+              <p className="text-xs text-stone-200 mt-1">
+                Para más información, por favor contacta con el administrador.
+              </p>
+            </div>
+          </div>
+          <a
+            href={getAdminWhatsAppLink(cancelledReservationAlert)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="px-5 py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl flex items-center gap-2 shadow-lg transition-all shrink-0"
+          >
+            <MessageCircle size={16} /> Contactar por WhatsApp
+          </a>
+        </div>
+      )}
+
       {/* SECTION 1: MIS RESERVAS */}
       <div className="mb-8">
         <h3 className="text-2xl font-serif text-dark-green mb-6 text-center">{t('Mis Reservas')}</h3>
@@ -406,6 +467,7 @@ export function UserDashboard({ reservations, data, updateData, onUpdateReservat
                   {res.status === 'pending' && <span className="bg-amber-100 text-amber-700 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider flex items-center"><Clock size={12} className="mr-1"/> {t('Pendiente')}</span>}
                   {res.status === 'cancellation_pending' && <span className="bg-orange-100 text-orange-700 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider flex items-center"><AlertTriangle size={12} className="mr-1"/> {t('Cancelación Pendiente')}</span>}
                   {(res.status === 'paid' || res.status === 'confirmed') && <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider flex items-center"><CheckCircle2 size={12} className="mr-1"/> {t('Confirmada')}</span>}
+                  {res.status === 'cancelled' && <span className="bg-red-100 text-red-700 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider flex items-center"><XCircle size={12} className="mr-1"/> {t('Cancelada')}</span>}
                 </div>
 
                 <div className="flex flex-col md:flex-row gap-8">
@@ -444,21 +506,37 @@ export function UserDashboard({ reservations, data, updateData, onUpdateReservat
 
                     {/* Customer Action Buttons: Edit & Cancel */}
                     <div className="flex flex-wrap gap-2.5 pt-3 border-t border-stone-100">
-                      {res.status !== 'cancellation_pending' && (
-                        <>
-                          <button
-                            onClick={() => setEditingRes({ ...res })}
-                            className="bg-stone-100 hover:bg-stone-200 text-stone-800 font-bold px-3.5 py-2 rounded-xl text-xs flex items-center gap-1.5 transition-colors"
+                      {res.status === 'cancelled' ? (
+                        <div className="w-full bg-red-50 border border-red-200 rounded-2xl p-4 text-xs space-y-3">
+                          <p className="font-semibold text-red-900">
+                            Tu reserva ha sido cancelada. Para más información, por favor contacta con el administrador.
+                          </p>
+                          <a
+                            href={getAdminWhatsAppLink(res)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-4 py-2.5 rounded-xl text-xs transition-colors shadow-sm"
                           >
-                            <Edit2 size={14} /> {t('Cambiar Fecha / Detalles')}
-                          </button>
-                          <button
-                            onClick={() => setCancellingResId(res.id)}
-                            className="bg-red-50 hover:bg-red-100 text-red-600 font-bold px-3.5 py-2 rounded-xl text-xs flex items-center gap-1.5 transition-colors border border-red-200"
-                          >
-                            <XCircle size={14} /> {t('Cancelar Reserva')}
-                          </button>
-                        </>
+                            <MessageCircle size={15} /> Contactar por WhatsApp
+                          </a>
+                        </div>
+                      ) : (
+                        res.status !== 'cancellation_pending' && (
+                          <>
+                            <button
+                              onClick={() => setEditingRes({ ...res })}
+                              className="bg-stone-100 hover:bg-stone-200 text-stone-800 font-bold px-3.5 py-2 rounded-xl text-xs flex items-center gap-1.5 transition-colors"
+                            >
+                              <Edit2 size={14} /> {t('Cambiar Fecha / Detalles')}
+                            </button>
+                            <button
+                              onClick={() => setCancellingResId(res.id)}
+                              className="bg-red-50 hover:bg-red-100 text-red-600 font-bold px-3.5 py-2 rounded-xl text-xs flex items-center gap-1.5 transition-colors border border-red-200"
+                            >
+                              <XCircle size={14} /> {t('Cancelar Reserva')}
+                            </button>
+                          </>
+                        )
                       )}
                     </div>
                   </div>
@@ -466,7 +544,25 @@ export function UserDashboard({ reservations, data, updateData, onUpdateReservat
                   {/* Action Column */}
                   <div className="flex-1 bg-stone-50 rounded-2xl p-6 border border-stone-100 flex flex-col justify-center">
                     <div className="flex flex-col items-center justify-center h-full text-center">
-                      {res.status === 'pending' ? (
+                      {res.status === 'cancelled' ? (
+                        <div className="text-center py-2">
+                          <div className="w-12 h-12 rounded-full bg-red-100 text-red-600 flex items-center justify-center mx-auto mb-3">
+                            <XCircle size={24} />
+                          </div>
+                          <p className="text-base font-bold text-red-900 mb-1">Reserva Cancelada</p>
+                          <p className="text-xs text-stone-500 max-w-xs mx-auto mb-4 leading-relaxed">
+                            Para más información, por favor contacta con el administrador.
+                          </p>
+                          <a
+                            href={getAdminWhatsAppLink(res)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-4 py-2.5 rounded-xl text-xs transition-colors shadow-sm"
+                          >
+                            <MessageCircle size={15} /> Contactar por WhatsApp
+                          </a>
+                        </div>
+                      ) : res.status === 'pending' ? (
                         <div className="mb-6">
                           <p className="text-stone-600 text-sm">Tu reserva ha sido recibida y está pendiente de confirmación por nuestro equipo.</p>
                         </div>

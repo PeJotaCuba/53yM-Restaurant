@@ -1,7 +1,6 @@
 import { mutation, query, action, internalAction } from "./_generated/server";
 import { v } from "convex/values";
-import webpush from "web-push";
-import { api, internal } from "./_generated/api";
+import { internal } from "./_generated/api";
 
 export const saveSubscription = mutation({
   args: {
@@ -53,43 +52,7 @@ export const sendPushNotificationInternal = internalAction({
     tag: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const publicKey = process.env.VITE_VAPID_PUBLIC_KEY;
-    const privateKey = process.env.VAPID_PRIVATE_KEY;
-
-    if (!publicKey || !privateKey) {
-      console.warn("[Push] VAPID keys not configured in server environment. Skipping delivery.");
-      return;
-    }
-
-    webpush.setVapidDetails(
-      "mailto:admin@53ym.cu",
-      publicKey,
-      privateKey
-    );
-
-    const subscriptions = await ctx.runQuery((api as any).notifications.getSubscriptionsByRole, {
-      role: args.role,
-    });
-
-    const promises = subscriptions.map(async (sub) => {
-      try {
-        await webpush.sendNotification(sub.subscription, JSON.stringify({
-          title: args.title,
-          body: args.body,
-          tag: args.tag,
-          url: sub.role === 'client' ? '/?view=order_workspace' : `/?view=${sub.role}`
-        }));
-      } catch (err: any) {
-        if (err.statusCode === 404 || err.statusCode === 410) {
-          console.log("[Push] Removing expired subscription for device:", sub.deviceId);
-          // Mutation to remove would go here
-        } else {
-          console.error("[Push] Error sending push notification:", err);
-        }
-      }
-    });
-
-    await Promise.allSettled(promises);
+    await ctx.runAction((internal as any).pushActions.sendPushNotificationInternal, args);
   },
 });
 
@@ -100,10 +63,7 @@ export const sendPushNotification = action({
     body: v.string(),
   },
   handler: async (ctx, args) => {
-    await ctx.runAction((internal as any).notifications.sendPushNotificationInternal, {
-      role: args.role,
-      title: args.title,
-      body: args.body,
-    });
+    await ctx.runAction((internal as any).pushActions.sendPushNotification, args);
   },
 });
+

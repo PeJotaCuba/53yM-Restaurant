@@ -1,5 +1,6 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
+import { logToBitacora } from "./utils";
 
 export const getLiveMenuItems = query({
   args: {},
@@ -20,11 +21,10 @@ export const toggleMenuItemAvailability = mutation({
 
     await ctx.db.patch(args.id, { isAvailable: args.isAvailable });
 
-    await ctx.db.insert("bitacora", {
+    await logToBitacora(ctx, {
       action: `Plato '${item.name}' cambiado a ${args.isAvailable ? 'DISPONIBLE' : 'AGOTADO'} por ${args.username}`,
       userRole: "gerente/admin",
       username: args.username,
-      timestamp: Date.now(),
     });
 
     return { success: true };
@@ -65,13 +65,13 @@ export const syncMenuItems = mutation({
         await ctx.db.insert("menuItems", item);
       }
     }
-    await ctx.db.insert("bitacora", {
+    await logToBitacora(ctx, {
       action: `Menú actualizado por ${args.username} (${args.items.length} platos)`,
       userRole: "admin/gerente",
       username: args.username,
-      timestamp: Date.now(),
     });
     return { success: true };
   },
 });
+
 

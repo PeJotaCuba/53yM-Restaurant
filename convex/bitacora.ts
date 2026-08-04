@@ -1,5 +1,6 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
+import { logToBitacora } from "./utils";
 
 /**
  * Reactive query streaming live operational logs for Manager and Admin
@@ -35,13 +36,12 @@ export const addLog = mutation({
     username: v.string(),
   },
   handler: async (ctx, args) => {
-    const now = Date.now();
-    await ctx.db.insert("bitacora", {
+    await logToBitacora(ctx, {
       action: args.action,
       userRole: args.userRole,
       username: args.username,
-      timestamp: now,
     });
     return { success: true };
   },
 });
+

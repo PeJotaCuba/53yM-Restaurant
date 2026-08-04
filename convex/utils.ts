@@ -25,3 +25,35 @@ export function sanitizeObject<T>(obj: T): T {
   }
   return res as T;
 }
+
+/**
+ * Checks whether the shift is currently active (isShiftActive === true).
+ */
+export async function isShiftActive(ctx: { db: any }): Promise<boolean> {
+  const setting = await ctx.db
+    .query("settings")
+    .withIndex("by_key", (q: any) => q.eq("key", "isShiftActive"))
+    .first();
+  return setting ? setting.value === true : false;
+}
+
+/**
+ * Safely inserts a log entry into bitacora ONLY if the shift is active (isShiftActive === true).
+ * No events are recorded in bitacora before the Administrator opens the shift or after shift is closed.
+ */
+export async function logToBitacora(
+  ctx: { db: any },
+  entry: { action: string; userRole: string; username: string; timestamp?: number }
+) {
+  const active = await isShiftActive(ctx);
+  if (!active) {
+    return;
+  }
+
+  await ctx.db.insert("bitacora", {
+    action: entry.action,
+    userRole: entry.userRole,
+    username: entry.username,
+    timestamp: entry.timestamp ?? Date.now(),
+  });
+}
