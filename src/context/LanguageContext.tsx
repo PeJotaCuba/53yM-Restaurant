@@ -221,7 +221,8 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     'ID de este dispositivo:': 'This device ID:',
     '* Las sesiones de personal caducan automáticamente a las 24 horas.': '* Staff sessions automatically expire after 24 hours.',
     'Las cuentas de Administrador y Dependiente no realizan reservas.': 'Admin and Server accounts do not place reservations.',
-    'Restaurante - Terraza 53&M. Todos los derechos reservados.': 'Restaurant - Terrace 53&M. All rights reserved.'
+    'Restaurante - Terraza 53&M. Todos los derechos reservados.': 'Restaurant - Terrace 53&M. All rights reserved.',
+    'Restaurante - Terraza 53&M. Todos los derechos reservados | Desarrollado por': 'Restaurant - Terrace 53&M. All rights reserved | Developed by'
   },
   fr: {
     // Navigation & Header
@@ -427,7 +428,8 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     'ID de este dispositivo:': 'ID de cet appareil :',
     '* Las sesiones de personal caducan automáticamente a las 24 horas.': '* Les sessions du personnel expirent après 24 heures.',
     'Las cuentas de Administrador y Dependiente no realizan reservas.': 'Les comptes Administrateur et Serveur ne font pas de réservations.',
-    'Restaurante - Terraza 53&M. Todos los derechos reservados.': 'Restaurant - Terrasse 53&M. Tous droits réservés.'
+    'Restaurante - Terraza 53&M. Todos los derechos reservados.': 'Restaurant - Terrasse 53&M. Tous droits réservés.',
+    'Restaurante - Terraza 53&M. Todos los derechos reservados | Desarrollado por': 'Restaurant - Terrasse 53&M. Tous droits réservés | Développé par'
   },
   pt: {
     // Navigation & Header
@@ -633,7 +635,8 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     'ID de este dispositivo:': 'ID deste dispositivo:',
     '* Las sesiones de personal caducan automáticamente a las 24 horas.': '* As sessões da equipe expiram em 24 horas.',
     'Las cuentas de Administrador y Dependiente no realizan reservas.': 'Contas de Administrador e Garçom não fazem reservas.',
-    'Restaurante - Terraza 53&M. Todos los derechos reservados.': 'Restaurante - Terraza 53&M. Todos os direitos reservados.'
+    'Restaurante - Terraza 53&M. Todos los derechos reservados.': 'Restaurante - Terraza 53&M. Todos os direitos reservados.',
+    'Restaurante - Terraza 53&M. Todos los derechos reservados | Desarrollado por': 'Restaurante - Terraza 53&M. Todos os direitos reservados | Desenvolvido por'
   }
 };
 

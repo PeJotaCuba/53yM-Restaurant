@@ -23,6 +23,7 @@ import { Testimonials } from './components/Testimonials';
 import { FAQ } from './components/FAQ';
 import { Contact } from './components/Contact';
 import { Logo } from './components/Logo';
+import nectysLogoUrl from './assets/NectysFinal.png';
 import { LoginModal } from './components/LoginModal';
 import { PWAInstallBanner } from './components/PWAInstallBanner';
 import { SystemNotificationManager } from './components/SystemNotificationManager';
@@ -1122,14 +1123,19 @@ export default function App() {
       </main>
 
       {currentView !== 'reservation' && (
-        <footer className="bg-stone-900 text-stone-400 py-12 text-center border-t border-stone-800">
+        <footer className="bg-[#1E1916] text-stone-400 py-12 text-center border-t border-stone-800/80">
           <div className="flex justify-center mb-6">
             <Logo variant="png" className="h-16 md:h-20 filter brightness-110 drop-shadow-md" />
           </div>
           <p className="mb-8">{t(appData.landingConfig.footerText)}</p>
-          <p className="text-sm border-t border-stone-800 pt-8 max-w-xl mx-auto">
-            &copy; {new Date().getFullYear()} {t('Restaurante - Terraza 53&M. Todos los derechos reservados.')}
-          </p>
+          <div className="text-xs md:text-sm border-t border-stone-800/80 pt-8 max-w-4xl mx-auto px-4 text-stone-300 font-sans flex items-center justify-center flex-wrap gap-1 leading-normal">
+            <span>&copy; 2026 {t('Restaurante - Terraza 53&M. Todos los derechos reservados | Desarrollado por')}</span>
+            <img 
+              src={nectysLogoUrl} 
+              alt="Nectys" 
+              style={{ height: '14px', width: 'auto', verticalAlign: 'middle', marginLeft: '6px', display: 'inline-block' }} 
+            />
+          </div>
         </footer>
       )}
 
