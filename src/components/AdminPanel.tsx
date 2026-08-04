@@ -82,6 +82,20 @@ export function AdminPanel({ data, updateData, updateStatus, userRole }: AdminPa
   const addLogMutation = useMutation(api.bitacora.addLog);
   const restoreDatabaseMutation = useMutation(api.admin.restoreDatabase);
   const initializeDatabaseMutation = useMutation(api.admin.initializeDatabase);
+
+  // Phased Restoration Mutations
+  const validateBackupMutation = useMutation(api.admin.validateBackup);
+  const restoreConfigurationsMutation = useMutation(api.admin.restoreConfigurations);
+  const restoreUsersMutation = useMutation(api.admin.restoreUsers);
+  const restoreMenuItemsMutation = useMutation(api.admin.restoreMenuItems);
+  const restoreHistoryBatchMutation = useMutation(api.admin.restoreHistoryBatch);
+  const restoreOperationalReservationsMutation = useMutation(api.admin.restoreOperationalReservations);
+  const cleanOperationalStateMutation = useMutation(api.admin.cleanOperationalState);
+
+  // Restoration progress state
+  const [isRestoring, setIsRestoring] = useState(false);
+  const [restoreStep, setRestoreStep] = useState('');
+  const [restoreProgress, setRestoreProgress] = useState(0);
   
   // Initialization modal state
   const [showInitModal, setShowInitModal] = useState(false);
@@ -879,26 +893,102 @@ export function AdminPanel({ data, updateData, updateStatus, userRole }: AdminPa
                            return;
                         }
 
-                        if (confirm('⚠️ ATENCIÓN: ¿Restaurar base de datos desde este archivo?\n\nEsta acción reconstruirá el historial de jornadas y reservas pasadas desde el respaldo.')) {
+                        if (confirm('⚠️ ATENCIÓN: ¿Restaurar base de datos desde este archivo?\n\nEsta acción reconstruirá el historial de jornadas y reservas pasadas desde el respaldo de forma segura y por lotes.')) {
                           try {
-                            await restoreDatabaseMutation({
-                               history: json.history || [],
-                               reservations: json.reservations || [],
-                               users: json.users || [],
-                               dependents: json.dependents || [],
-                               managers: json.managers || [],
-                               menuItems: json.menuItems || [],
-                               exchangeRate: json.exchangeRate || null,
-                               landingConfig: json.landingConfig || null,
-                               adminConfig: json.adminConfig || null,
-                               kitchenConfig: json.kitchenConfig || null,
-                               pwaConfig: json.pwaConfig || null,
-                               requesterRole: 'admin',
-                               username: data.adminConfig?.username || 'Administrador',
+                            setIsRestoring(true);
+                            setRestoreProgress(5);
+                            setRestoreStep('Fase 1/7: Validando copia de seguridad...');
+
+                            // 1. Validation
+                            await validateBackupMutation({
+                              requesterRole: 'admin',
+                              username: data.adminConfig?.username || 'Administrador',
+                              hasHistory: Array.isArray(json.history),
+                              hasReservations: Array.isArray(json.reservations)
                             });
-                            alert('✅ Respaldo restaurado con éxito. El historial y las reservas han sido recuperadas.');
-                            // The real-time Convex subscriptions will automatically update the UI
+
+                            setRestoreProgress(15);
+                            setRestoreStep('Fase 2/7: Restaurando configuraciones del sistema...');
+
+                            // 2. Restore configurations
+                            await restoreConfigurationsMutation({
+                              requesterRole: 'admin',
+                              exchangeRate: json.exchangeRate || null,
+                              landingConfig: json.landingConfig || null,
+                              adminConfig: json.adminConfig || null,
+                              kitchenConfig: json.kitchenConfig || null,
+                              pwaConfig: json.pwaConfig || null,
+                            });
+
+                            setRestoreProgress(30);
+                            setRestoreStep('Fase 3/7: Restaurando usuarios y dependientes...');
+
+                            // 3. Restore Users & staff
+                            await restoreUsersMutation({
+                              requesterRole: 'admin',
+                              users: json.users || [],
+                              dependents: json.dependents || [],
+                              managers: json.managers || [],
+                            });
+
+                            setRestoreProgress(45);
+                            setRestoreStep('Fase 4/7: Restaurando platos del menú...');
+
+                            // 4. Restore Menu Items
+                            await restoreMenuItemsMutation({
+                              requesterRole: 'admin',
+                              menuItems: json.menuItems || [],
+                            });
+
+                            setRestoreProgress(60);
+                            setRestoreStep('Fase 5/7: Restaurando jornadas históricas...');
+
+                            // 5. Restore History records in batches of 3
+                            const historyRecords = Array.isArray(json.history) ? json.history : [];
+                            const batchSize = 3;
+                            for (let i = 0; i < historyRecords.length; i += batchSize) {
+                              const batch = historyRecords.slice(i, i + batchSize);
+                              const progressPct = 60 + Math.round((i / historyRecords.length) * 20);
+                              setRestoreProgress(progressPct);
+                              setRestoreStep(`Fase 5/7: Restaurando historial de jornadas (${i + 1} de ${historyRecords.length})...`);
+                              await restoreHistoryBatchMutation({
+                                requesterRole: 'admin',
+                                historyBatch: batch,
+                              });
+                            }
+
+                            setRestoreProgress(80);
+                            setRestoreStep('Fase 6/7: Filtrando y recuperando reservas operativas activas...');
+
+                            // 6. Restore active future/today reservations
+                            const todayStr = new Date().toISOString().split('T')[0];
+                            await restoreOperationalReservationsMutation({
+                              requesterRole: 'admin',
+                              reservations: json.reservations || [],
+                              history: json.history || [],
+                              todayStr,
+                            });
+
+                            setRestoreProgress(95);
+                            setRestoreStep('Fase 7/7: Asegurando estado operativo limpio y cerrado...');
+
+                            // 7. Reset shift active status and operational tables
+                            await cleanOperationalStateMutation({
+                              requesterRole: 'admin',
+                              username: data.adminConfig?.username || 'Administrador',
+                            });
+
+                            setRestoreProgress(100);
+                            setRestoreStep('¡Restauración de Excelencia completada!');
+                            
+                            // Delay slightly so user sees 100% completed state
+                            setTimeout(() => {
+                              setIsRestoring(false);
+                              alert('✅ Respaldo de Excelencia restaurado con éxito. El historial, los usuarios y las reservas operativas activas han sido recuperados.');
+                            }, 500);
+
                           } catch (err: any) {
+                             setIsRestoring(false);
                              alert(`Error al restaurar en base de datos: ${err.message || 'Error desconocido'}`);
                           }
                         }
@@ -2094,6 +2184,42 @@ export function AdminPanel({ data, updateData, updateStatus, userRole }: AdminPa
                 )}
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Progreso de Restauración de Excelencia */}
+      {isRestoring && (
+        <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl w-full max-w-md overflow-hidden shadow-2xl border border-[#E8E0D0] p-8 text-center space-y-6">
+            <div className="w-16 h-16 bg-[#0F2E26]/10 text-[#0F2E26] rounded-full flex items-center justify-center mx-auto animate-pulse">
+              <RefreshCw size={28} className="animate-spin duration-1000" />
+            </div>
+            
+            <div className="space-y-2">
+              <h3 className="font-serif text-xl font-bold text-[#1A2E26]">RESTAURANDO COPIA DE SEGURIDAD</h3>
+              <p className="text-xs text-[#6B7280] font-medium max-w-xs mx-auto">
+                Espere por favor, procesando y reconstruyendo la base de datos en fases seguras...
+              </p>
+            </div>
+
+            {/* Progress bar */}
+            <div className="space-y-2 text-left">
+              <div className="flex justify-between items-center text-xs font-bold text-[#1A2E26]">
+                <span className="truncate max-w-[280px]">{restoreStep}</span>
+                <span>{restoreProgress}%</span>
+              </div>
+              <div className="w-full bg-stone-100 rounded-full h-3 overflow-hidden border border-stone-200">
+                <div 
+                  className="bg-[#0F2E26] h-full transition-all duration-300 rounded-full"
+                  style={{ width: `${restoreProgress}%` }}
+                />
+              </div>
+            </div>
+
+            <p className="text-[10px] text-[#9CA3AF] font-semibold tracking-wider uppercase">
+              NO CIERRE NI REFRESQUE ESTA PÁGINA
+            </p>
           </div>
         </div>
       )}

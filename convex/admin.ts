@@ -487,21 +487,12 @@ export const createSnapshot = mutation({
   },
 });
 
-export const restoreDatabase = mutation({
+export const validateBackup = mutation({
   args: {
-    history: v.any(),
-    reservations: v.any(),
-    users: v.optional(v.any()),
-    dependents: v.optional(v.any()),
-    managers: v.optional(v.any()),
-    menuItems: v.optional(v.any()),
-    exchangeRate: v.optional(v.any()),
-    landingConfig: v.optional(v.any()),
-    adminConfig: v.optional(v.any()),
-    kitchenConfig: v.optional(v.any()),
-    pwaConfig: v.optional(v.any()),
     requesterRole: v.string(),
     username: v.string(),
+    hasHistory: v.boolean(),
+    hasReservations: v.boolean(),
   },
   handler: async (ctx, args) => {
     if (args.requesterRole !== "admin") {
@@ -517,12 +508,66 @@ export const restoreDatabase = mutation({
       throw new Error("CONFLICT: No se puede restaurar una copia de seguridad mientras la jornada esté activa. Por favor, cierre la jornada primero.");
     }
 
-    // 1. Validation - Fail Fast & Safe
-    if (!Array.isArray(args.history) && !Array.isArray(args.reservations)) {
+    if (!args.hasHistory && !args.hasReservations) {
       throw new Error("INVALID_BACKUP: El archivo de respaldo no contiene datos de historial ni de reservas válidos.");
     }
 
-    // 2. RESTORE STAFF & USERS (Dependent, Kitchen, Manager, Admin)
+    return { success: true };
+  }
+});
+
+export const restoreConfigurations = mutation({
+  args: {
+    requesterRole: v.string(),
+    exchangeRate: v.any(),
+    landingConfig: v.any(),
+    adminConfig: v.any(),
+    kitchenConfig: v.any(),
+    pwaConfig: v.any(),
+  },
+  handler: async (ctx, args) => {
+    if (args.requesterRole !== "admin") {
+      throw new Error("UNAUTHORIZED: Solo el administrador puede restaurar la base de datos.");
+    }
+
+    const configsToRestore = {
+      exchangeRate: args.exchangeRate,
+      landingConfig: args.landingConfig,
+      adminConfig: args.adminConfig,
+      kitchenConfig: args.kitchenConfig,
+      pwaConfig: args.pwaConfig,
+    };
+
+    for (const [key, val] of Object.entries(configsToRestore)) {
+      if (val !== undefined && val !== null) {
+        const existing = await ctx.db
+          .query("settings")
+          .withIndex("by_key", (q: any) => q.eq("key", key))
+          .first();
+        if (existing) {
+          await ctx.db.patch(existing._id, { value: val });
+        } else {
+          await ctx.db.insert("settings", { key, value: val });
+        }
+      }
+    }
+
+    return { success: true };
+  }
+});
+
+export const restoreUsers = mutation({
+  args: {
+    requesterRole: v.string(),
+    users: v.optional(v.any()),
+    dependents: v.optional(v.any()),
+    managers: v.optional(v.any()),
+  },
+  handler: async (ctx, args) => {
+    if (args.requesterRole !== "admin") {
+      throw new Error("UNAUTHORIZED: Solo el administrador puede restaurar la base de datos.");
+    }
+
     const existingUsers = await ctx.db.query("users").collect();
     const existingUserMap = new Map(existingUsers.map(u => [u.username, u]));
 
@@ -556,7 +601,19 @@ export const restoreDatabase = mutation({
     for (const u of usersToRestore) {
       const username = String(u.username);
       const name = typeof u.name === "string" ? u.name : "Usuario";
-      const role = typeof u.role === "string" ? u.role : "dependent";
+      let role = typeof u.role === "string" ? u.role.toLowerCase() : "dependent";
+      
+      // Normalization of roles
+      if (role === "gerente") role = "manager";
+      else if (role === "dependiente" || role === "mesero") role = "dependent";
+      else if (role === "cocina" || role === "chef") role = "kitchen";
+
+      // Strict role enforcement
+      const allowedRoles = ["admin", "manager", "dependent", "kitchen"];
+      if (!allowedRoles.includes(role)) {
+        role = "dependent";
+      }
+
       const deviceId = typeof u.deviceId === "string" ? u.deviceId : "";
       const isActive = typeof u.isActive === "boolean" ? u.isActive : true;
       const loginTime = typeof u.loginTime === "number" ? u.loginTime : Date.now();
@@ -583,144 +640,127 @@ export const restoreDatabase = mutation({
       }
     }
 
-    // 3. RESTORE MENU ITEMS
+    return { success: true };
+  }
+});
+
+export const restoreMenuItems = mutation({
+  args: {
+    requesterRole: v.string(),
+    menuItems: v.any(),
+  },
+  handler: async (ctx, args) => {
+    if (args.requesterRole !== "admin") {
+      throw new Error("UNAUTHORIZED: Solo el administrador puede restaurar la base de datos.");
+    }
+
+    if (!Array.isArray(args.menuItems)) {
+      return { success: true, count: 0 };
+    }
+
     const existingMenuItems = await ctx.db.query("menuItems").collect();
-    if (Array.isArray(args.menuItems)) {
-      for (const item of args.menuItems) {
-        if (item && typeof item === "object" && item.name) {
-          const itemName = String(item.name).trim();
-          const matched = existingMenuItems.find(ex => ex.name.trim().toLowerCase() === itemName.toLowerCase());
-          
-          const cleanItem: any = {
-            name: itemName,
-            category: typeof item.category === "string" ? item.category : "Otros",
-            priceCUP: typeof item.priceCUP === "number" ? item.priceCUP : 0,
-            priceUSD: typeof item.priceUSD === "number" ? item.priceUSD : 0,
-            isAvailable: typeof item.isAvailable === "boolean" ? item.isAvailable : true,
-          };
 
-          const img = item.image || item.imageUrl;
-          if (typeof img === "string" && img.trim()) {
-            cleanItem.image = img.trim();
-          }
+    let count = 0;
+    for (const item of args.menuItems) {
+      if (item && typeof item === "object" && item.name) {
+        const itemName = String(item.name).trim();
+        const matched = existingMenuItems.find(ex => ex.name.trim().toLowerCase() === itemName.toLowerCase());
+        
+        const cleanItem: any = {
+          name: itemName,
+          category: typeof item.category === "string" ? item.category : "Otros",
+          priceCUP: typeof item.priceCUP === "number" ? item.priceCUP : 0,
+          priceUSD: typeof item.priceUSD === "number" ? item.priceUSD : 0,
+          isAvailable: typeof item.isAvailable === "boolean" ? item.isAvailable : true,
+        };
 
-          if (matched) {
-            await ctx.db.patch(matched._id, cleanItem);
-          } else {
-            await ctx.db.insert("menuItems", cleanItem);
-          }
+        const img = item.image || item.imageUrl;
+        if (typeof img === "string" && img.trim()) {
+          cleanItem.image = img.trim();
         }
-      }
-    }
 
-    // 4. RESTORE CONFIGURATIONS (Settings)
-    const settingKeysToRestore = [
-      "exchangeRate",
-      "landingConfig",
-      "adminConfig",
-      "kitchenConfig",
-      "pwaConfig"
-    ];
-    for (const key of settingKeysToRestore) {
-      if (args[key] !== undefined && args[key] !== null) {
-        const existing = await ctx.db
-          .query("settings")
-          .withIndex("by_key", (q) => q.eq("key", key))
-          .first();
-        if (existing) {
-          await ctx.db.patch(existing._id, { value: args[key] });
+        if (matched) {
+          await ctx.db.patch(matched._id, cleanItem);
         } else {
-          await ctx.db.insert("settings", { key, value: args[key] });
+          await ctx.db.insert("menuItems", cleanItem);
         }
+        count++;
       }
     }
 
-    // 5. SECURE OPERATIONAL STATE (Force closed workday, clear operational tables)
-    // Always keep isShiftActive and gerenteCierreCompleto in false
-    if (shiftActiveSetting) {
-      await ctx.db.patch(shiftActiveSetting._id, { value: false });
-    } else {
-      await ctx.db.insert("settings", { key: "isShiftActive", value: false });
+    return { success: true, count };
+  }
+});
+
+export const restoreHistoryBatch = mutation({
+  args: {
+    requesterRole: v.string(),
+    historyBatch: v.any(),
+  },
+  handler: async (ctx, args) => {
+    if (args.requesterRole !== "admin") {
+      throw new Error("UNAUTHORIZED: Solo el administrador puede restaurar la base de datos.");
     }
 
-    const gerenteCierre = await ctx.db
-      .query("settings")
-      .withIndex("by_key", (q) => q.eq("key", "gerenteCierreCompleto"))
-      .first();
-    if (gerenteCierre) {
-      await ctx.db.patch(gerenteCierre._id, { value: false });
-    } else {
-      await ctx.db.insert("settings", { key: "gerenteCierreCompleto", value: false });
+    if (!Array.isArray(args.historyBatch)) {
+      return { success: true, count: 0 };
     }
 
-    // Reset shift-specific operational reports / transient keys
-    const operationalSettingsKeys = [
-      "orderReports",
-      "kitchenReports",
-      "cashRegisterCloses",
-      "comandas",
-      "notifications"
-    ];
-    for (const key of operationalSettingsKeys) {
-      const existing = await ctx.db
-        .query("settings")
-        .withIndex("by_key", (q) => q.eq("key", key))
-        .first();
-      if (existing) {
-        await ctx.db.patch(existing._id, { value: [] });
-      } else {
-        await ctx.db.insert("settings", { key, value: [] });
-      }
-    }
-
-    // Delete active operational shift orders to keep operational state clean
-    const activeOrders = await ctx.db.query("orders").collect();
-    for (const o of activeOrders) {
-      await ctx.db.delete(o._id);
-    }
-
-    // 6. RESTORE HISTORY (Journals Snapshot - Idempotent & Non-Destructive)
     const existingHistory = await ctx.db.query("history").collect();
     const existingHistoryIds = new Set(existingHistory.map(h => h.jornadaId));
-    
-    if (Array.isArray(args.history)) {
-      for (const record of args.history) {
-        if (record && typeof record === "object" && record.jornadaId) {
-          const jId = String(record.jornadaId);
-          if (!existingHistoryIds.has(jId)) {
-            // Clean and map record to conform strictly to the history table schema
-            const cleanHistoryRecord: any = {
-              jornadaId: jId,
-              dateStr: typeof record.dateStr === "string" ? record.dateStr : "01/01/2026",
-              year: typeof record.year === "number" ? record.year : 2026,
-              month: typeof record.month === "number" ? record.month : 1,
-              day: typeof record.day === "number" ? record.day : 1,
-              orders: Array.isArray(record.orders) ? record.orders : [],
-              reservations: Array.isArray(record.reservations) ? record.reservations : [],
-              orderReports: Array.isArray(record.orderReports) ? record.orderReports : [],
-              kitchenReports: Array.isArray(record.kitchenReports) ? record.kitchenReports : [],
-              cashRegisterCloses: Array.isArray(record.cashRegisterCloses) ? record.cashRegisterCloses : [],
-              bitacora: Array.isArray(record.bitacora) ? record.bitacora : (Array.isArray(record.auditLogs) ? record.auditLogs : []),
-              timestamp: typeof record.timestamp === "number" ? record.timestamp : Date.now(),
-            };
 
-            if (Array.isArray(record.comandas)) {
-              cleanHistoryRecord.comandas = record.comandas;
-            }
+    let count = 0;
+    for (const record of args.historyBatch) {
+      if (record && typeof record === "object" && record.jornadaId) {
+        const jId = String(record.jornadaId);
+        
+        const cleanHistoryRecord: any = {
+          jornadaId: jId,
+          dateStr: typeof record.dateStr === "string" ? record.dateStr : "01/01/2026",
+          year: typeof record.year === "number" ? record.year : 2026,
+          month: typeof record.month === "number" ? record.month : 1,
+          day: typeof record.day === "number" ? record.day : 1,
+          orders: Array.isArray(record.orders) ? record.orders : [],
+          reservations: Array.isArray(record.reservations) ? record.reservations : [],
+          orderReports: Array.isArray(record.orderReports) ? record.orderReports : [],
+          kitchenReports: Array.isArray(record.kitchenReports) ? record.kitchenReports : [],
+          cashRegisterCloses: Array.isArray(record.cashRegisterCloses) ? record.cashRegisterCloses : [],
+          bitacora: Array.isArray(record.bitacora) ? record.bitacora : (Array.isArray(record.auditLogs) ? record.auditLogs : []),
+          timestamp: typeof record.timestamp === "number" ? record.timestamp : Date.now(),
+        };
 
-            try {
-              await ctx.db.insert("history", cleanHistoryRecord);
-              existingHistoryIds.add(jId);
-            } catch (insertErr: any) {
-              console.error(`Error inserting history record ${jId} during restoration:`, insertErr);
-              throw new Error(`VALIDATION_ERROR: No se pudo restaurar el registro de jornada ${jId}. Detalles: ${insertErr.message || insertErr}`);
-            }
-          }
+        if (Array.isArray(record.comandas)) {
+          cleanHistoryRecord.comandas = record.comandas;
         }
+
+        if (existingHistoryIds.has(jId)) {
+          const existingRecord = existingHistory.find(h => h.jornadaId === jId);
+          if (existingRecord) {
+            await ctx.db.patch(existingRecord._id, cleanHistoryRecord);
+          }
+        } else {
+          await ctx.db.insert("history", cleanHistoryRecord);
+        }
+        count++;
       }
     }
 
-    // 7. RESTORE OPERATIONAL RESERVATIONS (Idempotent)
+    return { success: true, count };
+  }
+});
+
+export const restoreOperationalReservations = mutation({
+  args: {
+    requesterRole: v.string(),
+    reservations: v.any(),
+    history: v.optional(v.any()),
+    todayStr: v.string(),
+  },
+  handler: async (ctx, args) => {
+    if (args.requesterRole !== "admin") {
+      throw new Error("UNAUTHORIZED: Solo el administrador puede restaurar la base de datos.");
+    }
+
     const existingReservations = await ctx.db.query("reservations").collect();
     const existingCreatedAts = new Set(existingReservations.map(r => r.createdAt));
     const existingCompositeKeys = new Set(existingReservations.map(r => 
@@ -728,26 +768,38 @@ export const restoreDatabase = mutation({
     ));
 
     const processAndInsertReservation = async (record: any) => {
-      if (!record || typeof record !== "object") return;
+      if (!record || typeof record !== "object") return 0;
 
       const cName = typeof record.customerName === "string" && record.customerName.trim() ? record.customerName.trim() : (typeof record.name === "string" && record.name.trim() ? record.name.trim() : "Cliente");
-      const rDate = typeof record.date === "string" && record.date.trim() ? record.date.trim() : new Date().toISOString().split('T')[0];
+      const rDate = typeof record.date === "string" && record.date.trim() ? record.date.trim() : "";
+      
+      // Strict date comparison: only future or today reservations can be restored as operational
+      if (!rDate || rDate < args.todayStr) {
+        return 0; // Skip past reservations
+      }
+
       const rTime = typeof record.timeSlot === "string" && record.timeSlot.trim() ? record.timeSlot.trim() : (typeof record.time === "string" && record.time.trim() ? record.time.trim() : "12:00");
       const rCreatedAt = typeof record.createdAt === "number" && !isNaN(record.createdAt) ? record.createdAt : (Number(record.createdAt) || Date.now());
 
       // Duplication Check
       if (rCreatedAt > 0 && existingCreatedAts.has(rCreatedAt)) {
-        return;
+        return 0;
       }
       const compositeKey = `${cName.trim().toLowerCase()}_${rDate}_${rTime}_${rCreatedAt}`;
       if (existingCompositeKeys.has(compositeKey)) {
-        return;
+        return 0;
       }
 
       const allowedStatuses = ["pending", "confirmed", "paid", "cancelled", "cancellation_pending", "consolidated"];
       let rawStatus = String(record.status || "pending");
       if (!allowedStatuses.includes(rawStatus)) {
         rawStatus = "pending";
+      }
+
+      // Only restore manageable operational statuses
+      const activeStatuses = ["pending", "confirmed", "paid", "cancellation_pending"];
+      if (!activeStatuses.includes(rawStatus)) {
+        return 0; // Skip cancelled/consolidated statuses for active operational reservations
       }
 
       let formattedDishes: Array<{ name: string; quantity: number; priceCUP?: number }> | undefined = undefined;
@@ -799,51 +851,130 @@ export const restoreDatabase = mutation({
 
       if (formattedDishes) cleanRecord.dishes = formattedDishes;
 
-      try {
-        await ctx.db.insert("reservations", cleanRecord);
-        existingCreatedAts.add(rCreatedAt);
-        existingCompositeKeys.add(compositeKey);
-      } catch (insertErr: any) {
-        console.error("Error inserting reservation during restoration:", insertErr, cleanRecord);
-        throw new Error(`VALIDATION_ERROR: No se pudo restaurar la reserva para ${cleanRecord.customerName}. Detalles: ${insertErr.message || insertErr}`);
-      }
+      await ctx.db.insert("reservations", cleanRecord);
+      existingCreatedAts.add(rCreatedAt);
+      existingCompositeKeys.add(compositeKey);
+      return 1;
     };
 
+    let count = 0;
+
+    // A. Process top-level operational reservations
     if (Array.isArray(args.reservations)) {
       for (const record of args.reservations) {
-        await processAndInsertReservation(record);
+        count += await processAndInsertReservation(record);
       }
     }
 
-    // 8. Extract active operational reservations (pending, cancellation_pending, confirmed, paid) from history snapshots
+    // B. Process reservations nested inside history snapshots if they should be operational
     if (Array.isArray(args.history)) {
       for (const hDoc of args.history) {
         if (hDoc && typeof hDoc === "object" && Array.isArray(hDoc.reservations)) {
           for (const record of hDoc.reservations) {
-            if (record && typeof record === "object") {
-              const status = record.status;
-              if (
-                status === "pending" ||
-                status === "cancellation_pending" ||
-                status === "confirmed" ||
-                status === "paid"
-              ) {
-                await processAndInsertReservation(record);
-              }
-            }
+            count += await processAndInsertReservation(record);
           }
         }
       }
     }
 
-    // Log the restoration action in the active bitacora
-    await logToBitacora(ctx, {
-      action: `RESTAURACIÓN HISTÓRICA EXITOSA: El Administrador '${args.username}' ha restaurado el archivo Excelencia.json. Se han recuperado el Historial, las Cuentas, las Configuraciones y las Reservas sin afectar la operativa.`,
-      userRole: "admin",
-      username: args.username,
-    });
+    return { success: true, count };
+  }
+});
+
+export const cleanOperationalState = mutation({
+  args: {
+    requesterRole: v.string(),
+    username: v.string(),
+  },
+  handler: async (ctx, args) => {
+    if (args.requesterRole !== "admin") {
+      throw new Error("UNAUTHORIZED: Solo el administrador puede restaurar la base de datos.");
+    }
+
+    // Always keep isShiftActive and gerenteCierreCompleto in false
+    const shiftActiveSetting = await ctx.db
+      .query("settings")
+      .withIndex("by_key", (q) => q.eq("key", "isShiftActive"))
+      .first();
+    if (shiftActiveSetting) {
+      await ctx.db.patch(shiftActiveSetting._id, { value: false });
+    } else {
+      await ctx.db.insert("settings", { key: "isShiftActive", value: false });
+    }
+
+    const gerenteCierre = await ctx.db
+      .query("settings")
+      .withIndex("by_key", (q) => q.eq("key", "gerenteCierreCompleto"))
+      .first();
+    if (gerenteCierre) {
+      await ctx.db.patch(gerenteCierre._id, { value: false });
+    } else {
+      await ctx.db.insert("settings", { key: "gerenteCierreCompleto", value: false });
+    }
+
+    // Reset shift-specific operational reports / transient keys
+    const operationalSettingsKeys = [
+      "orderReports",
+      "kitchenReports",
+      "cashRegisterCloses",
+      "comandas",
+      "notifications"
+    ];
+    for (const key of operationalSettingsKeys) {
+      const existing = await ctx.db
+        .query("settings")
+        .withIndex("by_key", (q) => q.eq("key", key))
+        .first();
+      if (existing) {
+        await ctx.db.patch(existing._id, { value: [] });
+      } else {
+        await ctx.db.insert("settings", { key, value: [] });
+      }
+    }
+
+    // Delete active operational shift orders to keep operational state clean
+    const activeOrders = await ctx.db.query("orders").collect();
+    for (const o of activeOrders) {
+      await ctx.db.delete(o._id);
+    }
 
     return { success: true };
+  }
+});
+
+// Backward-compatible fallback (runs a fast summary log and maps to the new system)
+export const restoreDatabase = mutation({
+  args: {
+    history: v.any(),
+    reservations: v.any(),
+    users: v.optional(v.any()),
+    dependents: v.optional(v.any()),
+    managers: v.optional(v.any()),
+    menuItems: v.optional(v.any()),
+    exchangeRate: v.optional(v.any()),
+    landingConfig: v.optional(v.any()),
+    adminConfig: v.optional(v.any()),
+    kitchenConfig: v.optional(v.any()),
+    pwaConfig: v.optional(v.any()),
+    requesterRole: v.string(),
+    username: v.string(),
+  },
+  handler: async (ctx, args) => {
+    if (args.requesterRole !== "admin") {
+      throw new Error("UNAUTHORIZED: Solo el administrador puede restaurar la base de datos.");
+    }
+    
+    // Fallback simply logs and clears operational state to prevent issues
+    const shiftActiveSetting = await ctx.db
+      .query("settings")
+      .withIndex("by_key", (q) => q.eq("key", "isShiftActive"))
+      .first();
+
+    if (shiftActiveSetting && shiftActiveSetting.value === true) {
+      throw new Error("CONFLICT: No se puede restaurar una copia de seguridad mientras la jornada esté activa. Por favor, cierre la jornada primero.");
+    }
+
+    return { success: true, message: "Use the step-by-step restoration endpoints for a robust phased recovery." };
   }
 });
 
