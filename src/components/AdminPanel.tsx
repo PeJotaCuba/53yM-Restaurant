@@ -1017,53 +1017,46 @@ export function AdminPanel({ data, updateData, updateStatus, userRole }: AdminPa
               <p className="text-sm text-[#6B7280]">Todas tus funciones a un vistazo, sin scroll lateral</p>
             </div>
 
-            <div className="space-y-8">
-              {controlPanelCategories.map((cat) => (
-                <div key={cat.label} className="space-y-4">
-                  <h3 className="text-[10px] font-black tracking-[0.12em] text-[#9A958A] uppercase border-b border-[#E8E0D0] pb-2">{cat.label}</h3>
-                  <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                    {cat.items.map((item) => {
-                      const Icon = item.icon;
-                      const isActive = (showModuleOverlay ? overlayTab : activeTab) === item.id;
-                      return (
-                        <button
-                          key={item.id}
-                          onClick={() => {
-                            if (item.id === 'reservations') {
-                              document.getElementById('reservations-section')?.scrollIntoView({ behavior: 'smooth' });
-                            } else {
-                              setOverlayTab(item.id as any);
-                              setShowModuleOverlay(true);
-                            }
-                          }}
-                          className={`flex flex-col h-[130px] p-[18px] rounded-2xl border transition-all relative group text-left ${
-                            isActive 
-                              ? 'bg-[#F9F5EB] border-[#0F2E26] border-[2px] shadow-sm' 
-                              : 'bg-white border-[#E8E0D0] hover:border-[#0F2E26] hover:shadow-md hover:-translate-y-0.5'
-                          }`}
-                        >
-                          <div className="w-11 h-11 rounded-2xl bg-[#F6F2E7] flex items-center justify-center text-[#1A2E26] mb-auto group-hover:scale-105 transition-transform">
-                            <Icon size={22} />
-                          </div>
-                          <div className="space-y-0.5">
-                            <p className="font-bold text-[13px] text-[#1A2E26] line-clamp-1">{item.title}</p>
-                            <p className="text-[10px] text-[#6B7280] line-clamp-1">{item.sub}</p>
-                          </div>
-                          <div className="absolute top-4 right-4">
-                            {isActive ? (
-                              <div className="w-4 h-4 rounded-full bg-[#0F2E26] flex items-center justify-center">
-                                <Check size={10} className="text-white" />
-                              </div>
-                            ) : (
-                              <ArrowUpRight size={14} className="text-[#E8E0D0] group-hover:text-[#0F2E26] transition-colors" />
-                            )}
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              ))}
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 md:gap-4">
+              {controlPanelCategories.flatMap(cat => cat.items).map((item) => {
+                const Icon = item.icon;
+                const isActive = (showModuleOverlay ? overlayTab : activeTab) === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => {
+                      if (item.id === 'reservations') {
+                        document.getElementById('reservations-section')?.scrollIntoView({ behavior: 'smooth' });
+                      } else {
+                        setOverlayTab(item.id as any);
+                        setShowModuleOverlay(true);
+                      }
+                    }}
+                    className={`flex flex-col h-[130px] p-[18px] rounded-2xl border transition-all relative group text-left ${
+                      isActive 
+                        ? 'bg-[#F9F5EB] border-[#0F2E26] border-[2px] shadow-sm' 
+                        : 'bg-white border-[#E8E0D0] hover:border-[#0F2E26] hover:shadow-md hover:-translate-y-0.5'
+                    }`}
+                  >
+                    <div className="w-11 h-11 rounded-2xl bg-[#F6F2E7] flex items-center justify-center text-[#1A2E26] mb-auto group-hover:scale-105 transition-transform">
+                      <Icon size={22} />
+                    </div>
+                    <div className="space-y-0.5">
+                      <p className="font-bold text-[13px] text-[#1A2E26] line-clamp-1">{item.title}</p>
+                      <p className="text-[10px] text-[#6B7280] line-clamp-1">{item.sub}</p>
+                    </div>
+                    <div className="absolute top-4 right-4">
+                      {isActive ? (
+                        <div className="w-4 h-4 rounded-full bg-[#0F2E26] flex items-center justify-center">
+                          <Check size={10} className="text-white" />
+                        </div>
+                      ) : (
+                        <ArrowUpRight size={14} className="text-[#E8E0D0] group-hover:text-[#0F2E26] transition-colors" />
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
             </div>
           </div>
 
