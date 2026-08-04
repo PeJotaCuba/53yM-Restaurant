@@ -81,6 +81,12 @@ export function AdminPanel({ data, updateData, updateStatus, userRole }: AdminPa
   const deleteReservationMutation = useMutation(api.reservations.deleteReservation);
   const addLogMutation = useMutation(api.bitacora.addLog);
   const restoreDatabaseMutation = useMutation(api.admin.restoreDatabase);
+  const masterResetMutation = useMutation(api.admin.masterReset);
+  
+  // Master Reset state
+  const [showMasterResetModal, setShowMasterResetModal] = useState(false);
+  const [masterResetConfirmText, setMasterResetConfirmText] = useState('');
+  const [isMasterResetting, setIsMasterResetting] = useState(false);
   
   // User Management state
   const [showUserModal, setShowUserModal] = useState(false);
@@ -219,6 +225,50 @@ export function AdminPanel({ data, updateData, updateStatus, userRole }: AdminPa
     } catch (err) {
       console.error('Error during Excellence backup:', err);
       alert('Error al realizar el respaldo en el servidor, pero el archivo local podría haberse generado.');
+    }
+  };
+
+  const handleMasterReset = async () => {
+    if (masterResetConfirmText.trim().toUpperCase() !== 'INICIALIZAR') {
+      alert('Por favor escriba la palabra exacta INICIALIZAR para confirmar.');
+      return;
+    }
+    setIsMasterResetting(true);
+    try {
+      await masterResetMutation({
+        requesterRole: 'admin',
+        username: data.adminConfig?.username || 'Administrador'
+      });
+      // Reset local state in AppData
+      updateData({
+        reservations: [],
+        orders: [],
+        comandas: [],
+        orderReports: [],
+        kitchenReports: [],
+        cashRegisterCloses: [],
+        auditLogs: [{
+          id: `log-${Date.now()}`,
+          timestamp: Date.now(),
+          timeStr: new Date().toLocaleTimeString('es-ES'),
+          dateStr: new Date().toLocaleDateString('es-ES'),
+          role: 'Administrador',
+          userOrDevice: data.adminConfig?.username || 'Administrador',
+          action: 'INICIALIZACIÓN TOTAL DEL SISTEMA',
+          details: `El Administrador '${data.adminConfig?.username || 'Administrador'}' ha reiniciado la base de datos a cero.`
+        }],
+        dependents: [],
+        managers: [],
+        notifications: [],
+        isShiftActive: false
+      });
+      alert('✅ INICIALIZACIÓN TOTAL COMPLETADA: Se han borrado todos los datos operativos de prueba y el sistema ha sido reseteado a cero para la nueva implementación real.');
+      setShowMasterResetModal(false);
+      setMasterResetConfirmText('');
+    } catch (err: any) {
+      alert(`Error durante la inicialización: ${err?.message || 'Error desconocido'}`);
+    } finally {
+      setIsMasterResetting(false);
     }
   };
 
@@ -1434,6 +1484,34 @@ export function AdminPanel({ data, updateData, updateStatus, userRole }: AdminPa
                         </div>
                       </div>
                     </div>
+
+                    <div className="space-y-6 pt-8 border-t border-red-200">
+                      <div className="flex items-center gap-3">
+                        <div className="p-3 bg-red-100 border border-red-300 text-[#C93A3A] rounded-xl shadow-sm">
+                          <AlertTriangle size={24} />
+                        </div>
+                        <div>
+                          <h3 className="font-bold text-xl text-red-900">Inicialización Total del Sistema</h3>
+                          <p className="text-xs text-stone-500">Reinicia la base de datos a cero borrando datos operativos e historiales de prueba</p>
+                        </div>
+                      </div>
+
+                      <div className="bg-red-50/80 border border-red-200 rounded-2xl p-6 space-y-4">
+                        <p className="text-xs text-red-900 leading-relaxed">
+                          <strong>⚠️ ATENCIÓN:</strong> La <strong>Inicialización Total</strong> elimina permanentemente todas las reservas, comandas, informes, cuentas de personal secundarias e historiales acumulados durante la fase de pruebas. Deja el sistema completamente limpio para iniciar la nueva implementación real desde cero.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setMasterResetConfirmText('');
+                            setShowMasterResetModal(true);
+                          }}
+                          className="bg-[#C93A3A] hover:bg-[#B82E2E] text-white px-6 py-3 rounded-xl font-bold text-xs flex items-center gap-2 shadow-md transition-all active:scale-95"
+                        >
+                          <Trash2 size={16} /> Inicialización Total (Reiniciar a Cero)
+                        </button>
+                      </div>
+                    </div>
                  </div>
               )}
 
@@ -1851,6 +1929,61 @@ export function AdminPanel({ data, updateData, updateStatus, userRole }: AdminPa
                 className="flex-1 px-5 py-3 rounded-xl bg-[#C93A3A] hover:bg-[#B82E2E] text-white font-bold text-xs shadow-md transition-colors"
               >
                 Confirmar cancelación
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Confirmación Inicialización Total */}
+      {showMasterResetModal && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl w-full max-w-md p-6 border border-red-200 shadow-2xl space-y-5 animate-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between border-b border-red-100 pb-4">
+              <div className="flex items-center gap-3 text-[#C93A3A]">
+                <AlertTriangle size={24} />
+                <h3 className="font-serif text-lg font-bold">Confirmar Inicialización Total</h3>
+              </div>
+              <button 
+                onClick={() => setShowMasterResetModal(false)}
+                className="p-1 text-stone-400 hover:text-stone-600 rounded-full"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <p className="text-xs text-stone-600 leading-relaxed">
+              Esta acción <strong>borrará de forma irrecuperable</strong> todas las reservas, comandas, bitácoras, historiales y usuarios de prueba. El sistema quedará reseteado a cero para su uso real.
+            </p>
+
+            <div className="space-y-2 bg-red-50 p-4 rounded-xl border border-red-200">
+              <label className="text-[10px] font-black uppercase tracking-wider text-red-900 block">
+                Escriba "INICIALIZAR" para confirmar:
+              </label>
+              <input
+                type="text"
+                placeholder="INICIALIZAR"
+                value={masterResetConfirmText}
+                onChange={(e) => setMasterResetConfirmText(e.target.value)}
+                className="w-full bg-white border border-red-300 rounded-xl px-4 py-2 text-sm font-mono font-bold text-red-900 focus:outline-none focus:ring-2 focus:ring-red-500"
+              />
+            </div>
+
+            <div className="flex gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowMasterResetModal(false)}
+                className="flex-1 py-3 px-4 rounded-xl border border-stone-300 font-bold text-xs text-stone-700 hover:bg-stone-50 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={masterResetConfirmText.trim().toUpperCase() !== 'INICIALIZAR' || isMasterResetting}
+                onClick={handleMasterReset}
+                className="flex-1 py-3 px-4 rounded-xl bg-[#C93A3A] hover:bg-[#B82E2E] text-white font-bold text-xs shadow-md transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              >
+                {isMasterResetting ? 'Inicializando...' : 'Confirmar Reinicio'}
               </button>
             </div>
           </div>
