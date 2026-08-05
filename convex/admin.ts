@@ -496,7 +496,7 @@ export const validateBackup = mutation({
   },
   handler: async (ctx, args) => {
     if (args.requesterRole !== "admin") {
-      throw new Error("UNAUTHORIZED: Solo el administrador puede restaurar la base de datos.");
+      throw new ConvexError("UNAUTHORIZED: Solo el administrador puede restaurar la base de datos.");
     }
 
     const shiftActiveSetting = await ctx.db
@@ -505,11 +505,11 @@ export const validateBackup = mutation({
       .first();
 
     if (shiftActiveSetting && shiftActiveSetting.value === true) {
-      throw new Error("CONFLICT: No se puede restaurar una copia de seguridad mientras la jornada esté activa. Por favor, cierre la jornada primero.");
+      throw new ConvexError("CONFLICT: No se puede restaurar una copia de seguridad mientras la jornada esté activa. Por favor, cierre la jornada primero.");
     }
 
     if (!args.hasHistory && !args.hasReservations) {
-      throw new Error("INVALID_BACKUP: El archivo de respaldo no contiene datos de historial ni de reservas válidos.");
+      throw new ConvexError("INVALID_BACKUP: El archivo de respaldo no contiene datos de historial ni de reservas válidos.");
     }
 
     return { success: true };
@@ -527,7 +527,7 @@ export const restoreConfigurations = mutation({
   },
   handler: async (ctx, args) => {
     if (args.requesterRole !== "admin") {
-      throw new Error("UNAUTHORIZED: Solo el administrador puede restaurar la base de datos.");
+      throw new ConvexError("UNAUTHORIZED: Solo el administrador puede restaurar la base de datos.");
     }
 
     const configsToRestore = {
@@ -542,7 +542,7 @@ export const restoreConfigurations = mutation({
       if (val !== undefined && val !== null) {
         const existing = await ctx.db
           .query("settings")
-          .withIndex("by_key", (q: any) => q.eq("key", key))
+          .withIndex("by_key", (q) => q.eq("key", key))
           .first();
         if (existing) {
           await ctx.db.patch(existing._id, { value: val });
@@ -565,7 +565,7 @@ export const restoreUsers = mutation({
   },
   handler: async (ctx, args) => {
     if (args.requesterRole !== "admin") {
-      throw new Error("UNAUTHORIZED: Solo el administrador puede restaurar la base de datos.");
+      throw new ConvexError("UNAUTHORIZED: Solo el administrador puede restaurar la base de datos.");
     }
 
     const existingUsers = await ctx.db.query("users").collect();
@@ -651,7 +651,7 @@ export const restoreMenuItems = mutation({
   },
   handler: async (ctx, args) => {
     if (args.requesterRole !== "admin") {
-      throw new Error("UNAUTHORIZED: Solo el administrador puede restaurar la base de datos.");
+      throw new ConvexError("UNAUTHORIZED: Solo el administrador puede restaurar la base de datos.");
     }
 
     if (!Array.isArray(args.menuItems)) {
@@ -699,7 +699,7 @@ export const restoreHistoryBatch = mutation({
   },
   handler: async (ctx, args) => {
     if (args.requesterRole !== "admin") {
-      throw new Error("UNAUTHORIZED: Solo el administrador puede restaurar la base de datos.");
+      throw new ConvexError("UNAUTHORIZED: Solo el administrador puede restaurar la base de datos.");
     }
 
     if (!Array.isArray(args.historyBatch)) {
@@ -758,7 +758,7 @@ export const restoreOperationalReservations = mutation({
   },
   handler: async (ctx, args) => {
     if (args.requesterRole !== "admin") {
-      throw new Error("UNAUTHORIZED: Solo el administrador puede restaurar la base de datos.");
+      throw new ConvexError("UNAUTHORIZED: Solo el administrador puede restaurar la base de datos.");
     }
 
     const existingReservations = await ctx.db.query("reservations").collect();
@@ -888,7 +888,7 @@ export const cleanOperationalState = mutation({
   },
   handler: async (ctx, args) => {
     if (args.requesterRole !== "admin") {
-      throw new Error("UNAUTHORIZED: Solo el administrador puede restaurar la base de datos.");
+      throw new ConvexError("UNAUTHORIZED: Solo el administrador puede restaurar la base de datos.");
     }
 
     // Always keep isShiftActive and gerenteCierreCompleto in false
@@ -961,7 +961,7 @@ export const restoreDatabase = mutation({
   },
   handler: async (ctx, args) => {
     if (args.requesterRole !== "admin") {
-      throw new Error("UNAUTHORIZED: Solo el administrador puede restaurar la base de datos.");
+      throw new ConvexError("UNAUTHORIZED: Solo el administrador puede restaurar la base de datos.");
     }
     
     // Fallback simply logs and clears operational state to prevent issues
@@ -971,7 +971,7 @@ export const restoreDatabase = mutation({
       .first();
 
     if (shiftActiveSetting && shiftActiveSetting.value === true) {
-      throw new Error("CONFLICT: No se puede restaurar una copia de seguridad mientras la jornada esté activa. Por favor, cierre la jornada primero.");
+      throw new ConvexError("CONFLICT: No se puede restaurar una copia de seguridad mientras la jornada esté activa. Por favor, cierre la jornada primero.");
     }
 
     return { success: true, message: "Use the step-by-step restoration endpoints for a robust phased recovery." };
