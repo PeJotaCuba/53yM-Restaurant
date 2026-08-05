@@ -960,7 +960,7 @@ export default function App() {
 
       alert("¡Tu reservación y pedido han sido enviados con éxito! Queda pendiente de confirmación por el Administrador.");
       setPendingReservation(null);
-      setCurrentView('order_workspace');
+      setCurrentView('dashboard');
       window.scrollTo(0, 0);
       return result;
     } catch (err: any) {
@@ -1024,7 +1024,7 @@ export default function App() {
       
       alert("¡Tu reservación ha sido enviada con éxito! Queda pendiente de confirmación por el Administrador.");
       
-      setCurrentView('order_workspace');
+      setCurrentView('dashboard');
       window.scrollTo(0, 0);
     } catch (e: any) {
       console.error('Convex reservation write error:', e);
@@ -1117,6 +1117,10 @@ export default function App() {
               setTableContext({ mesaActual: null, tableId: null, qrValidated: false });
             }
           }}
+          onOrderSubmitted={() => {
+            setCurrentView('dashboard');
+            window.scrollTo(0, 0);
+          }}
           onClose={() => {
             setCurrentView('home');
             window.scrollTo(0, 0);
@@ -1157,6 +1161,10 @@ export default function App() {
           <ClientOrderWorkspace
             data={appData}
             updateData={updateData}
+            onOrderSubmitted={() => {
+              setCurrentView('dashboard');
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
             onBack={() => {
               setCurrentView('dashboard');
               window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -1338,11 +1346,15 @@ export default function App() {
         </footer>
       )}
 
-      {userRole === 'none' && currentView !== 'reservation' && currentView !== 'menu' && currentView !== 'dashboard' && (
+      {userRole === 'none' && currentView !== 'reservation' && currentView !== 'menu' && currentView !== 'dashboard' && currentView !== 'order_workspace' && (
         <GestionarMesa 
           currentView={currentView} 
-          onGoToProfile={() => {
-            setCurrentView('dashboard');
+          onReserve={() => {
+            setCurrentView('reservation');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }}
+          onOrder={() => {
+            setCurrentView('order_workspace');
             window.scrollTo({ top: 0, behavior: 'smooth' });
           }}
         />

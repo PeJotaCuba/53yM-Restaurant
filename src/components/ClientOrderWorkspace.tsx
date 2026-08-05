@@ -17,9 +17,10 @@ interface ClientOrderWorkspaceProps {
   data?: AppData;
   updateData?: (data: Partial<AppData>) => void;
   onBack: () => void;
+  onOrderSubmitted?: () => void;
 }
 
-export function ClientOrderWorkspace({ data, updateData, onBack }: ClientOrderWorkspaceProps) {
+export function ClientOrderWorkspace({ data, updateData, onBack, onOrderSubmitted }: ClientOrderWorkspaceProps) {
   const { t } = useLanguage();
   const deviceId = useDeviceId();
 
@@ -443,6 +444,9 @@ export function ClientOrderWorkspace({ data, updateData, onBack }: ClientOrderWo
     setCartItems([]);
     setIsReviewingOrder(false);
     alert(t('¡Tu pedido ha sido enviado al dependiente de tu mesa! El dependiente revisará tu pedido y lo mandará a cocina.'));
+    if (onOrderSubmitted) {
+      onOrderSubmitted();
+    }
   };
 
   const generateComandaPDF = (com: any) => {

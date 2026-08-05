@@ -17,6 +17,7 @@ export function FullMenu({
   isOrderMode = true,
   targetComandaId,
   onTableValidated,
+  onOrderSubmitted,
   data
 }: { 
   onClose?: () => void, 
@@ -30,6 +31,7 @@ export function FullMenu({
   isOrderMode?: boolean,
   targetComandaId?: string,
   onTableValidated?: (table: string) => void,
+  onOrderSubmitted?: () => void,
   data?: any
 }) {
   const { t } = useLanguage();
@@ -218,7 +220,9 @@ export function FullMenu({
     alert(`✅ ¡Pedido enviado con éxito para ${cleanTable}!\n\nEl dependiente asignado a tu mesa ha recibido tu comanda en tiempo real.`);
     setCart([]);
     setIsCartOpen(false);
-    if (onClose) {
+    if (onOrderSubmitted) {
+      onOrderSubmitted();
+    } else if (onClose) {
       onClose();
     }
   };

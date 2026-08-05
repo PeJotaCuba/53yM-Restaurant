@@ -86,6 +86,14 @@ export function KitchenPanel({ data, updateData, kitchenInfo }: KitchenPanelProp
     lastPendingCountRef.current = currentPending.length;
   }, [orders]);
 
+  // Helper for ordering by status priority (1. Pendientes, 2. En preparación, 3. Listas)
+  const getStatusPriority = (status: string) => {
+    if (status === 'pending' || status === 'in_kitchen') return 1;
+    if (status === 'kitchen_in_progress' || status === 'in_progress') return 2;
+    if (status === 'kitchen_ready' || status === 'ready_to_serve' || status === 'delivered') return 3;
+    return 4;
+  };
+
   // Active operational kitchen orders (include pending, in_kitchen, kitchen_in_progress, in_progress, kitchen_ready, ready_to_serve, delivered)
   const activeKitchenOrders = orders.filter(o => 
     o.status === 'pending' || 
@@ -95,7 +103,14 @@ export function KitchenPanel({ data, updateData, kitchenInfo }: KitchenPanelProp
     o.status === 'kitchen_ready' || 
     o.status === 'ready_to_serve' ||
     o.status === 'delivered'
-  ).sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+  ).sort((a, b) => {
+    const priorityA = getStatusPriority(a.status);
+    const priorityB = getStatusPriority(b.status);
+    if (priorityA !== priorityB) {
+      return priorityA - priorityB;
+    }
+    return (b.timestamp || 0) - (a.timestamp || 0);
+  });
 
   const pendingCount = activeKitchenOrders.filter(o => o.status === 'pending' || o.status === 'in_kitchen').length;
   const inProgressCount = activeKitchenOrders.filter(o => o.status === 'kitchen_in_progress' || o.status === 'in_progress').length;
@@ -499,9 +514,9 @@ export function KitchenPanel({ data, updateData, kitchenInfo }: KitchenPanelProp
         {/* Live Orders Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredOrders.map(order => {
-            const isPending = order.status === 'pending';
-            const isInProgress = order.status === 'kitchen_in_progress';
-            const isReady = order.status === 'kitchen_ready';
+            const isPending = order.status === 'pending' || order.status === 'in_kitchen';
+            const isInProgress = order.status === 'kitchen_in_progress' || order.status === 'in_progress';
+            const isReady = order.status === 'kitchen_ready' || order.status === 'ready_to_serve';
             const isDelivered = order.status === 'delivered';
 
             return (

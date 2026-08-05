@@ -1286,7 +1286,7 @@ export function DependentPanel({ data, updateData, dependentInfo }: DependentPan
           <div className="space-y-3">
             {clientPendingOrders.map((ord) => {
               const ordMesa = (data.mesas || []).find((m: any) => m.number && isSameTable(m.number.toString(), ord.tableNumber));
-              const needsConfirmation = ord.sessionId && ordMesa?.occupiedStatus === 'waiting_confirmation';
+              const needsConfirmation = (ord as any).sessionId && ordMesa?.occupiedStatus === 'waiting_confirmation';
 
               return (
               <div key={ord.id} className="bg-white p-4 rounded-2xl border border-amber-300 shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 text-xs">
@@ -1298,7 +1298,7 @@ export function DependentPanel({ data, updateData, dependentInfo }: DependentPan
                     <span className="text-[10px] text-stone-400 font-mono">
                       #{ord.id}
                     </span>
-                    {ord.sessionId && (
+                    {(ord as any).sessionId && (
                       <span className="text-[10px] bg-blue-100 text-blue-800 font-bold px-2 py-0.5 rounded flex items-center gap-1">
                         📱 Pedido QR
                       </span>
