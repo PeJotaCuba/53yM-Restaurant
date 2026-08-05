@@ -38,7 +38,43 @@ import { cleanLandingConfig } from './constants';
 export default function App() {
   console.log('[App] Rendering...');
   const { t } = useLanguage();
-  const [currentView, setCurrentView] = useState('home');
+  const [currentView, setCurrentView] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const pathname = window.location.pathname;
+      const params = new URLSearchParams(window.location.search);
+      if (pathname === '/menu' || pathname.startsWith('/menu/') || params.get('view') === 'menu' || window.location.hash === '#menu') {
+        return 'menu';
+      }
+    }
+    return 'home';
+  });
+
+  // Handle browser back/forward navigation for /menu route
+  useEffect(() => {
+    const handlePopState = () => {
+      const pathname = window.location.pathname;
+      const params = new URLSearchParams(window.location.search);
+      if (pathname === '/menu' || pathname.startsWith('/menu/') || params.get('view') === 'menu') {
+        setCurrentView('menu');
+      } else if (pathname === '/') {
+        setCurrentView('home');
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  // Sync currentView with browser URL path
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const pathname = window.location.pathname;
+    if (currentView === 'menu' && pathname !== '/menu') {
+      window.history.pushState({}, '', '/menu');
+    } else if (currentView === 'home' && pathname === '/menu') {
+      window.history.pushState({}, '', '/');
+    }
+  }, [currentView]);
   const [selectedDishForReservation, setSelectedDishForReservation] = useState<string | undefined>(undefined);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [showFirstTimeModal, setShowFirstTimeModal] = useState(false);
@@ -1136,7 +1172,7 @@ export default function App() {
     }
   };
 
-  if (showFirstTimeModal && userRole === 'none') {
+  if (showFirstTimeModal && userRole === 'none' && currentView !== 'menu') {
     return (
       <Onboarding 
         onComplete={(name, action) => {

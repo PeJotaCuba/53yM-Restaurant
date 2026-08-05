@@ -73,10 +73,22 @@ export function Navigation({
     setView(view);
     setIsMobileMenuOpen(false);
     
-    if (view === 'home' && hash) {
-      setTimeout(() => {
-        document.getElementById(hash)?.scrollIntoView({ behavior: 'smooth' });
-      }, 100);
+    if (view === 'menu') {
+      if (window.location.pathname !== '/menu') {
+        window.history.pushState({}, '', '/menu');
+      }
+      window.scrollTo(0, 0);
+    } else if (view === 'home') {
+      if (window.location.pathname === '/menu') {
+        window.history.pushState({}, '', '/');
+      }
+      if (hash) {
+        setTimeout(() => {
+          document.getElementById(hash)?.scrollIntoView({ behavior: 'smooth' });
+        }, 100);
+      } else {
+        window.scrollTo(0, 0);
+      }
     } else {
       window.scrollTo(0, 0);
     }
