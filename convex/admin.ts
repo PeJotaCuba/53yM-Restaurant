@@ -496,7 +496,7 @@ export const validateBackup = mutation({
   },
   handler: async (ctx, args) => {
     if (args.requesterRole !== "admin") {
-      throw new ConvexError("UNAUTHORIZED: Solo el administrador puede restaurar la base de datos.");
+      return { success: false, message: "UNAUTHORIZED: Solo el administrador puede restaurar la base de datos." };
     }
 
     const shiftActiveSetting = await ctx.db
@@ -505,11 +505,11 @@ export const validateBackup = mutation({
       .first();
 
     if (shiftActiveSetting && shiftActiveSetting.value === true) {
-      throw new ConvexError("CONFLICT: No se puede restaurar una copia de seguridad mientras la jornada esté activa. Por favor, cierre la jornada primero.");
+      return { success: false, message: "CONFLICT: No se puede restaurar una copia de seguridad mientras la jornada esté activa. Por favor, cierre la jornada primero." };
     }
 
     if (!args.hasHistory && !args.hasReservations) {
-      throw new ConvexError("INVALID_BACKUP: El archivo de respaldo no contiene datos de historial ni de reservas válidos.");
+      return { success: false, message: "INVALID_BACKUP: El archivo de respaldo no contiene datos de historial ni de reservas válidos." };
     }
 
     return { success: true };
