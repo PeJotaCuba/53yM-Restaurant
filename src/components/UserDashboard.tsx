@@ -14,6 +14,7 @@ interface UserDashboardProps {
   onUpdateReservation?: (id: string, newDetails: Partial<Reservation>) => void;
   onCancelReservation?: (id: string) => void;
   onOpenLogin?: () => void;
+  onReserve?: () => void;
   onOrderWorkspace?: () => void;
 }
 
@@ -50,7 +51,7 @@ function formatTime12h(timeStr: string) {
   return timeStr;
 }
 
-export function UserDashboard({ reservations, data, updateData, onUpdateReservation, onCancelReservation, onOpenLogin, onOrderWorkspace }: UserDashboardProps) {
+export function UserDashboard({ reservations, data, updateData, onUpdateReservation, onCancelReservation, onOpenLogin, onReserve, onOrderWorkspace }: UserDashboardProps) {
   const { t } = useLanguage();
   const [now, setNow] = useState(new Date());
   const deviceId = useDeviceId();
@@ -604,13 +605,19 @@ export function UserDashboard({ reservations, data, updateData, onUpdateReservat
         </div>
       )}
 
-        {/* PEDIDOS EN EL RESTAURANTE BUTTON */}
-        <div className="mt-12 max-w-md mx-auto text-center">
+        {/* ACCESOS PRINCIPALES DE MI PERFIL */}
+        <div className="mt-12 max-w-lg mx-auto grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <button
+            onClick={onReserve}
+            className="w-full bg-stone-100 hover:bg-stone-200 text-stone-900 font-serif text-lg py-5 px-6 rounded-3xl transition-all duration-300 flex items-center justify-center gap-3 border border-stone-200 shadow-sm active:scale-95 cursor-pointer font-bold"
+          >
+            <Calendar className="text-gold" size={22} /> {t('Reservar')}
+          </button>
           <button
             onClick={onOrderWorkspace}
-            className="w-full bg-dark-green hover:bg-stone-900 text-white font-serif text-lg py-5 px-8 rounded-3xl transition-all duration-300 flex items-center justify-center gap-3 border border-stone-200 shadow-md active:scale-95 cursor-pointer"
+            className="w-full bg-dark-green hover:bg-stone-900 text-white font-serif text-lg py-5 px-6 rounded-3xl transition-all duration-300 flex items-center justify-center gap-3 border border-transparent shadow-md active:scale-95 cursor-pointer font-bold"
           >
-            <Utensils className="text-gold" size={22} /> {t('Pedidos en el restaurante')}
+            <Utensils className="text-gold" size={22} /> {t('Hacer Pedido')}
           </button>
         </div>
       </div>

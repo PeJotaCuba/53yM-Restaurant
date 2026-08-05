@@ -27,7 +27,7 @@ export function ClientOrderWorkspace({ data, updateData, onBack }: ClientOrderWo
   const [clientName, setClientName] = useState('');
   
   // Selection Flow States
-  const [showMesaSelection, setShowMesaSelection] = useState(true);
+  const [showMesaSelection, setShowMesaSelection] = useState(false);
   const [selectionMode, setSelectionMode] = useState<'options' | 'qr' | 'manual' | 'qr_success'>('options');
   const [scannedTable, setScannedTable] = useState('');
   const [qrError, setQrError] = useState('');
@@ -39,7 +39,10 @@ export function ClientOrderWorkspace({ data, updateData, onBack }: ClientOrderWo
   const [dishRations, setDishRations] = useState<number>(1);
   const [cartItems, setCartItems] = useState<{ dishName: string; quantity: number; priceCUP: number }[]>([]);
   const [showClosedComandas, setShowClosedComandas] = useState(false);
-  const [activeSubView, setActiveSubView] = useState<'welcome' | 'consult' | 'order'>('welcome');
+  const [activeSubView, setActiveSubView] = useState<'welcome' | 'consult' | 'order'>(() => {
+    const saved = localStorage.getItem('clientTable');
+    return saved ? 'welcome' : 'order';
+  });
   const [targetAnnexedComandaId, setTargetAnnexedComandaId] = useState<string | undefined>(undefined);
 
   const getComandaOrdersClient = (com?: Comanda | null, allOrders: Order[] = []) => {
@@ -181,37 +184,16 @@ export function ClientOrderWorkspace({ data, updateData, onBack }: ClientOrderWo
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // 1. Restore previous session or parsed URL QR query parameters on load
+  // 1. Restore previous session on load
   useEffect(() => {
-    // Check if there was a URL parameter for table/mesa
-    const params = new URLSearchParams(window.location.search);
-    const tableParam = params.get('table') || params.get('mesa') || window.location.hash.replace('#', '').split('=')[1];
-    
-    let initialTable = '';
-    if (tableParam) {
-      let resolved = tableParam.trim();
-      if (!resolved.toLowerCase().startsWith('mesa')) {
-        const num = parseInt(resolved.replace(/\D/g, ''), 10);
-        if (!isNaN(num)) {
-          resolved = `Mesa ${num}`;
-        }
-      }
-      resolved = resolved.charAt(0).toUpperCase() + resolved.slice(1);
-      initialTable = resolved;
-      localStorage.setItem('scannedTable', resolved);
-    }
-
-    const savedTable = initialTable || localStorage.getItem('clientTable') || localStorage.getItem('scannedTable');
+    const savedTable = localStorage.getItem('clientTable') || '';
     const savedName = localStorage.getItem('clientUserName') || '';
 
     if (savedTable) {
       setClientTable(savedTable);
-      setClientName(savedName);
-      setShowMesaSelection(false);
-    } else {
-      setShowMesaSelection(true);
-      setSelectionMode('options');
     }
+    setClientName(savedName);
+    setShowMesaSelection(false);
   }, []);
 
   // 2. Set default dish name when menuItems are loaded
@@ -380,11 +362,10 @@ export function ClientOrderWorkspace({ data, updateData, onBack }: ClientOrderWo
 
   const handleLogoutMesa = () => {
     localStorage.removeItem('clientTable');
-    localStorage.removeItem('scannedTable');
+    localStorage.removeItem('clientTableToken');
     setClientTable('');
-    setShowMesaSelection(true);
-    setSelectionMode('options');
-    setActiveSubView('welcome');
+    setShowMesaSelection(false);
+    setActiveSubView('order');
   };
 
   const handleAddToCart = () => {
@@ -1311,18 +1292,21 @@ export function ClientOrderWorkspace({ data, updateData, onBack }: ClientOrderWo
           ) : activeSubView === 'consult' ? (
             <div className="animate-fade-in -mx-4 md:-mx-8">
               <FullMenu 
+                data={data}
                 menuItems={data?.menuItems || []}
                 exchangeRate={data?.exchangeRate}
                 prefilledTable={clientTable}
                 prefilledName={clientName}
                 isOrderMode={false}
                 updateData={updateData}
+                onTableValidated={(table) => setClientTable(table)}
                 onClose={() => setActiveSubView('welcome')}
               />
             </div>
           ) : (
             <div className="animate-fade-in -mx-4 md:-mx-8">
               <FullMenu 
+                data={data}
                 menuItems={data?.menuItems || []}
                 exchangeRate={data?.exchangeRate}
                 prefilledTable={clientTable}
@@ -1330,6 +1314,7 @@ export function ClientOrderWorkspace({ data, updateData, onBack }: ClientOrderWo
                 isOrderMode={true}
                 targetComandaId={targetAnnexedComandaId}
                 updateData={updateData}
+                onTableValidated={(table) => setClientTable(table)}
                 onClose={() => {
                   setActiveSubView('welcome');
                   setTargetAnnexedComandaId(undefined);

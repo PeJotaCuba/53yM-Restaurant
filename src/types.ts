@@ -262,4 +262,6 @@ export interface AppData {
   notifications?: AppNotification[];
   history?: any[];
   gerenteCierreCompleto?: boolean;
+  appQrUrl?: string;
+  mesas?: any[];
 }

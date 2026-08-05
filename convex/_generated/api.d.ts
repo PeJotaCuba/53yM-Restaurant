@@ -11,6 +11,7 @@
 import type * as admin from "../admin.js";
 import type * as bitacora from "../bitacora.js";
 import type * as menuItems from "../menuItems.js";
+import type * as mesas from "../mesas.js";
 import type * as notifications from "../notifications.js";
 import type * as orders from "../orders.js";
 import type * as pushActions from "../pushActions.js";
@@ -28,6 +29,7 @@ declare const fullApi: ApiFromModules<{
   admin: typeof admin;
   bitacora: typeof bitacora;
   menuItems: typeof menuItems;
+  mesas: typeof mesas;
   notifications: typeof notifications;
   orders: typeof orders;
   pushActions: typeof pushActions;

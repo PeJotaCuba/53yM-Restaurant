@@ -15,7 +15,9 @@ export function FullMenu({
   prefilledTable,
   prefilledName,
   isOrderMode = true,
-  targetComandaId
+  targetComandaId,
+  onTableValidated,
+  data
 }: { 
   onClose?: () => void, 
   pendingReservation?: any, 
@@ -26,26 +28,46 @@ export function FullMenu({
   prefilledTable?: string,
   prefilledName?: string,
   isOrderMode?: boolean,
-  targetComandaId?: string
+  targetComandaId?: string,
+  onTableValidated?: (table: string) => void,
+  data?: any
 }) {
   const { t } = useLanguage();
   const [activeCategory, setActiveCategory] = useState('Todos');
   const [searchQuery, setSearchQuery] = useState('');
   const [cart, setCart] = useState<{item: MenuItem, quantity: number}[]>([]);
-  const [tableNumber, setTableNumber] = useState(prefilledTable || '');
+  
+  // Secure token-based table management
+  const [tableToken, setTableToken] = useState(localStorage.getItem('clientTableToken') || '');
+  const [prefilledTableState, setPrefilledTableState] = useState(prefilledTable || '');
   const [isCartOpen, setIsCartOpen] = useState(false);
 
+  // Auto-validate/sync saved token state when mesas load or prefilledTable changes
   useEffect(() => {
-    if (prefilledTable) {
-      setTableNumber(prefilledTable);
+    if (prefilledTable && tableToken) {
+      const matchedMesa = (data?.mesas || []).find((m: any) => m.token === tableToken);
+      if (!matchedMesa || matchedMesa.status !== 'active' || (matchedMesa.tokenExpiresAt && Date.now() > matchedMesa.tokenExpiresAt)) {
+        // Token became invalid or deactivated in system or expired
+        localStorage.removeItem('clientTable');
+        localStorage.removeItem('clientTableToken');
+        setTableToken('');
+        setPrefilledTableState('');
+        if (onTableValidated) onTableValidated('');
+      } else {
+        setPrefilledTableState(`Mesa ${matchedMesa.number}`);
+      }
+    } else if (prefilledTable && !tableToken) {
+      // Manual/QR prefilled tables are invalid now without tokens
+      localStorage.removeItem('clientTable');
+      setPrefilledTableState('');
+      if (onTableValidated) onTableValidated('');
     }
-  }, [prefilledTable]);
+  }, [prefilledTable, tableToken, data?.mesas, onTableValidated]);
 
   const usdCUP = exchangeRate?.usdCUP || 320;
   const eurCUP = exchangeRate?.eurCUP || 350;
 
   const categories = ['Todos', ...Array.from(new Set((menuItems || []).map(item => item.category)))];
-
 
   const filteredItems = (menuItems || []).filter(item => {
     const matchesCategory = activeCategory === 'Todos' || item.category === activeCategory;
@@ -86,11 +108,16 @@ export function FullMenu({
   const totalPrice = cart.reduce((acc, curr) => acc + (curr.item.priceCUP * curr.quantity), 0);
 
   const handleSendOrder = async () => {
-    if (!pendingReservation && !tableNumber) {
-      alert("Por favor, ingrese su número de mesa.");
+    if (data?.isShiftActive === false) {
+      alert(t('⚠️ La jornada actual no ha sido iniciada por el Administrador.'));
       return;
     }
-    
+
+    if (cart.length === 0) {
+      alert(t('Agrega al menos un plato a tu pedido antes de enviar.'));
+      return;
+    }
+
     // Check if we are checking out an advanced reservation order
     if (pendingReservation && onSubmitReservationAndOrder) {
       try {
@@ -104,7 +131,27 @@ export function FullMenu({
       }
     }
 
-    const cleanTable = tableNumber ? (tableNumber.toLowerCase().includes('mesa') ? tableNumber : `Mesa ${tableNumber.replace(/\D/g, '') || tableNumber}`) : 'Mesa 1';
+    // Secure token validation
+    const enteredToken = tableToken.trim();
+    if (!enteredToken) {
+      alert(t("Por favor, introduce el Token de Mesa para continuar."));
+      return;
+    }
+
+    const matchedMesa = (data?.mesas || []).find((m: any) => m.token === enteredToken);
+    if (!matchedMesa || matchedMesa.status !== 'active' || (matchedMesa.tokenExpiresAt && Date.now() > matchedMesa.tokenExpiresAt)) {
+      alert(t('Token de mesa inválido o expirado. Solicite asistencia al personal del restaurante.'));
+      return;
+    }
+
+    const cleanTable = `Mesa ${matchedMesa.number}`;
+    localStorage.setItem('clientTable', cleanTable);
+    localStorage.setItem('clientTableToken', enteredToken);
+    if (onTableValidated) {
+      onTableValidated(cleanTable);
+    }
+    setPrefilledTableState(cleanTable);
+
     const formattedItems = cart.map(c => `${c.quantity}x ${c.item.name}`);
     const orderItemsList = cart.map(c => ({
       name: c.item.name,
@@ -165,7 +212,7 @@ export function FullMenu({
                 <ChevronRight size={24} className="text-stone-600 transform rotate-180" />
               </button>
             )}
-            <h1 className="text-4xl md:text-5xl font-serif text-stone-900 flex items-center">
+            <h1 className="text-4xl md:text-5xl font-serif text-dark-green flex items-center">
               {t('Menú')} <Logo variant="svg" className="h-10 ml-4 inline-block" />
             </h1>
           </div>
@@ -173,10 +220,10 @@ export function FullMenu({
             <>
               <button 
                 onClick={() => setIsCartOpen(true)}
-                className="hidden md:flex bg-dark-green text-white px-6 py-3 rounded-full items-center gap-3 hover:bg-stone-800 transition-colors shadow-lg"
+                className="hidden md:flex bg-dark-green text-white px-6 py-3 rounded-full items-center gap-3 hover:bg-stone-800 transition-colors shadow-lg font-bold"
               >
                 <ShoppingCart size={20} />
-                <span className="font-bold">{t('Revisar Pedido')}</span>
+                <span>{t('Revisar Pedido')}</span>
                 {totalItems > 0 && (
                   <div className="flex items-center gap-2 border-l border-white/20 pl-3">
                     <span className="bg-gold text-dark-green text-xs font-bold px-2 py-0.5 rounded-full">{totalItems}</span>
@@ -283,7 +330,7 @@ export function FullMenu({
                         onClick={() => addToCart(item)}
                         className="w-full bg-stone-100 hover:bg-gold hover:text-white text-dark-green font-bold py-2 rounded-xl transition-colors flex items-center justify-center gap-2"
                       >
-                        <Plus size={16} /> {prefilledTable ? t('Añadir al Pedido') : t('Añadir a mi Reserva')}
+                        <Plus size={16} /> {prefilledTableState ? t('Añadir al Pedido') : t('Añadir a mi Reserva')}
                       </button>
                     )
                   ) : (
@@ -315,11 +362,11 @@ export function FullMenu({
               animate={{ x: 0 }}
               exit={{ x: '100%' }}
               transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-              className="fixed inset-y-0 right-0 z-[110] w-full max-w-md bg-white shadow-2xl flex flex-col"
+              className="fixed inset-y-0 right-0 z-[110] w-full max-w-md bg-white shadow-2xl flex flex-col animate-fade-in"
             >
               <div className="p-6 border-b border-stone-100 flex items-center justify-between bg-stone-50">
                 <h2 className="text-2xl font-serif text-dark-green flex items-center gap-2">
-                  <ShoppingCart /> Tu Pedido
+                  <ShoppingCart /> {t('Tu Pedido')}
                 </h2>
                 <button onClick={() => setIsCartOpen(false)} className="p-2 hover:bg-stone-200 rounded-full transition-colors">
                   <ChevronRight size={24} className="text-stone-600" />
@@ -330,7 +377,7 @@ export function FullMenu({
                 {cart.length === 0 ? (
                   <div className="text-center text-stone-500 mt-20 flex flex-col items-center">
                     <ShoppingCart size={48} className="mb-4 text-stone-300" />
-                    <p>No hay platos en tu pedido.</p>
+                    <p>{t('No hay platos en tu pedido.')}</p>
                   </div>
                 ) : (
                   <div className="space-y-6">
@@ -362,31 +409,50 @@ export function FullMenu({
               {cart.length > 0 && (
                 <div className="border-t border-stone-100 p-6 bg-white shadow-[0_-10px_40px_-15px_rgba(0,0,0,0.1)]">
                   <div className="flex justify-between items-center mb-6">
-                    <span className="text-stone-500">Total Pedido</span>
+                    <span className="text-stone-500 font-medium">{t('Total Pedido')}</span>
                     <span className="text-3xl font-serif text-dark-green font-bold">{totalPrice.toLocaleString()} CUP</span>
                   </div>
                   
                   <div>
-                    {!pendingReservation && !prefilledTable && (
+                    {!pendingReservation && !prefilledTableState && (
                       <div className="mb-4">
-                        <label htmlFor="tableNumber" className="block text-sm font-medium text-stone-700 mb-1">
-                          Número de Mesa <span className="text-red-500">*</span>
+                        <label htmlFor="tableToken" className="block text-xs font-bold text-stone-700 mb-1.5 uppercase tracking-wider">
+                          {t('Token de Mesa')} <span className="text-red-500">*</span>
                         </label>
                         <input 
-                          type="number" 
-                          id="tableNumber"
-                          value={tableNumber}
-                          onChange={e => setTableNumber(e.target.value)}
-                          className="w-full border-stone-300 rounded-xl shadow-sm focus:border-gold focus:ring focus:ring-gold/20 py-3 px-4 outline-none border transition-all"
-                          placeholder="Ej. 12"
+                          type="text" 
+                          id="tableToken"
+                          value={tableToken}
+                          onChange={e => setTableToken(e.target.value)}
+                          className="w-full border-stone-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-gold focus:border-transparent py-3 px-4 outline-none border transition-all font-mono text-center text-sm"
+                          placeholder={t('Introduce el token de tu mesa')}
+                          required
                         />
+                        <p className="text-[10px] text-stone-400 mt-1.5 text-center leading-normal">
+                          {t('Solicita el token de mesa activo al camarero de tu mesa para realizar el pedido.')}
+                        </p>
                       </div>
                     )}
                     
-                    {prefilledTable && (
-                      <div className="mb-4 bg-stone-50 p-3.5 rounded-xl border border-stone-200/60 flex justify-between items-center">
-                        <span className="text-xs font-bold text-stone-500 uppercase tracking-wider">{t('Mesa Asociada')}:</span>
-                        <span className="bg-dark-green text-white font-mono font-bold text-sm px-3 py-1 rounded-lg shadow-xs">{prefilledTable}</span>
+                    {prefilledTableState && (
+                      <div className="mb-4 bg-stone-50 p-3.5 rounded-xl border border-stone-200/60 flex flex-col gap-2">
+                        <div className="flex justify-between items-center">
+                          <span className="text-xs font-bold text-stone-500 uppercase tracking-wider">{t('Mesa Asociada')}:</span>
+                          <span className="bg-dark-green text-white font-mono font-bold text-sm px-3 py-1 rounded-lg shadow-xs">{prefilledTableState}</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            localStorage.removeItem('clientTable');
+                            localStorage.removeItem('clientTableToken');
+                            setTableToken('');
+                            setPrefilledTableState('');
+                            if (onTableValidated) onTableValidated('');
+                          }}
+                          className="text-stone-500 hover:text-red-500 text-xs font-bold transition-colors text-right mt-1"
+                        >
+                          {t('Cambiar de Mesa / Salir')}
+                        </button>
                       </div>
                     )}
                     
@@ -397,7 +463,7 @@ export function FullMenu({
                     >
                       <Send size={18} /> {pendingReservation ? t('Enviar Reserva y Pedido') : t('Enviar Pedido')}
                     </button>
-                    <p className="text-xs text-center text-stone-400 mt-4">
+                    <p className="text-xs text-center text-stone-400 mt-4 leading-normal">
                       {t('Tu comanda se enviará en tiempo real al sistema del restaurante.')}
                     </p>
                   </div>
@@ -417,11 +483,11 @@ export function FullMenu({
           >
             <div className="flex items-center gap-3">
               <ShoppingCart size={20} />
-              <span className="font-bold">{totalItems} platos</span>
+              <span className="font-bold">{totalItems} {t('platos')}</span>
             </div>
             <div className="flex items-center gap-3">
               <span className="font-medium text-gold">{totalPrice.toLocaleString()} CUP</span>
-              <span className="font-bold uppercase tracking-wider border-l border-white/20 pl-3">Revisar</span>
+              <span className="font-bold uppercase tracking-wider border-l border-white/20 pl-3">{t('Revisar')}</span>
             </div>
           </button>
         </div>

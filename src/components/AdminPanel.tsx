@@ -22,7 +22,9 @@ import {
   Play, 
   Power, 
   RefreshCw, 
-  AlertCircle, 
+  AlertCircle,
+  QrCode,
+  Printer, 
   AlertTriangle,
   ChefHat, 
   Database,
@@ -40,10 +42,13 @@ import {
   Search
 } from 'lucide-react';
 import jsPDF from 'jspdf';
+import { QRCodeSVG } from 'qrcode.react';
 import { AdminLandingEditor } from './AdminLandingEditor';
 import { AdminMenuEditor } from './AdminMenuEditor';
 import { AdminSimulator } from './AdminSimulator';
 import { HistoryViewer } from './HistoryViewer';
+import { MesasManagement } from './MesasManagement';
+import { AdminAppQr } from './AdminAppQr';
 import { useLanguage } from '../context/LanguageContext';
 import { useMutation, useQuery } from 'convex/react';
 import { api } from '../../convex/_generated/api';
@@ -57,7 +62,7 @@ interface AdminPanelProps {
 
 export function AdminPanel({ data, updateData, updateStatus, userRole }: AdminPanelProps) {
   const { t } = useLanguage();
-  const [activeTab, setActiveTab] = useState<'reservations' | 'landing' | 'menu' | 'dependents' | 'managers' | 'kitchen' | 'exchange' | 'security' | 'simulator' | 'history'>('reservations');
+  const [activeTab, setActiveTab] = useState<'reservations' | 'landing' | 'menu' | 'dependents' | 'managers' | 'kitchen' | 'exchange' | 'security' | 'simulator' | 'history' | 'mesas' | 'app-qr'>('reservations');
   const [isLogExpanded, setIsLogExpanded] = useState(true);
   const [reservationFilter, setReservationFilter] = useState<'Pendientes' | 'Confirmadas' | 'Canceladas' | 'Consolidadas'>('Pendientes');
   const [resToCancel, setResToCancel] = useState<Reservation | null>(null);
@@ -810,6 +815,7 @@ export function AdminPanel({ data, updateData, updateStatus, userRole }: AdminPa
       items: [
         { id: 'reservations', title: 'Reservas', sub: 'Gestión diaria', icon: Calendar },
         { id: 'menu', title: 'Menú', sub: 'Carta y precios', icon: Utensils },
+        { id: 'mesas', title: 'Gestión de Mesas', sub: 'Tokens de Jornada', icon: LayoutTemplate },
       ]
     },
     {
@@ -831,6 +837,7 @@ export function AdminPanel({ data, updateData, updateStatus, userRole }: AdminPa
       items: [
         { id: 'exchange', title: 'Tasa de Cambio (24h)', sub: '24h actualización', icon: DollarSign },
         { id: 'security', title: 'Cuenta Admin', sub: 'Perfil y seguridad', icon: Shield },
+        { id: 'app-qr', title: 'Ver QR App', sub: 'QR acceso principal', icon: QrCode },
         { id: 'history', title: 'Historial', sub: 'Jornadas pasadas', icon: Database },
         { id: 'simulator', title: 'Simulador Interconectado', sub: 'Pruebas operativas', icon: Tv },
       ]
@@ -1468,6 +1475,14 @@ export function AdminPanel({ data, updateData, updateStatus, userRole }: AdminPa
 
               {overlayTab === 'menu' && (
                 <AdminMenuEditor menuItems={data.menuItems} onSave={(newItems) => updateData({ menuItems: newItems })} />
+              )}
+
+              {overlayTab === 'mesas' && (
+                <MesasManagement />
+              )}
+
+              {overlayTab === 'app-qr' && (
+                <AdminAppQr data={data} onSaveUrl={(newUrl) => updateData({ appQrUrl: newUrl })} />
               )}
 
               {overlayTab === 'exchange' && (

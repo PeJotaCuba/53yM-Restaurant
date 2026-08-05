@@ -42,6 +42,15 @@ export default function App() {
   const [selectedDishForReservation, setSelectedDishForReservation] = useState<string | undefined>(undefined);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [showFirstTimeModal, setShowFirstTimeModal] = useState(false);
+  const [tableContext, setTableContext] = useState<{
+    mesaActual: number | null;
+    tableId: string | null;
+    qrValidated: boolean;
+  }>({
+    mesaActual: null,
+    tableId: null,
+    qrValidated: false,
+  });
 
   useEffect(() => {
     const savedName = localStorage.getItem('clientUserName');
@@ -73,6 +82,7 @@ export default function App() {
   const liveExchangeRate = useQuery(api.admin.getSetting, { key: "exchangeRate" });
   const liveLandingConfig = useQuery(api.admin.getSetting, { key: "landingConfig" });
   const liveAdminConfig = useQuery(api.admin.getSetting, { key: "adminConfig" });
+  const liveAppQrUrl = useQuery(api.admin.getSetting, { key: "appQrUrl" });
   const liveComandas = useQuery(api.admin.getSetting, { key: "comandas" });
   const liveNotifications = useQuery(api.admin.getSetting, { key: "notifications" });
   const liveOrderReports = useQuery(api.admin.getSetting, { key: "orderReports" });
@@ -86,6 +96,7 @@ export default function App() {
   );
 
   const liveMenuItems = useQuery(api.menuItems.getLiveMenuItems);
+  const liveMesas = useQuery(api.mesas.getMesas);
   const convexUsers = useQuery(api.users.getAllUsers) || [];
 
   const recoverHistoricalReservationsMutation = useMutation(api.reservations.recoverHistoricalReservations);
@@ -224,7 +235,9 @@ export default function App() {
       kitchenReports: liveKitchenReports || [],
       cashRegisterCloses: liveCashRegisterCloses || [],
       history: liveHistory || [],
-      downloadsState: { adminAuditLog: false, managerZip: false }
+      downloadsState: { adminAuditLog: false, managerZip: false },
+      appQrUrl: (liveAppQrUrl as any)?.value || "https://53y-m-restaurant.vercel.app/",
+      mesas: liveMesas || []
     };
   }, [
     liveExchangeRate,
@@ -235,6 +248,7 @@ export default function App() {
     convexUsers,
     liveLogs,
     liveAdminConfig,
+    liveAppQrUrl,
     liveComandas,
     liveNotifications,
     liveIsShiftActive,
@@ -242,7 +256,8 @@ export default function App() {
     liveOrderReports,
     liveKitchenReports,
     liveCashRegisterCloses,
-    liveHistory
+    liveHistory,
+    liveMesas
   ]);
 
   const authorizeUserMutation = useMutation(api.users.authorizeUser);
@@ -310,6 +325,9 @@ export default function App() {
     }
     if (newData.gerenteCierreCompleto !== undefined) {
       updateSettingMutation({ key: "gerenteCierreCompleto", value: newData.gerenteCierreCompleto }).catch(console.warn);
+    }
+    if (newData.appQrUrl !== undefined) {
+      updateSettingMutation({ key: "appQrUrl", value: { value: newData.appQrUrl } }).catch(console.warn);
     }
     if (newData.menuItems) {
       syncMenuItemsMutation({ 
@@ -693,11 +711,43 @@ export default function App() {
   };
 
   useEffect(() => {
+    if (liveMesas === undefined) return;
+
     const params = new URLSearchParams(window.location.search);
-    if (params.get('view') === 'menu') {
+    const tableToken = params.get('table') || localStorage.getItem('qrTableToken');
+    
+    if (tableToken) {
+      const mesa = liveMesas.find((m: any) => m.token === tableToken && m.status === 'active' && (!m.tokenExpiresAt || Date.now() < m.tokenExpiresAt));
+      
+      if (mesa) {
+        localStorage.setItem('qrTableToken', tableToken);
+        setTableContext({
+          mesaActual: mesa.number,
+          tableId: mesa._id,
+          qrValidated: true
+        });
+        
+        if (params.get('table')) {
+          setCurrentView('menu');
+          // Clean URL parameters but preserve path if it is /menu
+          const currentPath = window.location.pathname;
+          window.history.replaceState({}, '', currentPath.includes('/menu') ? '/menu' : '/?view=menu');
+        }
+      } else {
+        localStorage.removeItem('qrTableToken');
+        setTableContext({
+          mesaActual: null,
+          tableId: null,
+          qrValidated: false
+        });
+        if (params.get('view') === 'menu' || window.location.pathname.includes('/menu')) {
+          setCurrentView('menu');
+        }
+      }
+    } else if (params.get('view') === 'menu' || window.location.pathname.includes('/menu')) {
       setCurrentView('menu');
     }
-  }, []);
+  }, [liveMesas]);
 
   const [pendingReservation, setPendingReservation] = useState<any>(null);
 
@@ -948,6 +998,10 @@ export default function App() {
             onUpdateReservation={handleUpdateReservation}
             onCancelReservation={handleCancelReservation}
             onOpenLogin={() => setIsLoginModalOpen(true)}
+            onReserve={() => {
+              setCurrentView('reservation');
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
             onOrderWorkspace={() => {
               setCurrentView('order_workspace');
               window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -1085,11 +1139,21 @@ export default function App() {
   if (showFirstTimeModal && userRole === 'none') {
     return (
       <Onboarding 
-        onComplete={(name) => {
+        onComplete={(name, action) => {
           const trimmed = name.trim();
           if (trimmed) {
             localStorage.setItem('clientUserName', trimmed);
             setShowFirstTimeModal(false);
+            if (action === 'reservar') {
+              setCurrentView('reservation');
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            } else if (action === 'pedido') {
+              setCurrentView('menu');
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            } else {
+              setCurrentView('home');
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }
           }
         }} 
       />
@@ -1133,12 +1197,8 @@ export default function App() {
       {userRole === 'none' && currentView !== 'reservation' && currentView !== 'menu' && currentView !== 'dashboard' && (
         <GestionarMesa 
           currentView={currentView} 
-          onReserve={() => {
-            setCurrentView('reservation');
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-          }} 
-          onOrder={() => {
-            setCurrentView('order_workspace');
+          onGoToProfile={() => {
+            setCurrentView('dashboard');
             window.scrollTo({ top: 0, behavior: 'smooth' });
           }}
         />

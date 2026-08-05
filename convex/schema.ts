@@ -42,6 +42,9 @@ export default defineSchema({
     reservationId: v.optional(v.string()),
     customerName: v.optional(v.string()),
     comandaId: v.optional(v.string()),
+    mesaId: v.optional(v.string()),
+    qrToken: v.optional(v.string()),
+    origen: v.optional(v.string()), // e.g., 'QR', 'dependent'
   }).index("by_status", ["status"]),
 
   reservations: defineTable({
@@ -118,6 +121,17 @@ export default defineSchema({
     createdBy: v.string(),
     label: v.string(),
   }).index("by_timestamp", ["timestamp"]),
+
+  mesas: defineTable({
+    number: v.number(),
+    status: v.union(v.literal("active"), v.literal("inactive")),
+    token: v.optional(v.string()),
+    tokenAssignedAt: v.optional(v.number()),
+    tokenExpiresAt: v.optional(v.number()),
+    capacity: v.optional(v.number()),
+    createdAt: v.optional(v.number()),
+  }).index("by_number", ["number"])
+    .index("by_token", ["token"]),
 
   pushSubscriptions: defineTable({
     deviceId: v.string(),
