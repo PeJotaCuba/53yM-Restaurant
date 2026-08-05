@@ -24,9 +24,12 @@ export const createMesa = mutation({
       throw new Error(`La mesa ${args.number} ya existe.`);
     }
 
+    const publicQrId = `MESA${args.number}-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
+
     const mesaId = await ctx.db.insert("mesas", {
       number: args.number,
       status: "active",
+      publicQrId,
       capacity: args.capacity,
       createdAt: Date.now(),
     });

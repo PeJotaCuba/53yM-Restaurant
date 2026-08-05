@@ -19,8 +19,10 @@ import {
   Power,
   Sliders,
   Download,
-  FileText
+  FileText,
+  QrCode
 } from 'lucide-react';
+import { QRCodeCanvas } from 'qrcode.react';
 import { useLanguage } from '../context/LanguageContext';
 
 // Helper to generate a highly readable 6-character token (avoiding ambiguous characters like O, 0, I, 1)
@@ -55,6 +57,7 @@ export function MesasManagement() {
   const [newNumber, setNewNumber] = useState<number | ''>('');
   const [newCapacity, setNewCapacity] = useState<number | ''>('');
   const [showBankDetails, setShowBankDetails] = useState(false);
+  const [selectedMesaForQr, setSelectedMesaForQr] = useState<any>(null);
 
   // Form Inputs for Editing
   const [editNumber, setEditNumber] = useState<number | ''>('');
@@ -310,6 +313,21 @@ export function MesasManagement() {
     doc.save(`Banco_Tokens_Terraza53M_${dateStr.replace(/\//g, '-')}.pdf`);
   };
 
+  const handleDownloadMesaQR = (mesa: any) => {
+    const canvas = document.getElementById(`qr-mesa-${mesa.number}`) as HTMLCanvasElement;
+    if (!canvas) {
+      alert("Error al obtener el código QR de la mesa.");
+      return;
+    }
+    const pngUrl = canvas.toDataURL("image/png").replace("image/png", "image/octet-stream");
+    const downloadLink = document.createElement("a");
+    downloadLink.href = pngUrl;
+    downloadLink.download = `Mesa_${mesa.number}_QR_Permanente.png`;
+    document.body.appendChild(downloadLink);
+    downloadLink.click();
+    document.body.removeChild(downloadLink);
+  };
+
   // Format expiry times
   const getExpiresLabel = (expiryTime?: number) => {
     if (!expiryTime) return 'Expirado / No Asignado';
@@ -444,9 +462,9 @@ export function MesasManagement() {
       {/* 3. Token Bank Sub-Section Viewer */}
       {tokenBankSetting && tokenBankSetting.tokens && (
         <div className="bg-white rounded-3xl border border-[#E8E0D0] overflow-hidden shadow-xs">
-          <button 
+          <div 
             onClick={() => setShowBankDetails(!showBankDetails)}
-            className="w-full px-6 py-4 bg-stone-50 border-b border-stone-200 flex justify-between items-center text-left"
+            className="w-full px-6 py-4 bg-stone-50 border-b border-stone-200 flex justify-between items-center text-left cursor-pointer"
           >
             <div className="flex items-center gap-3">
               <Key size={18} className="text-gold" />
@@ -475,7 +493,7 @@ export function MesasManagement() {
                 {showBankDetails ? 'Contraer' : 'Expandir'} {showBankDetails ? <EyeOff size={12} /> : <Eye size={12} />}
               </span>
             </div>
-          </button>
+          </div>
           
           {showBankDetails && (
             <div className="p-6">
@@ -679,37 +697,60 @@ export function MesasManagement() {
               </div>
               
               {/* Action Buttons Panel */}
-              <div className="p-3 bg-white flex gap-1.5 justify-between border-t border-stone-100">
-                <button
-                  onClick={() => {
-                    setIsEditing(mesa);
-                    setEditNumber(mesa.number);
-                    setEditCapacity(mesa.capacity || '');
-                    window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
-                  }}
-                  className="p-2.5 bg-stone-50 hover:bg-stone-150 text-stone-700 hover:text-stone-900 rounded-xl transition-colors flex-1 flex justify-center items-center gap-1 text-xs font-bold border border-stone-200"
-                  title="Editar número o capacidad de la mesa"
-                >
-                  <Edit3 size={13} /> Editar
-                </button>
-                
-                {mesa.status === 'active' && hasToken && (
+              <div className="p-3 bg-white flex flex-col gap-1.5 border-t border-stone-100">
+                <div className="flex gap-1.5 justify-between">
                   <button
-                    onClick={() => handleRemoveToken(mesa)}
-                    className="p-2.5 bg-amber-50 hover:bg-amber-100 text-amber-700 rounded-xl transition-colors flex-shrink-0"
-                    title="Retirar token actual de esta mesa"
+                    onClick={() => {
+                      setIsEditing(mesa);
+                      setEditNumber(mesa.number);
+                      setEditCapacity(mesa.capacity || '');
+                      window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+                    }}
+                    className="p-2.5 bg-stone-50 hover:bg-stone-150 text-stone-700 hover:text-stone-900 rounded-xl transition-colors flex-1 flex justify-center items-center gap-1 text-xs font-bold border border-stone-200"
+                    title="Editar número o capacidad de la mesa"
                   >
-                    <X size={14} />
+                    <Edit3 size={13} /> Editar
+                  </button>
+                  
+                  {mesa.status === 'active' && hasToken && (
+                    <button
+                      onClick={() => handleRemoveToken(mesa)}
+                      className="p-2.5 bg-amber-50 hover:bg-amber-100 text-amber-700 rounded-xl transition-colors flex-shrink-0"
+                      title="Retirar token actual de esta mesa"
+                    >
+                      <X size={14} />
+                    </button>
+                  )}
+                  
+                  <button
+                    onClick={() => handleDeleteMesa(mesa)}
+                    className="p-2.5 bg-red-50 hover:bg-red-100 text-[#C93A3A] rounded-xl transition-colors flex-shrink-0"
+                    title="Eliminar Mesa Permanentemente"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+                
+                {mesa.publicQrId && (
+                  <button
+                    onClick={() => setSelectedMesaForQr(mesa)}
+                    className="w-full p-2.5 bg-[#0F2E26] hover:bg-[#1A4237] text-white rounded-xl transition-colors flex justify-center items-center gap-2 text-xs font-bold"
+                  >
+                    <QrCode size={14} /> Ver QR Permanente
                   </button>
                 )}
-                
-                <button
-                  onClick={() => handleDeleteMesa(mesa)}
-                  className="p-2.5 bg-red-50 hover:bg-red-100 text-[#C93A3A] rounded-xl transition-colors flex-shrink-0"
-                  title="Eliminar Mesa Permanentemente"
-                >
-                  <Trash2 size={14} />
-                </button>
+              </div>
+              
+              <div className="hidden">
+                {mesa.publicQrId && (
+                  <QRCodeCanvas 
+                    id={`qr-mesa-${mesa.number}`}
+                    value={`${window.location.origin}/menu?mesa=${mesa.publicQrId}`} 
+                    size={400} 
+                    level="H" 
+                    includeMargin={true}
+                  />
+                )}
               </div>
             </div>
           );
@@ -723,6 +764,52 @@ export function MesasManagement() {
           </div>
         )}
       </div>
+      {selectedMesaForQr && (
+        <div className="fixed inset-0 bg-stone-900/80 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl w-full max-w-sm overflow-hidden flex flex-col shadow-2xl relative">
+            <button 
+              onClick={() => setSelectedMesaForQr(null)}
+              className="absolute top-4 right-4 bg-stone-100 p-2 rounded-full text-stone-500 hover:bg-stone-200 hover:text-stone-900 transition-colors z-10"
+            >
+              <X size={20} />
+            </button>
+
+            <div className="p-6 pb-0 flex flex-col items-center">
+              <div className="w-16 h-16 bg-[#0F2E26]/10 rounded-2xl flex items-center justify-center mb-4">
+                <QrCode size={32} className="text-[#0F2E26]" />
+              </div>
+              <h2 className="text-2xl font-serif font-black text-stone-900 mb-1">Mesa {selectedMesaForQr.number}</h2>
+              <p className="text-stone-500 text-sm text-center font-medium mb-6">
+                Este es el QR permanente de la mesa.
+              </p>
+              
+              <div className="bg-white p-4 rounded-3xl shadow-sm border-2 border-stone-100 flex items-center justify-center">
+                <QRCodeCanvas 
+                  value={`${window.location.origin}/menu?mesa=${selectedMesaForQr.publicQrId}`} 
+                  size={200} 
+                  level="H" 
+                  includeMargin={true}
+                />
+              </div>
+              
+              <div className="w-full bg-stone-50 p-4 rounded-2xl border border-stone-200 mt-6 text-center">
+                <p className="text-[10px] text-stone-400 font-bold uppercase tracking-widest mb-1">Identificador Público</p>
+                <p className="font-mono text-sm font-bold text-stone-700">{selectedMesaForQr.publicQrId}</p>
+              </div>
+            </div>
+
+            <div className="p-6 mt-4 border-t border-stone-100 bg-stone-50/50">
+              <button
+                onClick={() => handleDownloadMesaQR(selectedMesaForQr)}
+                className="w-full bg-[#0F2E26] text-gold py-4 px-6 rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-[#1A4237] transition-all shadow-md active:scale-[0.98]"
+              >
+                <Download size={20} />
+                <span>Descargar Imagen QR</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

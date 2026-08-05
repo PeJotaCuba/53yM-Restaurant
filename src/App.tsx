@@ -42,7 +42,7 @@ export default function App() {
     if (typeof window !== 'undefined') {
       const pathname = window.location.pathname;
       const params = new URLSearchParams(window.location.search);
-      if (pathname === '/menu' || pathname.startsWith('/menu/') || params.get('view') === 'menu' || params.get('token') || params.get('table') || window.location.hash === '#menu') {
+      if (pathname === '/menu' || pathname.startsWith('/menu/') || params.get('view') === 'menu' || params.get('token') || params.get('table') || params.get('mesa') || window.location.hash === '#menu') {
         return 'menu';
       }
     }
@@ -54,7 +54,7 @@ export default function App() {
     const handlePopState = () => {
       const pathname = window.location.pathname;
       const params = new URLSearchParams(window.location.search);
-      if (pathname === '/menu' || pathname.startsWith('/menu/') || params.get('view') === 'menu' || params.get('token') || params.get('table')) {
+      if (pathname === '/menu' || pathname.startsWith('/menu/') || params.get('view') === 'menu' || params.get('token') || params.get('table') || params.get('mesa')) {
         setCurrentView('menu');
       } else if (pathname === '/') {
         setCurrentView('home');
@@ -750,7 +750,20 @@ export default function App() {
     if (liveMesas === undefined) return;
 
     const params = new URLSearchParams(window.location.search);
-    const urlToken = params.get('token') || params.get('table');
+    const publicMesaId = params.get('mesa');
+    let urlToken = params.get('token') || params.get('table');
+
+    // If using the permanent QR, get the actual token from the mesa
+    if (publicMesaId) {
+      const publicMesa = liveMesas.find((m: any) => m.publicQrId === publicMesaId && m.status === 'active');
+      if (publicMesa && publicMesa.token && (!publicMesa.tokenExpiresAt || Date.now() < publicMesa.tokenExpiresAt)) {
+        urlToken = publicMesa.token;
+      } else {
+        // Force an invalid token so it clears out and shows an error
+        urlToken = 'INVALID_PERMANENT_QR';
+      }
+    }
+
     const tableToken = urlToken || localStorage.getItem('clientTableToken') || localStorage.getItem('qrTableToken');
     
     if (tableToken) {
@@ -766,7 +779,7 @@ export default function App() {
           qrValidated: true
         });
         
-        if (urlToken) {
+        if (urlToken || publicMesaId) {
           setCurrentView('menu');
           // Clean URL parameters but preserve path if it is /menu
           const currentPath = window.location.pathname;
@@ -782,11 +795,16 @@ export default function App() {
           qrValidated: false
         });
 
-        if (urlToken) {
+        if (urlToken || publicMesaId) {
           // Clean URL parameters but preserve path if it is /menu
           const currentPath = window.location.pathname;
           window.history.replaceState({}, '', currentPath.includes('/menu') ? '/menu' : '/?view=menu');
-          alert(`⚠️ El token de mesa "${urlToken}" es inválido, no está activo o ha expirado.\n\nPuedes consultar la carta pública del restaurante.`);
+          
+          if (publicMesaId) {
+             alert(`⚠️ La mesa escaneada no tiene un token activo o la jornada no ha sido iniciada.\n\nPuedes consultar la carta pública del restaurante.`);
+          } else {
+             alert(`⚠️ El token de mesa "${urlToken}" es inválido, no está activo o ha expirado.\n\nPuedes consultar la carta pública del restaurante.`);
+          }
         }
 
         if (params.get('view') === 'menu' || window.location.pathname.includes('/menu')) {

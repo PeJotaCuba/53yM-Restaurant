@@ -1,6 +1,5 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
-
 export default defineSchema({
   users: defineTable({
     username: v.string(),
@@ -20,7 +19,6 @@ export default defineSchema({
     tableNumber: v.optional(v.string()),
     authorizedAdminIds: v.optional(v.array(v.string())),
   }).index("by_deviceId", ["deviceId"]),
-
   orders: defineTable({
     id: v.optional(v.string()),
     tableNumber: v.string(),
@@ -43,10 +41,8 @@ export default defineSchema({
     customerName: v.optional(v.string()),
     comandaId: v.optional(v.string()),
     mesaId: v.optional(v.string()),
-    qrToken: v.optional(v.string()),
     origen: v.optional(v.string()), // e.g., 'QR', 'dependent'
   }).index("by_status", ["status"]),
-
   reservations: defineTable({
     customerName: v.string(),
     date: v.string(),
@@ -77,7 +73,6 @@ export default defineSchema({
       )
     ),
   }),
-
   menuItems: defineTable({
     name: v.string(),
     category: v.string(),
@@ -86,19 +81,16 @@ export default defineSchema({
     isAvailable: v.boolean(),
     image: v.optional(v.string()),
   }),
-
   bitacora: defineTable({
     action: v.string(),
     userRole: v.string(),
     username: v.string(),
     timestamp: v.number(),
   }).index("by_timestamp", ["timestamp"]),
-
   settings: defineTable({
     key: v.string(),
     value: v.any(),
   }).index("by_key", ["key"]),
-
   history: defineTable({
     jornadaId: v.string(),
     dateStr: v.string(),
@@ -114,25 +106,24 @@ export default defineSchema({
     bitacora: v.array(v.any()),
     timestamp: v.number(),
   }).index("by_date", ["year", "month", "day"]),
-
   snapshots: defineTable({
     data: v.any(),
     timestamp: v.number(),
     createdBy: v.string(),
     label: v.string(),
   }).index("by_timestamp", ["timestamp"]),
-
   mesas: defineTable({
     number: v.number(),
     status: v.union(v.literal("active"), v.literal("inactive")),
     token: v.optional(v.string()),
     tokenAssignedAt: v.optional(v.number()),
     tokenExpiresAt: v.optional(v.number()),
+    publicQrId: v.optional(v.string()),
     capacity: v.optional(v.number()),
     createdAt: v.optional(v.number()),
   }).index("by_number", ["number"])
-    .index("by_token", ["token"]),
-
+    .index("by_token", ["token"])
+    .index("by_publicQrId", ["publicQrId"]),
   pushSubscriptions: defineTable({
     deviceId: v.string(),
     role: v.string(),
