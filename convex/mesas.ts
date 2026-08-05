@@ -1,5 +1,6 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
+import { logToBitacora } from "./utils";
 
 export const getMesas = query({
   args: {},
@@ -167,4 +168,129 @@ export const removeToken = mutation({
       tokenExpiresAt: undefined,
     });
   },
+});
+
+export const occupyMesaByQr = mutation({
+  args: {
+    publicQrId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    // 1. Verify mesa exists
+    const mesa = await ctx.db
+      .query("mesas")
+      .withIndex("by_publicQrId", (q) => q.eq("publicQrId", args.publicQrId))
+      .first();
+
+    if (!mesa) {
+      throw new Error("Mesa no encontrada.");
+    }
+
+    // 2. Verify jornada is active
+    const jornadaSetting = await ctx.db
+      .query("settings")
+      .withIndex("by_key", (q) => q.eq("key", "isShiftActive"))
+      .first();
+
+    if (!jornadaSetting || !jornadaSetting.value) {
+      throw new Error("La jornada no está activa. No se pueden realizar pedidos.");
+    }
+
+    // 3. Verify mesa is not already occupied
+    if (mesa.occupiedStatus && mesa.occupiedStatus !== "free") {
+      throw new Error(`La mesa ${mesa.number} ya está ocupada o en espera de liberación.`);
+    }
+
+    const activeSessionId = `SESSION-${Date.now()}-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
+    const now = Date.now();
+
+    await ctx.db.patch(mesa._id, {
+      occupiedStatus: "occupied_qr",
+      activeSessionId,
+      sessionStartedAt: now,
+      sessionUpdatedAt: now,
+    });
+
+    await logToBitacora(ctx, {
+      action: `MESA OCUPADA (QR): La Mesa #${mesa.number} ha sido ocupada mediante escaneo de QR.`,
+      userRole: "sistema",
+      username: "Sistema",
+    });
+
+    return {
+      mesa: { ...mesa, occupiedStatus: "occupied_qr", activeSessionId, sessionStartedAt: now },
+      sessionId: activeSessionId,
+      status: "occupied_qr"
+    };
+  },
+});
+
+export const confirmMesaOrderSession = mutation({
+  args: {
+    mesaId: v.id("mesas"),
+  },
+  handler: async (ctx, args) => {
+    const mesa = await ctx.db.get(args.mesaId);
+    if (!mesa) throw new Error("Mesa no encontrada.");
+
+    if (mesa.occupiedStatus !== "occupied_qr") {
+      throw new Error("La mesa no tiene una sesión QR pendiente de confirmación.");
+    }
+
+    await ctx.db.patch(args.mesaId, {
+      occupiedStatus: "waiting_confirmation",
+      sessionUpdatedAt: Date.now(),
+    });
+
+    await logToBitacora(ctx, {
+      action: `CONFIRMACIÓN PENDIENTE: La Mesa #${mesa.number} envió un pedido por QR y espera confirmación del dependiente.`,
+      userRole: "sistema",
+      username: "Sistema",
+    });
+  }
+});
+
+export const releaseMesa = mutation({
+  args: {
+    mesaId: v.id("mesas"),
+  },
+  handler: async (ctx, args) => {
+    const mesa = await ctx.db.get(args.mesaId);
+    if (!mesa) throw new Error("Mesa no encontrada.");
+
+    await ctx.db.patch(args.mesaId, {
+      occupiedStatus: "free",
+      activeSessionId: undefined,
+      sessionStartedAt: undefined,
+      sessionUpdatedAt: Date.now(),
+    });
+
+    await logToBitacora(ctx, {
+      action: `MESA LIBERADA: La Mesa #${mesa.number} fue liberada.`,
+      userRole: "sistema",
+      username: "Sistema",
+    });
+  }
+});
+
+export const reactivateMesa = mutation({
+  args: {
+    mesaId: v.id("mesas"),
+  },
+  handler: async (ctx, args) => {
+    const mesa = await ctx.db.get(args.mesaId);
+    if (!mesa) throw new Error("Mesa no encontrada.");
+
+    await ctx.db.patch(args.mesaId, {
+      occupiedStatus: "free",
+      activeSessionId: undefined,
+      sessionStartedAt: undefined,
+      sessionUpdatedAt: Date.now(),
+    });
+
+    await logToBitacora(ctx, {
+      action: `MESA REACTIVADA: La Mesa #${mesa.number} fue reactivada para nuevos clientes.`,
+      userRole: "sistema",
+      username: "Sistema",
+    });
+  }
 });

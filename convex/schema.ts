@@ -121,6 +121,15 @@ export default defineSchema({
     publicQrId: v.optional(v.string()),
     capacity: v.optional(v.number()),
     createdAt: v.optional(v.number()),
+    occupiedStatus: v.optional(v.union(
+      v.literal("free"),
+      v.literal("occupied_qr"),
+      v.literal("waiting_confirmation"),
+      v.literal("waiting_reactivation")
+    )),
+    activeSessionId: v.optional(v.string()),
+    sessionStartedAt: v.optional(v.number()),
+    sessionUpdatedAt: v.optional(v.number()),
   }).index("by_number", ["number"])
     .index("by_token", ["token"])
     .index("by_publicQrId", ["publicQrId"]),

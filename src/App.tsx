@@ -82,6 +82,9 @@ export default function App() {
     mesaActual: number | null;
     tableId: string | null;
     qrValidated: boolean;
+    sessionId?: string;
+    accessType?: 'token' | 'qr_table';
+    publicQrId?: string;
   }>({
     mesaActual: null,
     tableId: null,
@@ -306,6 +309,7 @@ export default function App() {
   const syncOrUpdateOrderMutation = useMutation(api.orders.syncOrUpdateOrder);
   const updateSettingMutation = useMutation(api.admin.updateSetting);
   const syncMenuItemsMutation = useMutation(api.menuItems.syncMenuItems);
+  const occupyMesaByQrMutation = useMutation(api.mesas.occupyMesaByQr);
 
   const hasSeededMenuRef = useRef(false);
 
@@ -746,6 +750,8 @@ export default function App() {
     await updateReservationStatus(id, newStatus);
   };
 
+  const processingQrRef = useRef(false);
+
   useEffect(() => {
     if (liveMesas === undefined) return;
 
@@ -753,14 +759,84 @@ export default function App() {
     const publicMesaId = params.get('mesa');
     let urlToken = params.get('token') || params.get('table');
 
-    // If using the permanent QR, get the actual token from the mesa
+    const handleQrAccess = async () => {
+      if (processingQrRef.current) return;
+      processingQrRef.current = true;
+      try {
+        const result = await occupyMesaByQrMutation({ publicQrId: publicMesaId as string });
+        
+        localStorage.setItem('qrSessionId', result.sessionId);
+        localStorage.setItem('qrAccessType', 'qr_table');
+        localStorage.setItem('qrPublicId', publicMesaId as string);
+        localStorage.setItem('clientTable', `Mesa ${result.mesa.number}`);
+        
+        setTableContext({
+          mesaActual: result.mesa.number,
+          tableId: result.mesa._id,
+          qrValidated: true,
+          sessionId: result.sessionId,
+          accessType: 'qr_table',
+          publicQrId: publicMesaId as string
+        });
+
+        setCurrentView('menu');
+        const currentPath = window.location.pathname;
+        window.history.replaceState({}, '', currentPath.includes('/menu') ? '/menu' : '/?view=menu');
+      } catch (error: any) {
+        alert(`⚠️ ${error.message}\n\nPuedes consultar la carta pública del restaurante.`);
+        
+        // Clear local storage session
+        localStorage.removeItem('qrSessionId');
+        localStorage.removeItem('qrAccessType');
+        localStorage.removeItem('qrPublicId');
+        localStorage.removeItem('clientTable');
+        setTableContext({ mesaActual: null, tableId: null, qrValidated: false });
+
+        setCurrentView('menu');
+        const currentPath = window.location.pathname;
+        window.history.replaceState({}, '', currentPath.includes('/menu') ? '/menu' : '/?view=menu');
+      } finally {
+        processingQrRef.current = false;
+      }
+    };
+
+    // If using the permanent QR, call backend to occupy mesa
     if (publicMesaId) {
-      const publicMesa = liveMesas.find((m: any) => m.publicQrId === publicMesaId && m.status === 'active');
-      if (publicMesa && publicMesa.token && (!publicMesa.tokenExpiresAt || Date.now() < publicMesa.tokenExpiresAt)) {
-        urlToken = publicMesa.token;
-      } else {
-        // Force an invalid token so it clears out and shows an error
-        urlToken = 'INVALID_PERMANENT_QR';
+      handleQrAccess();
+      return;
+    }
+
+    // Try to restore existing QR session if URL doesn't have token or mesa
+    if (!urlToken) {
+      const savedAccessType = localStorage.getItem('qrAccessType');
+      if (savedAccessType === 'qr_table') {
+        const savedSessionId = localStorage.getItem('qrSessionId');
+        const savedPublicId = localStorage.getItem('qrPublicId');
+        
+        // Find mesa by sessionId to verify it's still active (either occupied_qr or waiting_confirmation is fine for the client to see their own session, though for ordering they need to be in the right state)
+        const mesa = liveMesas.find((m: any) => m.activeSessionId === savedSessionId && (m.occupiedStatus === 'occupied_qr' || m.occupiedStatus === 'waiting_confirmation'));
+        
+        if (mesa && savedSessionId && savedPublicId) {
+          setTableContext({
+            mesaActual: mesa.number,
+            tableId: mesa._id,
+            qrValidated: true,
+            sessionId: savedSessionId,
+            accessType: 'qr_table',
+            publicQrId: savedPublicId
+          });
+          
+          if (params.get('view') === 'menu' || window.location.pathname.includes('/menu')) {
+            setCurrentView('menu');
+          }
+          return; // Session successfully restored
+        } else {
+          // Session invalid, clear it
+          localStorage.removeItem('qrSessionId');
+          localStorage.removeItem('qrAccessType');
+          localStorage.removeItem('qrPublicId');
+          localStorage.removeItem('clientTable');
+        }
       }
     }
 
@@ -776,12 +852,12 @@ export default function App() {
         setTableContext({
           mesaActual: mesa.number,
           tableId: mesa._id,
-          qrValidated: true
+          qrValidated: true,
+          accessType: 'token'
         });
         
-        if (urlToken || publicMesaId) {
+        if (urlToken) {
           setCurrentView('menu');
-          // Clean URL parameters but preserve path if it is /menu
           const currentPath = window.location.pathname;
           window.history.replaceState({}, '', currentPath.includes('/menu') ? '/menu' : '/?view=menu');
         }
@@ -795,16 +871,10 @@ export default function App() {
           qrValidated: false
         });
 
-        if (urlToken || publicMesaId) {
-          // Clean URL parameters but preserve path if it is /menu
+        if (urlToken) {
           const currentPath = window.location.pathname;
           window.history.replaceState({}, '', currentPath.includes('/menu') ? '/menu' : '/?view=menu');
-          
-          if (publicMesaId) {
-             alert(`⚠️ La mesa escaneada no tiene un token activo o la jornada no ha sido iniciada.\n\nPuedes consultar la carta pública del restaurante.`);
-          } else {
-             alert(`⚠️ El token de mesa "${urlToken}" es inválido, no está activo o ha expirado.\n\nPuedes consultar la carta pública del restaurante.`);
-          }
+          alert(`⚠️ El token de mesa "${urlToken}" es inválido, no está activo o ha expirado.\n\nPuedes consultar la carta pública del restaurante.`);
         }
 
         if (params.get('view') === 'menu' || window.location.pathname.includes('/menu')) {

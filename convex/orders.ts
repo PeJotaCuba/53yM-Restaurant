@@ -30,6 +30,7 @@ export const syncOrUpdateOrder = mutation({
     username: v.optional(v.string()),
     userRole: v.optional(v.string()),
     deviceId: v.optional(v.string()),
+    sessionId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const data = {
@@ -128,6 +129,33 @@ export const syncOrUpdateOrder = mutation({
     }
 
     // Insert new order
+    const jornadaSetting = await ctx.db
+      .query("settings")
+      .withIndex("by_key", (q) => q.eq("key", "isShiftActive"))
+      .first();
+
+    if (!jornadaSetting || !jornadaSetting.value) {
+      throw new Error("La jornada no está activa. No se pueden crear pedidos nuevos.");
+    }
+
+    if (args.sessionId) {
+      const mesaNumberMatch = args.tableNumber.match(/\d+/);
+      if (mesaNumberMatch) {
+        const mNum = parseInt(mesaNumberMatch[0]);
+        const mesa = await ctx.db.query("mesas").withIndex("by_number", q => q.eq("number", mNum)).first();
+        
+        if (!mesa) throw new Error("Mesa no encontrada.");
+
+        if (mesa.activeSessionId !== args.sessionId) {
+          throw new Error("Sesión inválida o expirada para esta mesa.");
+        }
+
+        if (mesa.occupiedStatus !== "occupied_qr" && mesa.occupiedStatus !== "waiting_confirmation") {
+          throw new Error("El estado actual de la mesa no permite enviar pedidos desde el QR.");
+        }
+      }
+    }
+
     const newId = await ctx.db.insert("orders", data);
     const creator = args.username || "Cliente";
     
@@ -175,8 +203,36 @@ export const createOrder = mutation({
     username: v.optional(v.string()),
     userRole: v.optional(v.string()),
     deviceId: v.optional(v.string()),
+    sessionId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    const jornadaSetting = await ctx.db
+      .query("settings")
+      .withIndex("by_key", (q) => q.eq("key", "isShiftActive"))
+      .first();
+
+    if (!jornadaSetting || !jornadaSetting.value) {
+      throw new Error("La jornada no está activa. No se pueden crear pedidos nuevos.");
+    }
+
+    if (args.sessionId) {
+      const mesaNumberMatch = args.tableNumber.match(/\d+/);
+      if (mesaNumberMatch) {
+        const mNum = parseInt(mesaNumberMatch[0]);
+        const mesa = await ctx.db.query("mesas").withIndex("by_number", q => q.eq("number", mNum)).first();
+        
+        if (!mesa) throw new Error("Mesa no encontrada.");
+
+        if (mesa.activeSessionId !== args.sessionId) {
+          throw new Error("Sesión inválida o expirada para esta mesa.");
+        }
+
+        if (mesa.occupiedStatus !== "occupied_qr" && mesa.occupiedStatus !== "waiting_confirmation") {
+          throw new Error("El estado actual de la mesa no permite enviar pedidos desde el QR.");
+        }
+      }
+    }
+
     const orderId = await ctx.db.insert("orders", {
       tableNumber: args.tableNumber,
       items: args.items,

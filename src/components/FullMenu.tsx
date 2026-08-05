@@ -52,7 +52,22 @@ export function FullMenu({
   // Auto-validate/sync saved token state when mesas load or prefilledTable changes
   useEffect(() => {
     const activeToken = tableToken || localStorage.getItem('clientTableToken') || localStorage.getItem('qrTableToken') || '';
-    if (activeToken) {
+    const qrAccessType = localStorage.getItem('qrAccessType');
+    const qrSessionId = localStorage.getItem('qrSessionId');
+
+    if (qrAccessType === 'qr_table' && qrSessionId) {
+      const matchedMesa = (data?.mesas || []).find((m: any) => m.activeSessionId === qrSessionId && (m.occupiedStatus === 'occupied_qr' || m.occupiedStatus === 'waiting_confirmation'));
+      if (!matchedMesa) {
+        localStorage.removeItem('qrSessionId');
+        localStorage.removeItem('qrAccessType');
+        localStorage.removeItem('qrPublicId');
+        localStorage.removeItem('clientTable');
+        setPrefilledTableState('');
+        if (onTableValidated) onTableValidated('');
+      } else {
+        setPrefilledTableState(`Mesa ${matchedMesa.number}`);
+      }
+    } else if (activeToken) {
       const matchedMesa = (data?.mesas || []).find((m: any) => m.token === activeToken);
       if (!matchedMesa || matchedMesa.status !== 'active' || (matchedMesa.tokenExpiresAt && Date.now() > matchedMesa.tokenExpiresAt)) {
         // Token became invalid or deactivated in system or expired
@@ -67,7 +82,7 @@ export function FullMenu({
         if (!tableToken) setTableToken(activeToken);
       }
     } else if (prefilledTableState && !activeToken) {
-      // Manual/QR prefilled tables are invalid now without tokens
+      // Manual prefilled tables are invalid now without tokens or qr session
       localStorage.removeItem('clientTable');
       setPrefilledTableState('');
       if (onTableValidated) onTableValidated('');
