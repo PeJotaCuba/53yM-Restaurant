@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { AppData, DependentConfig, Order, OrderReport, Comanda, ComandaReportItem, OrderItem } from '../types';
 import { useLanguage } from '../context/LanguageContext';
+import { useMutation } from 'convex/react';
+import { api } from '../../convex/_generated/api';
 import { 
   Utensils, 
   FileText, 
@@ -32,6 +34,11 @@ interface DependentPanelProps {
 
 export function DependentPanel({ data, updateData, dependentInfo }: DependentPanelProps) {
   const { t } = useLanguage();
+  const confirmMesaPresence = useMutation(api.mesas.confirmMesaPresence);
+  const releaseMesa = useMutation(api.mesas.releaseMesa);
+  const reactivateMesa = useMutation(api.mesas.reactivateMesa);
+  const setMesaWaitingReactivation = useMutation(api.mesas.setMesaWaitingReactivation);
+  
   const [reportGenerated, setReportGenerated] = useState(false);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [lastDownloadedPdf, setLastDownloadedPdf] = useState<string | null>(null);
@@ -94,6 +101,8 @@ export function DependentPanel({ data, updateData, dependentInfo }: DependentPan
     .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
 
   const isShiftActive = data.isShiftActive !== false;
+  
+  const activeMesaObj = (data.mesas || []).find((m: any) => m.number && isSameTable(m.number.toString(), activeTableNumber));
 
   // --- Handlers ---
 
@@ -206,6 +215,18 @@ export function DependentPanel({ data, updateData, dependentInfo }: DependentPan
   };
 
   // Approve Client Order and Send to Kitchen
+  const handleConfirmPresence = async (mesaId: string) => {
+    try {
+      await confirmMesaPresence({
+        mesaId: mesaId as any,
+        dependentName: dependentInfo.name || dependentInfo.username
+      });
+      alert(t('Presencia confirmada con éxito. Ya puedes enviar el pedido a cocina.'));
+    } catch (error: any) {
+      alert(`Error al confirmar presencia: ${error.message}`);
+    }
+  };
+
   const handleApproveClientOrder = (clientOrder: Order) => {
     if (!isShiftActive) {
       alert(t('⚠️ La jornada actual no está iniciada por el Administrador.'));
@@ -805,9 +826,15 @@ export function DependentPanel({ data, updateData, dependentInfo }: DependentPan
 
     // Generate PDF receipt automatically on close
     generateComandaPDF(closedComandaObj);
+    
+    // Find if there's an active mesa for this comanda
+    const targetMesa = (data.mesas || []).find((m: any) => m.number && isSameTable(m.number.toString(), closingComanda.tableNumber));
+    if (targetMesa) {
+      setMesaWaitingReactivation({ mesaId: targetMesa._id }).catch(console.warn);
+    }
 
     setClosingComanda(null);
-    alert(t('Comanda cerrada y cobrada con éxito. Se ha descargado el comprobante en PDF y liberado la mesa.'));
+    alert(t('Comanda cerrada y cobrada con éxito. Se ha descargado el comprobante en PDF y la mesa requiere reactivación.'));
   };
 
   // 4. Generate Shift Report to Gerente
@@ -1257,7 +1284,11 @@ export function DependentPanel({ data, updateData, dependentInfo }: DependentPan
           </p>
 
           <div className="space-y-3">
-            {clientPendingOrders.map((ord) => (
+            {clientPendingOrders.map((ord) => {
+              const ordMesa = (data.mesas || []).find((m: any) => m.number && isSameTable(m.number.toString(), ord.tableNumber));
+              const needsConfirmation = ord.sessionId && ordMesa?.occupiedStatus === 'waiting_confirmation';
+
+              return (
               <div key={ord.id} className="bg-white p-4 rounded-2xl border border-amber-300 shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 text-xs">
                 <div>
                   <div className="flex items-center gap-2 mb-1">
@@ -1267,6 +1298,11 @@ export function DependentPanel({ data, updateData, dependentInfo }: DependentPan
                     <span className="text-[10px] text-stone-400 font-mono">
                       #{ord.id}
                     </span>
+                    {ord.sessionId && (
+                      <span className="text-[10px] bg-blue-100 text-blue-800 font-bold px-2 py-0.5 rounded flex items-center gap-1">
+                        📱 Pedido QR
+                      </span>
+                    )}
                   </div>
                   <div className="font-bold text-stone-900 text-sm">
                     {ord.orderItems && ord.orderItems.length > 0
@@ -1279,33 +1315,45 @@ export function DependentPanel({ data, updateData, dependentInfo }: DependentPan
                 </div>
 
                 <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-                  <button
-                    onClick={() => {
-                      const itemsList = ord.orderItems && ord.orderItems.length > 0
-                        ? ord.orderItems
-                        : (ord.items || []).map(raw => {
-                            const match = raw.match(/^(\d+)\s*x\s*(.+)$/i);
-                            const qty = match ? parseInt(match[1], 10) : 1;
-                            const name = match ? match[2].trim() : raw.trim();
-                            const found = data.menuItems.find(m => m.name.toLowerCase() === name.toLowerCase());
-                            return { name, quantity: qty, priceCUP: found ? found.priceCUP : 150 };
-                          });
-                      setEditingOrder({ ...ord, orderItems: itemsList });
-                    }}
-                    className="bg-amber-500 hover:bg-amber-600 text-stone-950 font-bold px-4 py-2.5 rounded-xl text-xs transition-colors flex items-center justify-center gap-2 shadow-sm whitespace-nowrap"
-                  >
-                    <Edit3 size={15} /> {t('Agregar pedido a la comanda abierta')}
-                  </button>
+                  {needsConfirmation ? (
+                    <button
+                      onClick={() => handleConfirmPresence(ordMesa._id)}
+                      className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-4 py-2.5 rounded-xl text-xs transition-colors flex items-center justify-center gap-2 shadow-sm whitespace-nowrap"
+                    >
+                      <UserCheck size={15} /> Confirmar presencia
+                    </button>
+                  ) : (
+                    <>
+                      <button
+                        onClick={() => {
+                          const itemsList = ord.orderItems && ord.orderItems.length > 0
+                            ? ord.orderItems
+                            : (ord.items || []).map(raw => {
+                                const match = raw.match(/^(\d+)\s*x\s*(.+)$/i);
+                                const qty = match ? parseInt(match[1], 10) : 1;
+                                const name = match ? match[2].trim() : raw.trim();
+                                const found = data.menuItems.find(m => m.name.toLowerCase() === name.toLowerCase());
+                                return { name, quantity: qty, priceCUP: found ? found.priceCUP : 150 };
+                              });
+                          setEditingOrder({ ...ord, orderItems: itemsList });
+                        }}
+                        className="bg-amber-500 hover:bg-amber-600 text-stone-950 font-bold px-4 py-2.5 rounded-xl text-xs transition-colors flex items-center justify-center gap-2 shadow-sm whitespace-nowrap"
+                      >
+                        <Edit3 size={15} /> {t('Agregar pedido a comanda abierta')}
+                      </button>
 
-                  <button
-                    onClick={() => handleApproveClientOrder(ord)}
-                    className="bg-dark-green hover:bg-stone-800 text-white font-bold px-4 py-2.5 rounded-xl text-xs transition-colors flex items-center justify-center gap-2 shadow-sm whitespace-nowrap"
-                  >
-                    <Send size={15} /> Aprobar & Mandar a Cocina (Descargar PDF)
-                  </button>
+                      <button
+                        onClick={() => handleApproveClientOrder(ord)}
+                        className="bg-dark-green hover:bg-stone-800 text-white font-bold px-4 py-2.5 rounded-xl text-xs transition-colors flex items-center justify-center gap-2 shadow-sm whitespace-nowrap"
+                      >
+                        <Send size={15} /> Aprobar & Mandar a Cocina
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
@@ -1313,35 +1361,98 @@ export function DependentPanel({ data, updateData, dependentInfo }: DependentPan
       {/* Comandas Section */}
       <div className="space-y-8">
         {/* Table Selector for Presencial Mode */}
-        <div className="bg-white p-4 rounded-2xl border border-stone-200 shadow-sm flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <span className="text-xs font-bold text-stone-700 uppercase tracking-wider">{t('Atención en Mesa (Modo Presencial):')}</span>
-            <select
-              value={activeTableNumber}
-              onChange={e => setActiveTableNumber(e.target.value)}
-              className="bg-stone-50 border border-stone-300 rounded-xl px-4 py-2 text-xs font-bold text-dark-green outline-none focus:ring-2 focus:ring-dark-green"
-            >
-              <option value="Mesa 1">Mesa 1</option>
-              <option value="Mesa 2">Mesa 2</option>
-              <option value="Mesa 3">Mesa 3</option>
-              <option value="Mesa 4">Mesa 4</option>
-              <option value="Mesa 5">Mesa 5</option>
-              <option value="Barra 1">Barra 1</option>
-              <option value="Terraza A">Terraza A</option>
-            </select>
+        <div className="bg-white p-4 rounded-2xl border border-stone-200 shadow-sm flex flex-col gap-4">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <span className="text-xs font-bold text-stone-700 uppercase tracking-wider">{t('Atención en Mesa (Modo Presencial):')}</span>
+              <select
+                value={activeTableNumber}
+                onChange={e => setActiveTableNumber(e.target.value)}
+                className="bg-stone-50 border border-stone-300 rounded-xl px-4 py-2 text-xs font-bold text-dark-green outline-none focus:ring-2 focus:ring-dark-green"
+              >
+                <option value="Mesa 1">Mesa 1</option>
+                <option value="Mesa 2">Mesa 2</option>
+                <option value="Mesa 3">Mesa 3</option>
+                <option value="Mesa 4">Mesa 4</option>
+                <option value="Mesa 5">Mesa 5</option>
+                <option value="Barra 1">Barra 1</option>
+                <option value="Terraza A">Terraza A</option>
+              </select>
+            </div>
+
+            <div className="flex items-center gap-3">
+              {activeMesaObj && (
+                <div className="text-xs font-bold">
+                  {activeMesaObj.occupiedStatus === 'occupied_qr' && (
+                    <span className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full border border-blue-200 flex items-center gap-1">
+                      📱 Cliente en mesa / preparando pedido
+                    </span>
+                  )}
+                  {activeMesaObj.occupiedStatus === 'waiting_confirmation' && (
+                    <span className="bg-purple-100 text-purple-800 px-3 py-1 rounded-full border border-purple-200 flex items-center gap-1">
+                      ⏳ Pedido pendiente de validar
+                    </span>
+                  )}
+                  {activeMesaObj.occupiedStatus === 'waiting_reactivation' && (
+                    <span className="bg-stone-100 text-stone-800 px-3 py-1 rounded-full border border-stone-300 flex items-center gap-1">
+                      🔒 Requiere reactivación
+                    </span>
+                  )}
+                  {(!activeMesaObj.occupiedStatus || activeMesaObj.occupiedStatus === 'free') && (
+                    <span className="bg-emerald-100 text-emerald-800 px-3 py-1 rounded-full border border-emerald-200 flex items-center gap-1">
+                      ✓ Disponible
+                    </span>
+                  )}
+                </div>
+              )}
+
+              <div className="text-xs text-stone-500 font-medium">
+                {openComanda ? (
+                  <span className="text-amber-700 font-bold bg-amber-50 px-3 py-1 rounded-full border border-amber-200 flex items-center gap-1">
+                    ● Comanda Abierta #{openComanda.id} ({openComanda.customerName})
+                  </span>
+                ) : (
+                  <span className="text-stone-500 font-bold px-3 py-1 flex items-center gap-1">
+                    Sin comanda abierta
+                  </span>
+                )}
+              </div>
+            </div>
           </div>
 
-          <div className="text-xs text-stone-500 font-medium">
-            {openComanda ? (
-              <span className="text-amber-700 font-bold bg-amber-50 px-3 py-1 rounded-full border border-amber-200">
-                ● Comanda Abierta #{openComanda.id} ({openComanda.customerName})
-              </span>
-            ) : (
-              <span className="text-emerald-700 font-bold bg-emerald-50 px-3 py-1 rounded-full border border-emerald-200">
-                ✓ Mesa Lista para Abrir Comanda
-              </span>
-            )}
-          </div>
+          {/* Table Actions based on QR state */}
+          {activeMesaObj && activeMesaObj.occupiedStatus !== 'free' && (
+            <div className="flex items-center gap-3 border-t border-stone-100 pt-3">
+              {activeMesaObj.occupiedStatus === 'waiting_reactivation' && (
+                <button
+                  onClick={async () => {
+                    try {
+                      await reactivateMesa({ mesaId: activeMesaObj._id });
+                      alert('Mesa reactivada exitosamente.');
+                    } catch (e: any) { alert(e.message); }
+                  }}
+                  className="bg-stone-800 hover:bg-stone-900 text-white font-bold px-4 py-2 rounded-xl text-xs flex items-center gap-2"
+                >
+                  <Plus size={14} /> Reactivar mesa
+                </button>
+              )}
+              {activeMesaObj.occupiedStatus !== 'waiting_reactivation' && (
+                <button
+                  onClick={async () => {
+                    if(window.confirm('¿Estás seguro de liberar esta mesa?')) {
+                      try {
+                        await releaseMesa({ mesaId: activeMesaObj._id });
+                        alert('Mesa liberada exitosamente.');
+                      } catch (e: any) { alert(e.message); }
+                    }
+                  }}
+                  className="bg-red-50 text-red-700 hover:bg-red-100 font-bold px-4 py-2 rounded-xl text-xs flex items-center gap-2 border border-red-200"
+                >
+                  <Trash2 size={14} /> Liberar mesa
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
         {allActiveComandas.length > 0 && (

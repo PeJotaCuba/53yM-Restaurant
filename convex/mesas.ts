@@ -224,6 +224,32 @@ export const occupyMesaByQr = mutation({
   },
 });
 
+export const confirmMesaPresence = mutation({
+  args: {
+    mesaId: v.id("mesas"),
+    dependentName: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const mesa = await ctx.db.get(args.mesaId);
+    if (!mesa) throw new Error("Mesa no encontrada.");
+
+    if (mesa.occupiedStatus !== "waiting_confirmation") {
+      throw new Error("La mesa no está esperando confirmación.");
+    }
+
+    await ctx.db.patch(args.mesaId, {
+      occupiedStatus: "occupied_qr",
+      sessionUpdatedAt: Date.now(),
+    });
+
+    await logToBitacora(ctx, {
+      action: `CONFIRMACIÓN DE PRESENCIA: El dependiente '${args.dependentName}' confirmó físicamente la presencia de la Mesa #${mesa.number}.`,
+      userRole: "dependent",
+      username: args.dependentName,
+    });
+  }
+});
+
 export const confirmMesaOrderSession = mutation({
   args: {
     mesaId: v.id("mesas"),
@@ -268,6 +294,21 @@ export const releaseMesa = mutation({
       action: `MESA LIBERADA: La Mesa #${mesa.number} fue liberada.`,
       userRole: "sistema",
       username: "Sistema",
+    });
+  }
+});
+
+export const setMesaWaitingReactivation = mutation({
+  args: {
+    mesaId: v.id("mesas"),
+  },
+  handler: async (ctx, args) => {
+    const mesa = await ctx.db.get(args.mesaId);
+    if (!mesa) throw new Error("Mesa no encontrada.");
+
+    await ctx.db.patch(args.mesaId, {
+      occupiedStatus: "waiting_reactivation",
+      sessionUpdatedAt: Date.now(),
     });
   }
 });
