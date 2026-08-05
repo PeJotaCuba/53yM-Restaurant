@@ -900,12 +900,18 @@ export function AdminPanel({ data, updateData, updateStatus, userRole }: AdminPa
                             setRestoreStep('Fase 1/7: Validando copia de seguridad...');
 
                             // 1. Validation
-                            await validateBackupMutation({
+                            const validationRes = await validateBackupMutation({
                               requesterRole: 'admin',
                               username: data.adminConfig?.username || 'Administrador',
                               hasHistory: Array.isArray(json.history),
                               hasReservations: Array.isArray(json.reservations)
                             });
+
+                            if (validationRes && validationRes.success === false) {
+                              setIsRestoring(false);
+                              alert(`Fallo en validación de respaldo:\n${validationRes.message}`);
+                              return;
+                            }
 
                             setRestoreProgress(15);
                             setRestoreStep('Fase 2/7: Restaurando configuraciones del sistema...');
