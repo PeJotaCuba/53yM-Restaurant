@@ -9,6 +9,7 @@ export interface MenuItem {
   priceCUP: number;
   priceUSD: number;
   imageUrl: string;
+  isAvailable?: boolean;
 }
 
 export interface AdminConfig {

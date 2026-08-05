@@ -247,102 +247,160 @@ export function FullMenu({
           )}
         </div>
 
-        {/* Categories */}
-        <div className="flex overflow-x-auto hide-scrollbar mb-6 gap-4 pb-4 snap-x">
-          {categories.map(cat => (
-            <button
-              key={cat}
-              onClick={() => setActiveCategory(cat)}
-              className={`snap-start whitespace-nowrap px-6 py-3 rounded-full text-sm font-medium transition-all ${
-                activeCategory === cat 
-                  ? 'bg-dark-green text-white shadow-md' 
-                  : 'bg-white text-stone-600 hover:bg-stone-100 border border-stone-200'
-              }`}
-            >
-              {cat === 'Todos' ? t('Todas las Categorías') : t(cat)}
-            </button>
-          ))}
+        {/* Category Cards Section */}
+        <div className="mb-8">
+          <div className="mb-3 flex items-center justify-between">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-stone-500">
+              {t('Seleccionar Categoría')}
+            </h3>
+            <span className="text-xs font-medium text-stone-400">
+              {categories.length - 1} {t('categorías')}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 sm:gap-4">
+            {categories.map((cat, idx) => {
+              const count = cat === 'Todos' 
+                ? (menuItems || []).length 
+                : (menuItems || []).filter(item => item.category === cat).length;
+              const isActive = activeCategory === cat;
+              const isTotalOdd = categories.length % 2 !== 0;
+              // If odd count of categories, span 2 columns on mobile for the first card ("Todos") to keep grid perfectly balanced
+              const isFirstItemAndOdd = idx === 0 && isTotalOdd;
+
+              return (
+                <button
+                  key={cat}
+                  onClick={() => setActiveCategory(cat)}
+                  className={`relative p-4 rounded-2xl transition-all duration-200 text-left flex flex-col justify-between border cursor-pointer active:scale-98 shadow-xs min-h-[76px] ${
+                    isFirstItemAndOdd ? 'col-span-2 sm:col-span-1' : 'col-span-1'
+                  } ${
+                    isActive 
+                      ? 'bg-dark-green text-white border-dark-green ring-2 ring-gold/50 shadow-md scale-[1.02]' 
+                      : 'bg-white text-stone-800 hover:bg-stone-50 border-stone-200/90 hover:border-stone-300'
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-2 mb-2">
+                    <span className={`text-[10px] font-bold tracking-wider uppercase px-2 py-0.5 rounded-md ${
+                      isActive ? 'bg-gold/20 text-gold border border-gold/30' : 'bg-stone-100 text-stone-500'
+                    }`}>
+                      {count} {count === 1 ? 'plato' : 'platos'}
+                    </span>
+                    {isActive && (
+                      <span className="w-2.5 h-2.5 rounded-full bg-gold shadow-xs animate-pulse shrink-0 mt-0.5" />
+                    )}
+                  </div>
+                  <div>
+                    <span className={`block font-serif font-bold leading-tight ${
+                      isActive ? 'text-white text-base sm:text-lg' : 'text-stone-900 text-base sm:text-lg'
+                    }`}>
+                      {cat === 'Todos' ? t('Todas las Categorías') : t(cat)}
+                    </span>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         {/* Search & Exchange Note */}
-        <div className="mb-10 flex flex-col md:flex-row items-center justify-between gap-4">
+        <div className="mb-8 flex flex-col md:flex-row items-center justify-between gap-4">
           <input 
             type="text" 
             placeholder={t('Buscar plato o ingrediente...')}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full md:max-w-md bg-white border border-stone-200 rounded-full px-6 py-3 focus:outline-none focus:ring-2 focus:ring-gold focus:border-transparent shadow-sm text-sm"
+            className="w-full md:max-w-md bg-white border border-stone-200 rounded-2xl px-5 py-3 focus:outline-none focus:ring-2 focus:ring-gold focus:border-transparent shadow-xs text-sm"
           />
-          <div className="text-xs text-stone-500 bg-stone-100/80 px-4 py-2 rounded-full border border-stone-200 text-center font-medium">
+          <div className="text-xs text-stone-500 bg-stone-100/80 px-4 py-2 rounded-2xl border border-stone-200/80 text-center font-medium">
             ℹ️ Los precios expresados en USD y EUR son referenciales y están sujetos a la tasa de cambio vigente.
           </div>
         </div>
 
         {/* Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
-          {filteredItems.map(item => (
-            <motion.div 
-              key={item.id}
-              layout
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.9 }}
-              className="bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-xl transition-shadow border border-stone-100 flex flex-col"
-            >
-              <div className="aspect-[4/3] overflow-hidden bg-stone-100 relative">
-                <img 
-                  src={item.imageUrl} 
-                  alt={item.name} 
-                  loading="lazy"
-                  className="w-full h-full object-cover"
-                />
-                <div className="absolute top-2 right-2 bg-white/95 backdrop-blur-xs px-3 py-1.5 rounded-2xl text-xs font-bold text-dark-green shadow-sm text-right">
-                  <div>${item.priceCUP.toLocaleString()} CUP</div>
-                  <div className="text-[10px] text-stone-500 font-mono font-semibold">
-                    ${(item.priceCUP / usdCUP).toFixed(2)} USD • €{(item.priceCUP / eurCUP).toFixed(2)} EUR
-                  </div>
-                </div>
-              </div>
-              <div className="p-5 flex flex-col flex-grow">
-                <div className="text-xs font-bold text-gold uppercase tracking-wider mb-2">{t(item.category)}</div>
-                <h4 className="text-lg font-serif text-dark-green mb-2 leading-tight">{t(item.name)}</h4>
-                <p className="text-stone-500 text-sm line-clamp-2 mb-4 flex-grow">{t(item.shortDescription)}</p>
-                <div className="mt-auto">
-                  {isOrderMode ? (
-                    getQuantity(item.id) > 0 ? (
-                      <div className="flex items-center justify-between bg-stone-100 rounded-xl p-1">
-                        <button 
-                          onClick={() => updateQuantity(item.id, -1)}
-                          className="p-2 text-stone-600 hover:text-dark-green hover:bg-stone-200 rounded-lg transition-colors"
-                        >
-                          <Minus size={18} />
-                        </button>
-                        <span className="font-bold text-dark-green">{getQuantity(item.id)}</span>
-                        <button 
-                          onClick={() => updateQuantity(item.id, 1)}
-                          className="p-2 text-stone-600 hover:text-dark-green hover:bg-stone-200 rounded-lg transition-colors"
-                        >
-                          <Plus size={18} />
-                        </button>
-                      </div>
-                    ) : (
-                      <button 
-                        onClick={() => addToCart(item)}
-                        className="w-full bg-stone-100 hover:bg-gold hover:text-white text-dark-green font-bold py-2 rounded-xl transition-colors flex items-center justify-center gap-2"
-                      >
-                        <Plus size={16} /> {prefilledTableState ? t('Añadir al Pedido') : t('Añadir a mi Reserva')}
-                      </button>
-                    )
-                  ) : (
-                    <div className="text-center py-2 text-xs font-semibold text-emerald-600 bg-emerald-50 rounded-xl border border-emerald-100">
-                      ✨ {t('Disponible')}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 sm:gap-8">
+          {filteredItems.map(item => {
+            const isAvailable = item.isAvailable !== false;
+            return (
+              <motion.div 
+                key={item.id}
+                layout
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                className={`bg-white rounded-2xl overflow-hidden shadow-xs hover:shadow-xl transition-all border border-stone-100 flex flex-col ${
+                  !isAvailable ? 'opacity-75' : ''
+                }`}
+              >
+                <div className="aspect-[4/3] overflow-hidden bg-stone-100 relative">
+                  <img 
+                    src={item.imageUrl} 
+                    alt={item.name} 
+                    loading="lazy"
+                    className={`w-full h-full object-cover transition-transform duration-500 hover:scale-105 ${
+                      !isAvailable ? 'grayscale-[50%]' : ''
+                    }`}
+                  />
+                  {!isAvailable && (
+                    <div className="absolute top-2 left-2 bg-red-600 text-white px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider shadow-md">
+                      {t('Agotado')}
                     </div>
                   )}
+                  <div className="absolute top-2 right-2 bg-white/95 backdrop-blur-xs px-3 py-1.5 rounded-2xl text-xs font-bold text-dark-green shadow-sm text-right">
+                    <div>${item.priceCUP.toLocaleString()} CUP</div>
+                    <div className="text-[10px] text-stone-500 font-mono font-semibold">
+                      ${(item.priceCUP / usdCUP).toFixed(2)} USD • €{(item.priceCUP / eurCUP).toFixed(2)} EUR
+                    </div>
+                  </div>
                 </div>
-              </div>
-            </motion.div>
-
-          ))}
+                <div className="p-5 flex flex-col flex-grow">
+                  <div className="text-xs font-bold text-gold uppercase tracking-wider mb-1.5">{t(item.category)}</div>
+                  <h4 className="text-lg font-serif text-dark-green mb-1.5 leading-tight">{t(item.name)}</h4>
+                  <p className="text-stone-500 text-sm line-clamp-2 mb-4 flex-grow">{t(item.shortDescription)}</p>
+                  <div className="mt-auto">
+                    {isOrderMode ? (
+                      !isAvailable ? (
+                        <div className="text-center py-2.5 text-xs font-bold text-stone-400 bg-stone-100 rounded-xl border border-stone-200/60">
+                          🚫 {t('No disponible temporalmente')}
+                        </div>
+                      ) : getQuantity(item.id) > 0 ? (
+                        <div className="flex items-center justify-between bg-stone-100 rounded-xl p-1">
+                          <button 
+                            onClick={() => updateQuantity(item.id, -1)}
+                            className="p-2 text-stone-600 hover:text-dark-green hover:bg-stone-200 rounded-lg transition-colors"
+                          >
+                            <Minus size={18} />
+                          </button>
+                          <span className="font-bold text-dark-green">{getQuantity(item.id)}</span>
+                          <button 
+                            onClick={() => updateQuantity(item.id, 1)}
+                            className="p-2 text-stone-600 hover:text-dark-green hover:bg-stone-200 rounded-lg transition-colors"
+                          >
+                            <Plus size={18} />
+                          </button>
+                        </div>
+                      ) : (
+                        <button 
+                          onClick={() => addToCart(item)}
+                          className="w-full bg-stone-100 hover:bg-gold hover:text-white text-dark-green font-bold py-2.5 rounded-xl transition-all flex items-center justify-center gap-2 active:scale-98 shadow-xs"
+                        >
+                          <Plus size={16} /> {prefilledTableState ? t('Añadir al Pedido') : t('Añadir a mi Reserva')}
+                        </button>
+                      )
+                    ) : (
+                      <div className={`text-center py-2 text-xs font-semibold rounded-xl border ${
+                        isAvailable 
+                          ? 'text-emerald-700 bg-emerald-50 border-emerald-100' 
+                          : 'text-stone-400 bg-stone-100 border-stone-200'
+                      }`}>
+                        {isAvailable ? `✨ ${t('Disponible')}` : `🚫 ${t('Agotado')}`}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </motion.div>
+            );
+          })}
         </div>
       </div>
 
