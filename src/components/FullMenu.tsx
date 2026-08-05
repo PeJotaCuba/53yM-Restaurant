@@ -38,31 +38,41 @@ export function FullMenu({
   const [cart, setCart] = useState<{item: MenuItem, quantity: number}[]>([]);
   
   // Secure token-based table management
-  const [tableToken, setTableToken] = useState(localStorage.getItem('clientTableToken') || '');
+  const [tableToken, setTableToken] = useState(localStorage.getItem('clientTableToken') || localStorage.getItem('qrTableToken') || '');
   const [prefilledTableState, setPrefilledTableState] = useState(prefilledTable || '');
   const [isCartOpen, setIsCartOpen] = useState(false);
 
+  // Sync prefilledTable prop if updated from parent
+  useEffect(() => {
+    if (prefilledTable) {
+      setPrefilledTableState(prefilledTable);
+    }
+  }, [prefilledTable]);
+
   // Auto-validate/sync saved token state when mesas load or prefilledTable changes
   useEffect(() => {
-    if (prefilledTable && tableToken) {
-      const matchedMesa = (data?.mesas || []).find((m: any) => m.token === tableToken);
+    const activeToken = tableToken || localStorage.getItem('clientTableToken') || localStorage.getItem('qrTableToken') || '';
+    if (activeToken) {
+      const matchedMesa = (data?.mesas || []).find((m: any) => m.token === activeToken);
       if (!matchedMesa || matchedMesa.status !== 'active' || (matchedMesa.tokenExpiresAt && Date.now() > matchedMesa.tokenExpiresAt)) {
         // Token became invalid or deactivated in system or expired
         localStorage.removeItem('clientTable');
         localStorage.removeItem('clientTableToken');
+        localStorage.removeItem('qrTableToken');
         setTableToken('');
         setPrefilledTableState('');
         if (onTableValidated) onTableValidated('');
       } else {
         setPrefilledTableState(`Mesa ${matchedMesa.number}`);
+        if (!tableToken) setTableToken(activeToken);
       }
-    } else if (prefilledTable && !tableToken) {
+    } else if (prefilledTableState && !activeToken) {
       // Manual/QR prefilled tables are invalid now without tokens
       localStorage.removeItem('clientTable');
       setPrefilledTableState('');
       if (onTableValidated) onTableValidated('');
     }
-  }, [prefilledTable, tableToken, data?.mesas, onTableValidated]);
+  }, [prefilledTableState, tableToken, data?.mesas, onTableValidated]);
 
   const usdCUP = exchangeRate?.usdCUP || 320;
   const eurCUP = exchangeRate?.eurCUP || 350;
