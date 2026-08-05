@@ -85,23 +85,71 @@ export const deleteMesa = mutation({
 
 export const assignTokens = mutation({
   args: {
-    assignments: v.array(
-      v.object({
-        id: v.id("mesas"),
-        token: v.string(),
-        tokenAssignedAt: v.number(),
-        tokenExpiresAt: v.number(),
-      })
+    assignments: v.optional(
+      v.array(
+        v.object({
+          id: v.id("mesas"),
+          token: v.string(),
+          tokenAssignedAt: v.number(),
+          tokenExpiresAt: v.number(),
+        })
+      )
     ),
   },
   handler: async (ctx, args) => {
-    for (const assignment of args.assignments) {
-      await ctx.db.patch(assignment.id, {
-        token: assignment.token,
-        tokenAssignedAt: assignment.tokenAssignedAt,
-        tokenExpiresAt: assignment.tokenExpiresAt,
+    const now = Date.now();
+    const expiresAt = now + 24 * 60 * 60 * 1000; // 24 hours
+
+    // Option A: Direct assignment provided by caller
+    if (args.assignments && args.assignments.length > 0) {
+      for (const assignment of args.assignments) {
+        await ctx.db.patch(assignment.id, {
+          token: assignment.token,
+          tokenAssignedAt: assignment.tokenAssignedAt,
+          tokenExpiresAt: assignment.tokenExpiresAt,
+        });
+      }
+      return args.assignments.length;
+    }
+
+    // Option B: Automatic server-side assignment from token_bank setting
+    const allMesas = await ctx.db.query("mesas").collect();
+    const activeMesas = allMesas.filter((m) => m.status === "active").sort((a, b) => a.number - b.number);
+
+    if (activeMesas.length === 0) {
+      throw new Error("No existen mesas activas registradas en el sistema para asignar tokens.");
+    }
+
+    const bankSetting = await ctx.db
+      .query("settings")
+      .withIndex("by_key", (q) => q.eq("key", "token_bank"))
+      .first();
+
+    if (!bankSetting || !bankSetting.value || !Array.isArray(bankSetting.value.tokens) || bankSetting.value.tokens.length === 0) {
+      throw new Error("No existe un Banco de Tokens generado. Por favor, haz clic en 'Generar Banco de Tokens' primero.");
+    }
+
+    const bank = bankSetting.value;
+    if (bank.expiresAt && now > bank.expiresAt) {
+      throw new Error("El Banco de Tokens ha expirado (validez de 30 días). Por favor, genera un nuevo banco de tokens.");
+    }
+
+    const availableTokens: string[] = bank.tokens;
+    if (availableTokens.length < activeMesas.length) {
+      throw new Error(`El banco de tokens solo contiene ${availableTokens.length} tokens, pero hay ${activeMesas.length} mesas activas.`);
+    }
+
+    // Assign unique token to each active mesa
+    for (let i = 0; i < activeMesas.length; i++) {
+      const mesa = activeMesas[i];
+      await ctx.db.patch(mesa._id, {
+        token: availableTokens[i],
+        tokenAssignedAt: now,
+        tokenExpiresAt: expiresAt,
       });
     }
+
+    return activeMesas.length;
   },
 });
 
