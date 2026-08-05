@@ -27,6 +27,7 @@ import nectysLogoUrl from './assets/NectysFinal.png';
 import { LoginModal } from './components/LoginModal';
 import { PWAInstallBanner } from './components/PWAInstallBanner';
 import { SystemNotificationManager } from './components/SystemNotificationManager';
+import { Onboarding } from './components/Onboarding';
 import { useDeviceId } from './hooks/useDeviceId';
 import { DependentConfig, ManagerConfig, Reservation, AppData, AppNotification } from './types';
 import { ADMIN_DEVICE_IDS } from './utils/deviceUtils';
@@ -41,7 +42,6 @@ export default function App() {
   const [selectedDishForReservation, setSelectedDishForReservation] = useState<string | undefined>(undefined);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [showFirstTimeModal, setShowFirstTimeModal] = useState(false);
-  const [firstTimeName, setFirstTimeName] = useState('');
 
   useEffect(() => {
     const savedName = localStorage.getItem('clientUserName');
@@ -49,17 +49,6 @@ export default function App() {
       setShowFirstTimeModal(true);
     }
   }, []);
-
-  const handleSaveFirstTimeName = (e: React.FormEvent) => {
-    e.preventDefault();
-    const trimmed = firstTimeName.trim();
-    if (trimmed) {
-      localStorage.setItem('clientUserName', trimmed);
-      setShowFirstTimeModal(false);
-    } else {
-      alert('Por favor ingresa tu nombre.');
-    }
-  };
 
   const deviceId = useDeviceId();
 
@@ -982,18 +971,6 @@ export default function App() {
           <>
             <Hero 
               config={appData.landingConfig}
-              showQuestionnaire={showFirstTimeModal && userRole === 'none'}
-              onCompleteQuestionnaire={(name, goToMenu) => {
-                const trimmed = name.trim();
-                if (trimmed) {
-                  localStorage.setItem('clientUserName', trimmed);
-                  setShowFirstTimeModal(false);
-                  if (goToMenu) {
-                    setCurrentView('order_workspace');
-                    window.scrollTo({ top: 0, behavior: 'smooth' });
-                  }
-                }
-              }}
               onReserve={() => {
                 if (userRole !== 'none') {
                   alert(t('Las cuentas de Administrador, Dependiente y Cocina no realizan reservas.'));
@@ -1104,6 +1081,20 @@ export default function App() {
         );
     }
   };
+
+  if (showFirstTimeModal && userRole === 'none') {
+    return (
+      <Onboarding 
+        onComplete={(name) => {
+          const trimmed = name.trim();
+          if (trimmed) {
+            localStorage.setItem('clientUserName', trimmed);
+            setShowFirstTimeModal(false);
+          }
+        }} 
+      />
+    );
+  }
 
   return (
     <div className="min-h-screen flex flex-col">
